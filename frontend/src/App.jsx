@@ -1,122 +1,62 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/layout/ProtectedRoute';
+import AdminLayout from './components/layout/AdminLayout';
+
+// Auth & Accounts
+import Login from './pages/Login';
+import UserManagement from './pages/Accounts/UserManagement';
+
+// Tiesverse
+import EventsManagement from './pages/Tiesverse/EventsManagement';
+import { ArticlesManagement, YoutubeVideos, WorkshopList, TeamList, GuestList, Webinars } from './pages/Tiesverse/index.jsx';
+
+// Career
+import { PositionTracker, EnrollmentTracker, OfferLetter } from './pages/Career/index.jsx';
+
+// Webinar
+import { ManagingList, ManageEvents, UserSubmissionsReview } from './pages/Webinar/index.jsx';
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/" element={<Navigate to="/tiesverse/events" replace />} />
+          
+          <Route element={
+            <ProtectedRoute>
+              <AdminLayout />
+            </ProtectedRoute>
+          }>
+            {/* Accounts Routes */}
+            <Route path="/accounts/users" element={<UserManagement />} />
 
-      <div className="ticks"></div>
+            {/* Tiesverse Routes */}
+            <Route path="/tiesverse/events" element={<EventsManagement />} />
+            <Route path="/tiesverse/articles" element={<ArticlesManagement />} />
+            <Route path="/tiesverse/youtube" element={<YoutubeVideos />} />
+            <Route path="/tiesverse/workshops" element={<WorkshopList />} />
+            <Route path="/tiesverse/team" element={<TeamList />} />
+            <Route path="/tiesverse/guests" element={<GuestList />} />
+            <Route path="/tiesverse/webinars" element={<Webinars />} />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+            {/* Career Routes */}
+            <Route path="/career/positions" element={<PositionTracker />} />
+            <Route path="/career/enrollments" element={<EnrollmentTracker />} />
+            <Route path="/career/offers" element={<OfferLetter />} />
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+            {/* Webinar Routes */}
+            <Route path="/webinar/submissions" element={<ManagingList />} />
+            <Route path="/webinar/events" element={<ManageEvents />} />
+            <Route path="/webinar/calendar" element={<UserSubmissionsReview />} />
+          </Route>
+        </Routes>
+      </Router>
+    </AuthProvider>
+  );
 }
 
-export default App
+export default App;
