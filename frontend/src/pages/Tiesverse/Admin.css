@@ -1,0 +1,1013 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+/* --- ADMIN CONTROL CENTER STYLES --- */
+/* Add this at the top of Admin.css */
+/* Clean Scrollbar for PC */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #080808;
+}
+::-webkit-scrollbar-thumb {
+    background: #222;
+    border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-orange);
+}
+.admin-form-enhanced input,
+.admin-form-enhanced select,
+.admin-form-enhanced textarea {
+    width: 100%; /* Ensure inputs never exceed their card container */
+    max-width: 100%;
+    box-sizing: border-box;
+}
+.admin-page-wrapper, 
+.admin-page-wrapper *, 
+.admin-page-wrapper *::before, 
+.admin-page-wrapper *::after {
+    box-sizing: border-box;
+}
+:root {
+    --sidebar-width: 280px;
+    --sidebar-collapsed-width: 80px; /* NEW: The narrow width */
+    --card-bg: rgba(20, 20, 20, 0.7);
+    --border-rgba: rgba(255, 255, 255, 0.1);
+    --accent-orange: #E85A24;
+}
+
+.featured-badge {
+    background: var(--accent-orange);
+    color: #fff;
+    font-size: 8px;
+    font-weight: 900;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 1px;
+}
+
+.checkbox-label {
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 11px !important;
+    color: var(--accent-orange) !important;
+    font-weight: 700;
+}
+
+.checkbox-label input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent-orange);
+}
+
+.admin-page-wrapper {
+    display: flex;
+    min-height: 100vh;
+    background-color: #080808;
+    color: #fff;
+    font-family: 'Inter', sans-serif;
+    position: relative;
+    z-index: 1000;
+    /* ADD THESE TWO LINES */
+    width: 100%;
+    overflow-x: hidden; 
+}
+
+/* --- SIDEBAR --- */
+.admin-sidebar {
+    width: var(--sidebar-width);
+    background: #0d0d0d;
+    border-right: 1px solid var(--border-rgba);
+    display: flex;
+    flex-direction: column;
+    padding: 40px 0;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    /* High z-index ensures it stays on top of the content */
+    z-index: 9999; 
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+/* ADD THIS NEW BLOCK */
+.admin-sidebar.collapsed {
+    width: var(--sidebar-collapsed-width);
+}
+
+.sidebar-brand {
+    padding: 0 30px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 50px;
+}
+
+.brand-dot {
+    width: 10px;
+    height: 10px;
+    background: var(--accent-orange);
+    border-radius: 50%;
+    box-shadow: 0 0 10px var(--accent-orange);
+}
+
+.sidebar-brand h2 {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 2px;
+}
+
+.sidebar-nav {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.nav-item {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    padding: 15px 30px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.nav-item:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-item.active {
+    color: #fff;
+    background: rgba(232, 90, 36, 0.1);
+    border-left: 3px solid var(--accent-orange);
+}
+
+.nav-icon {
+    font-size: 16px;
+}
+.admin-sidebar.collapsed .nav-item {
+    padding: 15px 0;
+    justify-content: center;
+    gap: 0;
+}
+
+.admin-sidebar.collapsed .sidebar-brand {
+    padding: 0;
+    justify-content: center;
+}
+
+.admin-sidebar.collapsed .collapse-btn {
+    margin: 0;
+}
+
+.sidebar-footer {
+    padding: 0 30px;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 800;
+}
+
+.pulse {
+    width: 6px;
+    height: 6px;
+    background: #4caf50;
+    border-radius: 50%;
+    animation: pulseGlow 1.5s infinite;
+}
+
+/* --- MAIN CONTENT --- */
+.admin-main {
+    display: block;
+    /* Forces the work area to start AFTER the sidebar */
+    margin-left: var(--sidebar-width); 
+    padding: 40px 50px;
+    min-height: 100vh;
+    box-sizing: border-box;
+    background-color: #080808; 
+    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    width: auto;
+    overflow-x: hidden;
+}
+
+/* This is the most important line: it tells the work area to move when toggled */
+.sidebar-collapsed .admin-main {
+    margin-left: var(--sidebar-collapsed-width) !important;
+}
+.main-topbar {
+    margin-bottom: 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center; /* Changed from flex-end for a cleaner look */
+    border-bottom: 1px solid var(--border-rgba); /* Adds a subtle divider line */
+    padding-bottom: 20px;
+}
+
+.main-topbar h1 {
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: -0.5px;
+    margin-bottom: 5px;
+}
+
+.main-topbar p {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.4);
+    font-weight: 600;
+}
+
+/* --- GRID & CARDS --- */
+.admin-grid {
+    display: grid;
+    /* Use 1fr 1fr on PC for perfect balance, or stick to this if you prefer the list smaller */
+    grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); 
+    gap: 30px;
+    align-items: start;
+    width: 100%;
+}
+
+.card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-rgba);
+    border-radius: 12px;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+    /* ADD THIS */
+    width: 100%; 
+    min-width: 0; 
+}
+
+.card-header {
+    padding: 25px 30px;
+    border-bottom: 1px solid var(--border-rgba);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.card-header h3 {
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* --- ENHANCED FORM --- */
+.admin-form-enhanced {
+    padding: 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+.form-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.input-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.input-group label {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.admin-form-enhanced input,
+.admin-form-enhanced select,
+.admin-form-enhanced textarea {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-rgba);
+    color: #fff;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    transition: all 0.3s ease;
+}
+
+.admin-form-enhanced select option {
+    background: #1a1a1a;
+    color: #fff;
+}
+
+.admin-form-enhanced input:focus,
+.admin-form-enhanced select:focus,
+.admin-form-enhanced textarea:focus {
+    outline: none;
+    border-color: var(--accent-orange);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.admin-form-enhanced textarea {
+    min-height: 120px;
+    line-height: 1.5;
+}
+
+.btn-save {
+    background: var(--accent-orange);
+    color: #fff;
+    border: none;
+    padding: 18px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    margin-top: 10px;
+}
+
+.btn-save:hover {
+    filter: brightness(1.2);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(232, 90, 36, 0.2);
+}
+
+/* --- ENHANCED LIST --- */
+.item-list-container {
+    padding: 0;
+    max-height: 700px;
+    overflow-y: auto;
+}
+
+.enhanced-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.event-visibility-bar {
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--border-rgba);
+    padding: 15px 25px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.dual-limit-bar {
+    display: flex;
+    /* CHANGE THIS: Allow items to stack if the laptop screen is narrow */
+    flex-wrap: wrap; 
+    gap: 20px;
+    justify-content: flex-start !important;
+    padding: 20px;
+}
+
+.limit-unit {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    /* ADD THIS: Prevent the units from being squashed */
+    flex-shrink: 0; 
+}
+
+.visibility-info p {
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    color: var(--accent-orange);
+    margin-bottom: 2px;
+}
+
+.visibility-info span {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.visibility-control {
+    display: flex;
+    gap: 10px;
+}
+
+.visibility-control input {
+    width: 60px;
+    background: #000;
+    border: 1px solid var(--border-rgba);
+    color: #fff;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    text-align: center;
+}
+
+.visibility-control button {
+    background: #fff;
+    color: #000;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 900;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.visibility-control button:hover {
+    background: var(--accent-orange);
+    color: #fff;
+}
+
+.enhanced-item-card {
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.02); /* Slight lift */
+    margin-bottom: 10px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.enhanced-item-card:hover {
+    border-color: var(--accent-orange);
+    background: rgba(232, 90, 36, 0.05);
+}
+
+.item-thumbnail-small {
+    width: 80px; /* Made slightly bigger for PC visibility */
+    height: 55px;
+    border-radius: 6px;
+}
+.item-main-info {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    margin-bottom: 20px;
+}
+
+.item-thumbnail-small {
+    width: 60px;
+    height: 40px;
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: #111;
+}
+
+.item-thumbnail-small img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.item-text-details {
+    flex: 1;
+}
+
+.item-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    align-items: center;
+}
+
+.pill-generic {
+    font-size: 8px;
+    font-weight: 900;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.6);
+    border-radius: 2px;
+}
+
+.item-date-small {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.item-actions-row {
+    display: flex;
+    gap: 12px;
+}
+
+.btn-edit-small {
+    background: #fff;
+    color: #000;
+    border: none;
+    padding: 8px 20px;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.btn-delete-small {
+    background: transparent;
+    border: 1px solid rgba(255, 77, 77, 0.3);
+    color: #ff4d4d;
+    padding: 8px 20px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+/* --- UPLOAD --- */
+.upload-container {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px dashed var(--border-rgba);
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.image-preview {
+    margin: 0 auto 15px;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border-rgba);
+}
+
+.upload-hint {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.3);
+    margin-top: 10px;
+}
+
+/* --- MODAL --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    z-index: 10000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.custom-modal {
+    background: #111;
+    border: 1px solid var(--border-rgba);
+    padding: 40px;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 450px;
+    text-align: center;
+}
+
+.modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.btn-cancel-modal,
+.btn-confirm-delete {
+    padding: 15px;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+/* --- TOAST --- */
+.toast-notification {
+    position: fixed;
+    bottom: 40px;
+    right: 40px;
+    background: #1a1a1a;
+    border: 1px solid var(--border-rgba);
+    padding: 16px 24px;
+    border-radius: 12px;
+    z-index: 10001;
+}
+
+@keyframes pulseGlow {
+    0% {
+        opacity: 0.5;
+        transform: scale(0.9);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+
+    100% {
+        opacity: 0.5;
+        transform: scale(0.9);
+    }
+}
+.collapse-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-rgba);
+    color: var(--accent-orange);
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.collapse-btn:hover {
+    background: var(--accent-orange);
+    color: white;
+}
+
+/* --- RESPONSIVE OVERHAUL --- */
+
+@media (max-width: 1200px) {
+    .admin-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 900px) {
+    .admin-main {
+        padding: 30px;
+    }
+
+    .input-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Sidebar Overlay Backdrop */
+.mobile-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    z-index: 10002;
+}
+
+@media (max-width: 768px) {
+    .mobile-overlay.visible {
+        display: block;
+    }
+
+    .mobile-admin-header {
+        display: flex !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 70px !important;
+        background: #0a0a0a !important;
+        border-bottom: 1px solid var(--border-rgba);
+        padding: 0 20px;
+        justify-content: space-between;
+        align-items: center;
+        z-index: 10005 !important;
+    }
+
+    .mobile-brand h2 {
+        font-size: 15px;
+        font-weight: 900;
+        letter-spacing: 2px;
+        margin: 0;
+        color: #fff;
+    }
+
+    .menu-toggle {
+        width: 35px !important;
+        height: 35px !important;
+        display: flex !important;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-end;
+        gap: 6px;
+        background: transparent;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        z-index: 10006 !important;
+    }
+
+    .menu-toggle span {
+        display: block !important;
+        height: 3px !important;
+        background: var(--accent-orange) !important;
+        border-radius: 4px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .menu-toggle span:nth-child(1) {
+        width: 28px;
+    }
+
+    .menu-toggle span:nth-child(2) {
+        width: 18px;
+    }
+
+    .menu-toggle span:nth-child(3) {
+        width: 22px;
+    }
+
+    .menu-toggle.open span:nth-child(1) {
+        transform: translateY(9px) rotate(45deg);
+        background: var(--accent-orange) !important;
+        width: 28px;
+    }
+
+    .menu-toggle.open span:nth-child(2) {
+        opacity: 0 !important;
+    }
+
+    .menu-toggle.open span:nth-child(3) {
+        transform: translateY(-9px) rotate(-45deg);
+        background: var(--accent-orange) !important;
+        width: 28px;
+    }
+
+    .admin-page-wrapper {
+        padding-top: 70px !important;
+        display: block !important;
+    }
+
+    .admin-sidebar {
+        width: 280px !important;
+        max-width: 85% !important;
+        left: -300px !important;
+        top: 0 !important;
+        height: 100vh !important;
+        position: fixed !important;
+        transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        z-index: 10003 !important;
+        box-shadow: 20px 0 50px rgba(0, 0, 0, 0.8);
+        background: #0d0d0d !important;
+        padding-top: 20px;
+    }
+
+    .admin-sidebar.mobile-open {
+        left: 0 !important;
+    }
+
+    .admin-main {
+        margin-left: 0 !important;
+        padding: 20px 15px !important;
+    }
+
+    .main-topbar {
+        margin-bottom: 25px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
+
+    .main-topbar h1 {
+        font-size: 18px;
+    }
+
+    .card {
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+
+    .admin-form-enhanced {
+        padding: 20px 15px;
+        gap: 15px;
+    }
+
+    .dual-limit-bar {
+        flex-direction: column !important;
+        gap: 15px;
+    }
+
+    .item-actions-row {
+        gap: 10px;
+        margin-top: 15px;
+    }
+
+    .btn-edit-small,
+    .btn-delete-small {
+        flex: 1;
+        padding: 12px 0;
+        font-size: 9px;
+    }
+
+    .custom-modal {
+        width: 95%;
+        padding: 30px 20px;
+    }
+
+    .modal-actions {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .item-main-info {
+        flex-direction: row;
+        gap: 12px;
+    }
+
+    .item-thumbnail-small {
+        width: 50px;
+        height: 50px;
+    }
+}
+/* Add this at the end of Admin.css */
+/* Optimized Laptop Fix */
+/* Optimized Laptop & PC Fix */
+@media (min-width: 769px) {
+    /* Ensures the grid items (New Entry vs Active Content) don't squash on laptops */
+    .admin-grid {
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    }
+
+    /* Safety rule: Ensure main content respects the margin even on laptops */
+    .admin-main {
+        width: auto;
+    }
+}
+
+/* Mobile specific remains separate */
+@media (max-width: 768px) {
+    .admin-main {
+        margin-left: 0 !important;
+        padding: 20px 15px !important;
+    }
+}
+
+/* If the screen is even smaller, but not yet mobile */
+@media (max-width: 1100px) {
+    :root {
+        --sidebar-width: 240px; /* Shrink sidebar to give content more room */
+    }
+}
+/* Specific fix for Laptops (1024px to 1440px) */
+@media (min-width: 769px) and (max-width: 1440px) {
+    .admin-grid {
+        /* If things still overlap, we force them into one column on laptops */
+        grid-template-columns: 1fr !important;
+    }
+    
+    .admin-main {
+        padding: 30px;
+    }
+}
+
+/* --- PREMIUM UI OVERHAUL --- */
+
+:root {
+    --bg-dark: #030303;
+    --card-bg: rgba(20, 20, 20, 0.45);
+    --border-rgba: rgba(255, 255, 255, 0.08);
+    --accent-orange: #FF5A1F;
+    --accent-gradient: linear-gradient(135deg, #FF5A1F 0%, #D43F00 100%);
+    --glass-blur: blur(24px);
+}
+
+body, .admin-page-wrapper {
+    font-family: 'Outfit', sans-serif !important;
+    background: radial-gradient(circle at top right, #1a0800 0%, var(--bg-dark) 35%, var(--bg-dark) 100%) !important;
+}
+
+.admin-sidebar {
+    background: rgba(8, 8, 8, 0.6) !important;
+    backdrop-filter: var(--glass-blur);
+    border-right: 1px solid rgba(255,255,255,0.04) !important;
+    box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+}
+
+.nav-item {
+    border-radius: 8px;
+    margin: 4px 15px;
+    padding: 12px 15px !important;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.nav-item:hover {
+    background: rgba(255, 255, 255, 0.05) !important;
+    transform: translateX(5px);
+}
+
+.nav-item.active {
+    background: rgba(255, 90, 31, 0.12) !important;
+    border-left: none !important;
+    box-shadow: inset 3px 0 0 var(--accent-orange);
+}
+
+.card {
+    background: var(--card-bg) !important;
+    backdrop-filter: var(--glass-blur) !important;
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+    border-radius: 16px !important;
+    animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.admin-form-enhanced input,
+.admin-form-enhanced select,
+.admin-form-enhanced textarea {
+    background: rgba(0,0,0,0.4) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 8px !important;
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.3);
+    transition: all 0.3s ease !important;
+    font-family: 'Outfit', sans-serif !important;
+}
+
+.admin-form-enhanced input:focus,
+.admin-form-enhanced select:focus,
+.admin-form-enhanced textarea:focus {
+    background: rgba(255,255,255,0.05) !important;
+    border-color: var(--accent-orange) !important;
+    box-shadow: 0 0 0 3px rgba(255, 90, 31, 0.25), inset 0 2px 4px rgba(0,0,0,0.2) !important;
+    transform: translateY(-2px);
+}
+
+.btn-save {
+    background: var(--accent-gradient) !important;
+    border-radius: 8px !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    box-shadow: 0 8px 20px rgba(255, 90, 31, 0.35) !important;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
+
+.btn-save:hover {
+    transform: translateY(-3px) scale(1.02) !important;
+    box-shadow: 0 12px 25px rgba(255, 90, 31, 0.5) !important;
+}
+
+.enhanced-item-card {
+    background: rgba(255,255,255,0.02) !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(255,255,255,0.04) !important;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.enhanced-item-card:hover {
+    background: rgba(255, 90, 31, 0.05) !important;
+    border-color: rgba(255, 90, 31, 0.3) !important;
+    transform: translateY(-4px) scale(1.01);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.4), 0 0 20px rgba(255, 90, 31, 0.1);
+}
+
+.item-thumbnail-small {
+    border-radius: 8px !important;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+}
+
+.pill-generic {
+    background: rgba(255, 90, 31, 0.1) !important;
+    color: var(--accent-orange) !important;
+    border: 1px solid rgba(255, 90, 31, 0.2) !important;
+    border-radius: 4px !important;
+    padding: 3px 8px !important;
+}
+
+.main-topbar h1 {
+    background: linear-gradient(135deg, #FFF 0%, #AAA 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 10px 20px rgba(0,0,0,0.5);
+}
+
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}

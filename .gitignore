@@ -59,6 +59,8 @@ cover/
 *.log
 local_settings.py
 db.sqlite3
+db_webinar.sqlite3
+*.sqlite3
 db.sqlite3-journal
 
 # Flask stuff:

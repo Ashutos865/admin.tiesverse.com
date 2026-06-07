@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Event, Article, YouTubeVideo, Workshop, TeamMember, Guest
+from .models import Event, Article, YouTubeVideo, Workshop, TeamMember, Guest, WebinarListing
 
 class EventSerializer(serializers.ModelSerializer):
     class Meta:
@@ -29,4 +29,9 @@ class TeamMemberSerializer(serializers.ModelSerializer):
 class GuestSerializer(serializers.ModelSerializer):
     class Meta:
         model = Guest
+        fields = '__all__'
+
+class WebinarListingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WebinarListing
         fields = '__all__'
