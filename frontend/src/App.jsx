@@ -23,7 +23,7 @@ import { ArticlesManagement, YoutubeVideos, WorkshopList, TeamList, GuestList, W
 import TiesverseAdminPanel from './pages/Tiesverse/Admin.jsx';
 
 // Career
-import { PositionTracker, EnrollmentTracker, OfferLetter } from './pages/Career/index.jsx';
+import { CareerAdmin } from './pages/Career/index.jsx';
 
 // Webinar
 import { ManagingList, ManageEvents, UserSubmissionsReview } from './pages/Webinar/index.jsx';
@@ -55,22 +55,22 @@ function App() {
 
               {/* Tiesverse Routes */}
               <Route path="/tiesverse/events" element={<EventsManagement />} />
-              <Route path="/tiesverse/articles" element={<TiesverseAdminPanel tab="articles" />} />
-              <Route path="/tiesverse/youtube_videos" element={<TiesverseAdminPanel tab="youtube_videos" />} />
-              <Route path="/tiesverse/workshops" element={<TiesverseAdminPanel tab="workshops" />} />
+              <Route path="/tiesverse/departments" element={<TiesverseAdminPanel tab="departments" />} />
               <Route path="/tiesverse/team_members" element={<TiesverseAdminPanel tab="team_members" />} />
-              <Route path="/tiesverse/guests" element={<TiesverseAdminPanel tab="guests" />} />
-              <Route path="/tiesverse/webinars" element={<TiesverseAdminPanel tab="webinars" />} />
 
               {/* Career Routes */}
-              <Route path="/career/positions" element={<PositionTracker />} />
-              <Route path="/career/enrollments" element={<EnrollmentTracker />} />
-              <Route path="/career/offers" element={<OfferLetter />} />
+              <Route path="/career/positions" element={<CareerAdmin tab="positions" />} />
+              <Route path="/career/enrollments" element={<CareerAdmin tab="enrollments" />} />
+              <Route path="/career/offers" element={<CareerAdmin tab="offers" />} />
+              <Route path="/career/candidates" element={<CareerAdmin tab="candidates" />} />
+              <Route path="/career/form_gates" element={<CareerAdmin tab="form_gates" />} />
 
               {/* Webinar Routes */}
               <Route path="/webinar/submissions" element={<ManagingList />} />
               <Route path="/webinar/events" element={<ManageEvents />} />
               <Route path="/webinar/calendar" element={<UserSubmissionsReview />} />
+              <Route path="/webinar/event_speakers" element={<TiesverseAdminPanel tab="event_speakers" />} />
+              <Route path="/webinar/event_registrations" element={<TiesverseAdminPanel tab="event_registrations" />} />
             </Route>
           </Routes>
         </Router>

@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { 
   getEvents, createEvent, updateEvent, deleteEvent 
 } from '../../apiClient';
-import { Plus, Edit2, Trash2, CheckCircle, XCircle, Clock, MapPin, Calendar, Sparkles, X, ExternalLink } from 'lucide-react';
+import { Plus, Edit2, Trash2, CheckCircle, XCircle, Clock, MapPin, Calendar, Sparkles, X, ExternalLink, Users } from 'lucide-react';
 
 const EventsManagement = () => {
   const [events, setEvents] = useState([]);
   const [formData, setFormData] = useState({
-    title: '', status: 'REGISTRATION OPEN', date: '', time: '',
-    location: '', description: '', form_link: '', is_featured: false, type: 'SEMINAR'
+    title: '', description: '', event_type: 'online', status: 'upcoming',
+    start_datetime: '', end_datetime: '', venue_name: '', venue_address: '', meeting_link: '',
+    capacity: '', registration_deadline: '', cover_image_url: '', is_published: false
   });
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -58,8 +59,9 @@ const EventsManagement = () => {
   const openCreateModal = () => {
     setEditingId(null);
     setFormData({
-      title: '', status: 'REGISTRATION OPEN', date: '', time: '',
-      location: '', description: '', form_link: '', is_featured: false, type: 'SEMINAR'
+      title: '', description: '', event_type: 'online', status: 'upcoming',
+      start_datetime: '', end_datetime: '', venue_name: '', venue_address: '', meeting_link: '',
+      capacity: '', registration_deadline: '', cover_image_url: '', is_published: false
     });
     setFormModalOpen(true);
   };
@@ -67,10 +69,12 @@ const EventsManagement = () => {
   const openEditModal = (event) => {
     setEditingId(event.id);
     setFormData({
-      title: event.title || '', status: event.status || 'REGISTRATION OPEN',
-      date: event.date || '', time: event.time || '', location: event.location || '',
-      description: event.description || '', form_link: event.form_link || '',
-      is_featured: event.is_featured || false, type: event.type || 'SEMINAR'
+      title: event.title || '', description: event.description || '',
+      event_type: event.event_type || 'online', status: event.status || 'upcoming',
+      start_datetime: event.start_datetime || '', end_datetime: event.end_datetime || '',
+      venue_name: event.venue_name || '', venue_address: event.venue_address || '', meeting_link: event.meeting_link || '',
+      capacity: event.capacity || '', registration_deadline: event.registration_deadline || '',
+      cover_image_url: event.cover_image_url || '', is_published: event.is_published || false
     });
     setFormModalOpen(true);
   };
@@ -79,8 +83,9 @@ const EventsManagement = () => {
     setFormModalOpen(false);
     setEditingId(null);
     setFormData({
-      title: '', status: 'REGISTRATION OPEN', date: '', time: '',
-      location: '', description: '', form_link: '', is_featured: false, type: 'SEMINAR'
+      title: '', description: '', event_type: 'online', status: 'upcoming',
+      start_datetime: '', end_datetime: '', venue_name: '', venue_address: '', meeting_link: '',
+      capacity: '', registration_deadline: '', cover_image_url: '', is_published: false
     });
   };
 
@@ -97,8 +102,10 @@ const EventsManagement = () => {
   };
 
   const getStatusStyle = (status) => {
-    if (status === 'REGISTRATION OPEN') return { bg: 'rgba(16,185,129,0.1)', color: '#10B981', border: 'rgba(16,185,129,0.2)' };
-    if (status === 'REGISTRATION CLOSED') return { bg: 'rgba(245,158,11,0.1)', color: '#F59E0B', border: 'rgba(245,158,11,0.2)' };
+    if (status === 'upcoming') return { bg: 'rgba(59,130,246,0.1)', color: '#3B82F6', border: 'rgba(59,130,246,0.2)' };
+    if (status === 'ongoing') return { bg: 'rgba(16,185,129,0.1)', color: '#10B981', border: 'rgba(16,185,129,0.2)' };
+    if (status === 'completed') return { bg: 'rgba(107,114,128,0.1)', color: '#6B7280', border: 'rgba(107,114,128,0.2)' };
+    if (status === 'cancelled') return { bg: 'rgba(239,68,68,0.1)', color: '#EF4444', border: 'rgba(239,68,68,0.2)' };
     return { bg: 'rgba(107,114,128,0.1)', color: '#6B7280', border: 'rgba(107,114,128,0.2)' };
   };
 
@@ -202,7 +209,7 @@ const EventsManagement = () => {
                       background: 'color-mix(in srgb, var(--primary) 10%, transparent)', color: 'var(--primary)',
                       border: '1px solid color-mix(in srgb, var(--primary) 15%, transparent)',
                     }}>
-                      {event.type || 'EVENT'}
+                      {event.event_type || 'EVENT'}
                     </span>
                     {event.is_featured && (
                       <span style={{
@@ -239,19 +246,19 @@ const EventsManagement = () => {
                 <div>
                   {/* Metadata */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-                    {event.date && (
+                    {event.start_datetime && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>
-                        <Calendar size={13} /> {event.date}
+                        <Calendar size={13} /> {new Date(event.start_datetime).toLocaleDateString()}
                       </div>
                     )}
-                    {event.time && (
+                    {event.venue_name && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>
-                        <Clock size={13} /> {event.time}
+                        <MapPin size={13} /> {event.venue_name}
                       </div>
                     )}
-                    {event.location && (
+                    {event.capacity && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>
-                        <MapPin size={13} /> {event.location}
+                        <Users size={13} /> Capacity: {event.capacity}
                       </div>
                     )}
                   </div>
@@ -268,29 +275,12 @@ const EventsManagement = () => {
                       border: `1px solid ${statusStyle.border}`,
                       display: 'flex', alignItems: 'center', gap: '5px',
                     }}>
-                      {event.status === 'REGISTRATION OPEN' ? <CheckCircle size={12} /> : <XCircle size={12} />}
-                      {event.status || 'OPEN'}
+                      {event.is_published === true ? <CheckCircle size={12} /> : <XCircle size={12} />}
+                      {event.status || 'upcoming'}
                     </span>
 
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      {event.form_link && (
-                        <a
-                          href={event.form_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            padding: '8px', borderRadius: '8px',
-                            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-                            color: 'rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center',
-                            transition: 'all 0.2s',
-                          }}
-                          title="Open Registration Link"
-                          onMouseEnter={e => { e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--primary) 30%, transparent)'; e.currentTarget.style.color = 'var(--primary)'; }}
-                          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(255,255,255,0.4)'; }}
-                        >
-                          <ExternalLink size={14} />
-                        </a>
-                      )}
+                      
                       <button
                         onClick={() => openEditModal(event)}
                         style={{
@@ -373,33 +363,46 @@ const EventsManagement = () => {
 
             {/* Form */}
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <FormField label="Event Title" name="title" value={formData.title} onChange={handleChange} placeholder="e.g. AI Ethics Summit" required />
+              <FormField label="Event Title" name="title" value={formData.title} onChange={handleChange} required />
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <FieldLabel>Status</FieldLabel>
                   <select name="status" value={formData.status} onChange={handleChange} style={selectStyle}>
-                    <option value="REGISTRATION OPEN">REGISTRATION OPEN</option>
-                    <option value="REGISTRATION CLOSED">REGISTRATION CLOSED</option>
-                    <option value="EVENT ENDED">EVENT ENDED</option>
+                    <option value="upcoming">Upcoming</option>
+                    <option value="ongoing">Ongoing</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
                   </select>
                 </div>
-                <FormField label="Type" name="type" value={formData.type} onChange={handleChange} placeholder="e.g. SEMINAR" />
+                <div>
+                  <FieldLabel>Type</FieldLabel>
+                  <select name="event_type" value={formData.event_type} onChange={handleChange} style={selectStyle}>
+                    <option value="online">Online</option>
+                    <option value="offline">Offline</option>
+                  </select>
+                </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <FormField label="Date" name="date" value={formData.date} onChange={handleChange} placeholder="e.g. 2026-08-15" />
-                <FormField label="Time" name="time" value={formData.time} onChange={handleChange} placeholder="e.g. 14:00 IST" />
+                <FormField label="Start Date/Time" name="start_datetime" type="datetime-local" value={formData.start_datetime ? formData.start_datetime.slice(0, 16) : ''} onChange={handleChange} required />
+                <FormField label="End Date/Time" name="end_datetime" type="datetime-local" value={formData.end_datetime ? formData.end_datetime.slice(0, 16) : ''} onChange={handleChange} />
               </div>
 
-              <FormField label="Location" name="location" value={formData.location} onChange={handleChange} placeholder="e.g. Online / Zoom" />
-              <FormField label="Registration Link" name="form_link" value={formData.form_link} onChange={handleChange} placeholder="https://zoom.us/webinar/..." />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <FormField label="Venue Name" name="venue_name" value={formData.venue_name} onChange={handleChange} />
+                <FormField label="Capacity" name="capacity" type="number" value={formData.capacity} onChange={handleChange} />
+              </div>
+              
+              <FormField label="Venue Address" name="venue_address" value={formData.venue_address} onChange={handleChange} />
+              <FormField label="Meeting Link" name="meeting_link" value={formData.meeting_link} onChange={handleChange} />
+              <FormField label="Registration Deadline" name="registration_deadline" type="datetime-local" value={formData.registration_deadline ? formData.registration_deadline.slice(0, 16) : ''} onChange={handleChange} />
+              <FormField label="Cover Image URL" name="cover_image_url" value={formData.cover_image_url} onChange={handleChange} />
 
               <div>
                 <FieldLabel>Description</FieldLabel>
                 <textarea
                   name="description" value={formData.description} onChange={handleChange}
-                  placeholder="Provide context or schedule details..."
                   style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }}
                 />
               </div>
@@ -409,10 +412,10 @@ const EventsManagement = () => {
                 fontSize: '0.875rem', fontWeight: 600, color: 'rgba(255,255,255,0.6)',
               }}>
                 <input
-                  type="checkbox" name="is_featured" checked={formData.is_featured} onChange={handleChange}
+                  type="checkbox" name="is_published" checked={formData.is_published} onChange={handleChange}
                   style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
                 />
-                Feature as Top Banner announcement
+                Is Published
               </label>
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>

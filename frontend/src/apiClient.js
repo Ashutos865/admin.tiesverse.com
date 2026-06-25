@@ -49,53 +49,75 @@ const adminFetch = async (path, method = 'GET', body = null) => {
     }
 };
 
+export const downloadFile = async (path, filename) => {
+    const fetchPath = path.startsWith('http') ? path : `${API_URL}${path}`;
+    const res = await fetch(fetchPath, {
+        headers: {
+            'Authorization': `Bearer ${getToken()}`
+        }
+    });
+    if (!res.ok) throw new Error('Download failed');
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || 'download';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+};
+
 // EVENTS 
 export const getEvents = () => adminFetch('/api/landing/events');
 export const createEvent = (data) => adminFetch('/api/landing/events', 'POST', data);
 export const updateEvent = (id, data) => adminFetch(`/api/landing/events/${id}`, 'PATCH', data);
 export const deleteEvent = (id) => adminFetch(`/api/landing/events/${id}`, 'DELETE');
 
-// ARTICLES 
-export const getArticle = () => adminFetch('/api/landing/articles');
-export const createArticle = (data) => adminFetch('/api/landing/articles', 'POST', data);
-export const updateArticle = (id, data) => adminFetch(`/api/landing/articles/${id}`, 'PATCH', data);
-export const deleteArticle = (id) => adminFetch(`/api/landing/articles/${id}`, 'DELETE');
-
-// YOUTUBE VIDEOS
-export const getYoutubeVideos = () => adminFetch('/api/landing/youtube_videos');
-export const createYoutubeVideo = (data) => adminFetch('/api/landing/youtube_videos', 'POST', data);
-export const updateYoutubeVideo = (id, data) => adminFetch(`/api/landing/youtube_videos/${id}`, 'PATCH', data);
-export const deleteYoutubeVideo = (id) => adminFetch(`/api/landing/youtube_videos/${id}`, 'DELETE');
-
-// WORKSHOPS
-export const getWorkshops = () => adminFetch('/api/landing/workshops');
-export const createWorkshop = (data) => adminFetch('/api/landing/workshops', 'POST', data);
-export const updateWorkshop = (id, data) => adminFetch(`/api/landing/workshops/${id}`, 'PATCH', data);
-export const deleteWorkshop = (id) => adminFetch(`/api/landing/workshops/${id}`, 'DELETE');
+// DEPARTMENTS
+export const getDepartments = () => adminFetch('/api/landing/departments');
+export const createDepartment = (data) => adminFetch('/api/landing/departments', 'POST', data);
+export const updateDepartment = (id, data) => adminFetch(`/api/landing/departments/${id}`, 'PATCH', data);
+export const deleteDepartment = (id) => adminFetch(`/api/landing/departments/${id}`, 'DELETE');
 
 // TEAM MEMBERS
-export const getTeam = () => adminFetch('/api/landing/team_members');
-export const createMember = (data) => adminFetch('/api/landing/team_members', 'POST', data);
-export const updateMember = (id, data) => adminFetch(`/api/landing/team_members/${id}`, 'PATCH', data);
-export const deleteMember = (id) => adminFetch(`/api/landing/team_members/${id}`, 'DELETE');
+export const getTeamMembers = () => adminFetch('/api/landing/team_members');
+export const createTeamMember = (data) => adminFetch('/api/landing/team_members', 'POST', data);
+export const updateTeamMember = (id, data) => adminFetch(`/api/landing/team_members/${id}`, 'PATCH', data);
+export const deleteTeamMember = (id) => adminFetch(`/api/landing/team_members/${id}`, 'DELETE');
 
-// GUESTS
-export const getGuests = () => adminFetch('/api/landing/guests');
-export const createGuest = (data) => adminFetch('/api/landing/guests', 'POST', data);
-export const updateGuest = (id, data) => adminFetch(`/api/landing/guests/${id}`, 'PATCH', data);
-export const deleteGuest = (id) => adminFetch(`/api/landing/guests/${id}`, 'DELETE');
+// EVENT SPEAKERS
+export const getEventSpeakers = () => adminFetch('/api/landing/event_speakers');
+export const createEventSpeaker = (data) => adminFetch('/api/landing/event_speakers', 'POST', data);
+export const updateEventSpeaker = (id, data) => adminFetch(`/api/landing/event_speakers/${id}`, 'PATCH', data);
+export const deleteEventSpeaker = (id) => adminFetch(`/api/landing/event_speakers/${id}`, 'DELETE');
 
-// WEBINAR LISTINGS (Tiesverse)
-export const getWebinarListings = () => adminFetch('/api/landing/webinars');
-export const createWebinarListing = (data) => adminFetch('/api/landing/webinars', 'POST', data);
-export const updateWebinarListing = (id, data) => adminFetch(`/api/landing/webinars/${id}`, 'PATCH', data);
-export const deleteWebinarListing = (id) => adminFetch(`/api/landing/webinars/${id}`, 'DELETE');
+// EVENT REGISTRATIONS
+export const getEventRegistrations = () => adminFetch('/api/landing/event_registrations');
+export const createEventRegistration = (data) => adminFetch('/api/landing/event_registrations', 'POST', data);
+export const updateEventRegistration = (id, data) => adminFetch(`/api/landing/event_registrations/${id}`, 'PATCH', data);
+export const deleteEventRegistration = (id) => adminFetch(`/api/landing/event_registrations/${id}`, 'DELETE');
 
 // CAREER (Portal)
 export const getPositions = () => adminFetch('/api/career/positions').catch(() => []);
 export const createPosition = (data) => adminFetch('/api/career/positions', 'POST', data);
+export const updatePosition = (id, data) => adminFetch(`/api/career/positions/${id}`, 'PATCH', data);
+export const deletePosition = (id) => adminFetch(`/api/career/positions/${id}`, 'DELETE');
+
 export const getEnrollments = () => adminFetch('/api/career/enrollments').catch(() => []);
+export const updateEnrollment = (id, data) => adminFetch(`/api/career/enrollments/${id}/update_status/`, 'PATCH', { status: data.status });
+export const deleteEnrollment = (id) => adminFetch(`/api/career/enrollments/${id}`, 'DELETE');
+
 export const getOfferLetters = () => adminFetch('/api/career/offer-letters').catch(() => []);
+export const createOfferLetter = (data) => adminFetch('/api/career/offer-letters/generate/', 'POST', data);
+export const updateOfferLetter = (id, data) => adminFetch(`/api/career/offer-letters/${id}`, 'PATCH', data);
+export const deleteOfferLetter = (id) => adminFetch(`/api/career/offer-letters/${id}`, 'DELETE');
+
+export const getCandidates = () => adminFetch('/api/career/candidates').catch(() => ({ data: [] }));
+export const updateCandidate = (id, data) => adminFetch(`/api/career/candidates/${id}`, 'PUT', data);
+
+export const getFormGates = () => adminFetch('/api/career/form-gates').catch(() => ({ gates: {} }));
+export const updateFormGates = (data) => adminFetch('/api/career/form-gates', 'POST', data);
 
 // WEBINAR (Portal)
 export const getWebinarEvents = () => adminFetch('/api/webinar/events').catch(() => []);
@@ -105,10 +127,6 @@ export const getWebinarRegistrations = () => adminFetch('/api/webinar/registrati
 // SITE SETTINGS
 export const getSettings = () => adminFetch('/api/settings').catch(() => []);
 export const updateSetting = (key, data) => adminFetch(`/api/settings/${key}`, 'PATCH', data).catch(() => ({}));
-
-// CLOUDINARY
-export const getCloudinaryImages = () => adminFetch('/api/cloudinary/images').catch(() => []);
-export const deleteCloudinaryImage = (public_id) => adminFetch('/api/cloudinary/delete', 'DELETE', { public_id }).catch(() => ({}));
 
 // PROFILE SETTINGS
 export const getProfile = () => adminFetch('/api/accounts/profile');

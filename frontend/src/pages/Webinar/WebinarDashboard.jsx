@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getWebinarEvents, getWebinarRegistrations, createWebinarEvent } from '../../apiClient';
-import { Calendar, Video, CheckSquare, DollarSign, Download, CalendarCheck, RefreshCw, ArrowUpRight } from 'lucide-react';
+import { Calendar, Video, CheckSquare, DollarSign, Download, CalendarCheck, RefreshCw, ArrowUpRight, Plus, Users } from 'lucide-react';
 
 const WebinarDashboard = () => {
   const [stats, setStats] = useState({

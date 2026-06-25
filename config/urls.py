@@ -18,7 +18,6 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
 from accounts_app.views import CustomTokenObtainPairView, SettingViewSet
-from tiesverse_app.cloudinary_views import cloudinary_list_images, cloudinary_delete_image
 from rest_framework.routers import DefaultRouter
 
 router = DefaultRouter()
@@ -32,7 +31,5 @@ urlpatterns = [
     path('api/landing/', include('tiesverse_app.urls')),
     path('api/career/', include('career_app.urls')),
     path('api/webinar/', include('webinar_app.urls')),
-    path('api/cloudinary/images/', cloudinary_list_images, name='cloudinary_list_images'),
-    path('api/cloudinary/delete/', cloudinary_delete_image, name='cloudinary_delete_image'),
     path('api/', include(router.urls)),
 ]

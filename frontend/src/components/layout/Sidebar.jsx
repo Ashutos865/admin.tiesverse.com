@@ -12,25 +12,23 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
   const portalLinks = {
     tiesverse: [
       { name: 'Dashboard', path: '/tiesverse/dashboard', icon: <LayoutDashboard size={20} />, perms: [] },
+      { name: 'Departments', path: '/tiesverse/departments', icon: <Briefcase size={20} />, perms: ['view_department', 'add_department', 'change_department', 'delete_department'] },
+      { name: 'Team Members', path: '/tiesverse/team_members', icon: <Users size={20} />, perms: ['view_teammember', 'add_teammember', 'change_teammember', 'delete_teammember'] },
       { name: 'Events', path: '/tiesverse/events', icon: <Calendar size={20} />, perms: ['view_event', 'add_event', 'change_event', 'delete_event'] },
-      { name: 'Articles', path: '/tiesverse/articles', icon: <BookOpen size={20} />, perms: ['view_article', 'add_article', 'change_article', 'delete_article'] },
-      { name: 'YouTube Videos', path: '/tiesverse/youtube_videos', icon: <PlaySquare size={20} />, perms: ['view_youtubevideo', 'add_youtubevideo', 'change_youtubevideo', 'delete_youtubevideo'] },
-      { name: 'Workshops', path: '/tiesverse/workshops', icon: <Users size={20} />, perms: ['view_workshop', 'add_workshop', 'change_workshop', 'delete_workshop'] },
-      { name: 'Team', path: '/tiesverse/team_members', icon: <Users size={20} />, perms: ['view_teammember', 'add_teammember', 'change_teammember', 'delete_teammember'] },
-      { name: 'Guests', path: '/tiesverse/guests', icon: <Users size={20} />, perms: ['view_guest', 'add_guest', 'change_guest', 'delete_guest'] },
-      { name: 'Webinar Listings', path: '/tiesverse/webinars', icon: <Video size={20} />, perms: ['view_webinarlisting'] },
     ],
     career: [
       { name: 'Dashboard', path: '/career/dashboard', icon: <LayoutDashboard size={20} />, perms: [] },
       { name: 'Position Tracker', path: '/career/positions', icon: <Briefcase size={20} />, perms: ['view_position', 'add_position', 'change_position', 'delete_position'] },
       { name: 'Enrollment Tracker', path: '/career/enrollments', icon: <FileText size={20} />, perms: ['view_enrollment', 'add_enrollment', 'change_enrollment', 'delete_enrollment'] },
       { name: 'Offer Letters', path: '/career/offers', icon: <Mail size={20} />, perms: ['view_offerletter', 'add_offerletter', 'change_offerletter', 'delete_offerletter'] },
+      { name: 'Candidates', path: '/career/candidates', icon: <Users size={20} />, perms: [] },
+      { name: 'Form Gates', path: '/career/form_gates', icon: <CheckSquare size={20} />, perms: [] },
     ],
     webinar: [
       { name: 'Dashboard', path: '/webinar/dashboard', icon: <LayoutDashboard size={20} />, perms: [] },
-      { name: 'Managing List', path: '/webinar/submissions', icon: <CheckSquare size={20} />, perms: ['view_registrationform', 'change_registrationform'] },
-      { name: 'Manage Events', path: '/webinar/events', icon: <Calendar size={20} />, perms: ['view_webinarevent', 'add_webinarevent', 'change_webinarevent', 'delete_webinarevent'] },
-      { name: 'Calendar Sync', path: '/webinar/calendar', icon: <CalendarCheck size={20} />, perms: ['view_calendarevent', 'change_calendarevent'] },
+
+      { name: 'Speakers', path: '/webinar/event_speakers', icon: <Users size={20} />, perms: ['view_eventspeaker', 'add_eventspeaker', 'change_eventspeaker', 'delete_eventspeaker'] },
+      { name: 'Registrations', path: '/webinar/event_registrations', icon: <FileText size={20} />, perms: ['view_eventregistration', 'add_eventregistration', 'change_eventregistration', 'delete_eventregistration'] },
     ],
     accounts: [
       { name: 'User Management', path: '/accounts/users', icon: <Users size={20} />, perms: [] },
@@ -47,7 +45,6 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
 
   const allLinks = [
     ...(portalLinks[activePortal] || []),
-    { name: 'Settings', path: '/accounts/settings', icon: <Settings size={20} />, perms: [] }
   ];
 
   const visibleLinks = allLinks.filter(link => {

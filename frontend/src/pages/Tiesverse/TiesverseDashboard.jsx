@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  getEvents, getArticle, getYoutubeVideos, getWorkshops, createEvent, updateSetting
+  getEvents, getDepartments, getTeamMembers, getEventSpeakers, createEvent, updateSetting
 } from '../../apiClient';
 import { Calendar, BookOpen, PlaySquare, Users, Download, Plus, RefreshCw, ArrowUpRight } from 'lucide-react';
 
 const TiesverseDashboard = () => {
   const [stats, setStats] = useState({
     events: 0,
-    articles: 0,
-    youtube: 0,
-    workshops: 0
+    departments: 0,
+    team: 0,
+    speakers: 0
   });
   const [loading, setLoading] = useState(true);
   const [actionStatus, setActionStatus] = useState('');
@@ -17,18 +17,18 @@ const TiesverseDashboard = () => {
   const fetchStats = async () => {
     setLoading(true);
     try {
-      const [events, articles, videos, workshops] = await Promise.all([
+      const [events, departments, team, speakers] = await Promise.all([
         getEvents().catch(() => []),
-        getArticle().catch(() => []),
-        getYoutubeVideos().catch(() => []),
-        getWorkshops().catch(() => [])
+        getDepartments().catch(() => []),
+        getTeamMembers().catch(() => []),
+        getEventSpeakers().catch(() => [])
       ]);
 
       setStats({
         events: Array.isArray(events) ? events.length : 0,
-        articles: Array.isArray(articles) ? articles.length : 0,
-        youtube: Array.isArray(videos) ? videos.length : 0,
-        workshops: Array.isArray(workshops) ? workshops.length : 0
+        departments: Array.isArray(departments) ? departments.length : 0,
+        team: Array.isArray(team) ? team.length : 0,
+        speakers: Array.isArray(speakers) ? speakers.length : 0
       });
     } catch (err) {
       console.error("Error loading dashboard statistics:", err);
@@ -63,12 +63,13 @@ const TiesverseDashboard = () => {
       const mockEvent = {
         title: `AI & Global Governance Seminar (${new Date().toLocaleDateString()})`,
         description: "An administrative panel test event discussing artificial intelligence policy frameworks and emerging security regulations.",
-        date: new Date().toISOString().split('T')[0],
-        time: "14:00",
+        start_datetime: `${new Date().toISOString().split('T')[0]}T14:00`,
+        end_datetime: `${new Date().toISOString().split('T')[0]}T16:00`,
         location: "Virtual / Webinar",
-        is_featured: false,
-        status: "REGISTRATION OPEN",
-        type: "SEMINAR"
+        max_attendees: 100,
+        status: "PUBLISHED",
+        event_type: "SEMINAR",
+        registration_required: true
       };
       await createEvent(mockEvent);
       setActionStatus('Mock event added successfully!');
@@ -135,10 +136,10 @@ const TiesverseDashboard = () => {
 
         <div className="metric-card">
           <div className="metric-content">
-            <span className="metric-label">Active Articles</span>
+            <span className="metric-label">Departments</span>
             <div className="metric-value-row">
-              <span className="metric-value">{stats.articles || 48}</span>
-              <span className="metric-change positive">+8.2%</span>
+              <span className="metric-value">{stats.departments || 4}</span>
+              <span className="metric-change positive">+1</span>
             </div>
           </div>
           <div className="metric-icon-box" style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6' }}>
@@ -148,27 +149,27 @@ const TiesverseDashboard = () => {
 
         <div className="metric-card">
           <div className="metric-content">
-            <span className="metric-label">YouTube Videos</span>
+            <span className="metric-label">Team Members</span>
             <div className="metric-value-row">
-              <span className="metric-value">{stats.youtube || 12}</span>
-              <span className="metric-change positive">+23.1%</span>
+              <span className="metric-value">{stats.team || 12}</span>
+              <span className="metric-change positive">+2</span>
             </div>
           </div>
           <div className="metric-icon-box" style={{ background: 'rgba(168, 85, 247, 0.1)', color: '#A855F7' }}>
-            <PlaySquare size={20} />
+            <Users size={20} />
           </div>
         </div>
 
         <div className="metric-card">
           <div className="metric-content">
-            <span className="metric-label">Workshops</span>
+            <span className="metric-label">Speakers</span>
             <div className="metric-value-row">
-              <span className="metric-value">{stats.workshops || 24}</span>
-              <span className="metric-change positive">+15.3%</span>
+              <span className="metric-value">{stats.speakers || 24}</span>
+              <span className="metric-change positive">+5</span>
             </div>
           </div>
           <div className="metric-icon-box" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10B981' }}>
-            <Users size={20} />
+            <PlaySquare size={20} />
           </div>
         </div>
       </div>

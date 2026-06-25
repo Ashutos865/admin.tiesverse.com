@@ -1,17 +1,12 @@
 from rest_framework import viewsets
 from rest_framework.permissions import DjangoModelPermissions, IsAuthenticated
-from .models import Event, Article, YouTubeVideo, Workshop, TeamMember, Guest, WebinarListing
+from .models import Department, TeamMember, TeamMemberSocial, Event, EventSpeaker, EventRegistration
 from .serializers import (
-    EventSerializer, ArticleSerializer, YouTubeVideoSerializer,
-    WorkshopSerializer, TeamMemberSerializer, GuestSerializer, WebinarListingSerializer
+    DepartmentSerializer, TeamMemberSerializer, TeamMemberSocialSerializer,
+    EventSerializer, EventSpeakerSerializer, EventRegistrationSerializer
 )
 
-
 class StaffModelPermissions(DjangoModelPermissions):
-    """
-    Extends DjangoModelPermissions to also require 'view' permission for GET requests.
-    Superusers bypass all permission checks automatically.
-    """
     perms_map = {
         'GET': ['%(app_label)s.view_%(model_name)s'],
         'OPTIONS': [],
@@ -22,25 +17,9 @@ class StaffModelPermissions(DjangoModelPermissions):
         'DELETE': ['%(app_label)s.delete_%(model_name)s'],
     }
 
-
-class EventViewSet(viewsets.ModelViewSet):
-    queryset = Event.objects.all()
-    serializer_class = EventSerializer
-    permission_classes = [IsAuthenticated, StaffModelPermissions]
-
-class ArticleViewSet(viewsets.ModelViewSet):
-    queryset = Article.objects.all()
-    serializer_class = ArticleSerializer
-    permission_classes = [IsAuthenticated, StaffModelPermissions]
-
-class YouTubeVideoViewSet(viewsets.ModelViewSet):
-    queryset = YouTubeVideo.objects.all()
-    serializer_class = YouTubeVideoSerializer
-    permission_classes = [IsAuthenticated, StaffModelPermissions]
-
-class WorkshopViewSet(viewsets.ModelViewSet):
-    queryset = Workshop.objects.all()
-    serializer_class = WorkshopSerializer
+class DepartmentViewSet(viewsets.ModelViewSet):
+    queryset = Department.objects.all()
+    serializer_class = DepartmentSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
 
 class TeamMemberViewSet(viewsets.ModelViewSet):
@@ -48,12 +27,22 @@ class TeamMemberViewSet(viewsets.ModelViewSet):
     serializer_class = TeamMemberSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
 
-class GuestViewSet(viewsets.ModelViewSet):
-    queryset = Guest.objects.all()
-    serializer_class = GuestSerializer
+class TeamMemberSocialViewSet(viewsets.ModelViewSet):
+    queryset = TeamMemberSocial.objects.all()
+    serializer_class = TeamMemberSocialSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
 
-class WebinarListingViewSet(viewsets.ModelViewSet):
-    queryset = WebinarListing.objects.all()
-    serializer_class = WebinarListingSerializer
+class EventViewSet(viewsets.ModelViewSet):
+    queryset = Event.objects.all()
+    serializer_class = EventSerializer
+    permission_classes = [IsAuthenticated, StaffModelPermissions]
+
+class EventSpeakerViewSet(viewsets.ModelViewSet):
+    queryset = EventSpeaker.objects.all()
+    serializer_class = EventSpeakerSerializer
+    permission_classes = [IsAuthenticated, StaffModelPermissions]
+
+class EventRegistrationViewSet(viewsets.ModelViewSet):
+    queryset = EventRegistration.objects.all()
+    serializer_class = EventRegistrationSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]

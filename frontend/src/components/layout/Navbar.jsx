@@ -2,12 +2,14 @@ import React, { useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { ThemeContext } from '../../context/ThemeContext';
 import { usePermissions } from '../../context/PermissionContext';
-import { LogOut, Sun, Moon, Menu } from 'lucide-react';
+import { LogOut, Sun, Moon, Menu, Settings } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const Navbar = ({ activePortal, setActivePortal, setIsSidebarOpen }) => {
   const { user, logoutUser } = useContext(AuthContext);
   const { theme, toggleTheme } = useContext(ThemeContext);
   const { hasAnyPermission, isSuperuser } = usePermissions();
+  const navigate = useNavigate();
 
   const canSeeTiesverse = hasAnyPermission([
     'view_event', 'add_event', 'change_event', 'delete_event',
@@ -107,6 +109,21 @@ const Navbar = ({ activePortal, setActivePortal, setIsSidebarOpen }) => {
 
       {/* Profile & Dark/Light Mode Actions */}
       <div className="flex items-center gap-4">
+        {/* Settings Button */}
+        <button 
+          onClick={() => navigate('/accounts/settings')}
+          className="p-2 rounded-lg cursor-pointer"
+          style={{
+            color: 'var(--text-muted)',
+            transition: 'all 0.2s ease',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--primary)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
+          title="Settings"
+        >
+          <Settings size={20} />
+        </button>
+
         {/* Theme Toggler */}
         <button 
           onClick={toggleTheme}
