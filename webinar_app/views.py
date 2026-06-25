@@ -56,25 +56,37 @@ def register_for_event(request):
             turso_client.execute(
                 """INSERT INTO registrations
                    (event_id, event_title, event_type, name, email, phone, city, registered_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (:event_id, :event_title, :event_type, :name, :email, :phone, :city, :registered_at)""",
                 {
-                    '1': str(data.get('event_id') or ''),
-                    '2': event_title,
-                    '3': event_type,
-                    '4': name,
-                    '5': email,
-                    '6': str(data.get('phone') or ''),
-                    '7': str(data.get('city') or ''),
-                    '8': now,
+                    'event_id':     str(data.get('event_id') or ''),
+                    'event_title':  event_title,
+                    'event_type':   event_type,
+                    'name':         name,
+                    'email':        email,
+                    'phone':        str(data.get('phone') or ''),
+                    'city':         str(data.get('city') or ''),
+                    'registered_at': now,
                 },
             )
         except turso_client.TursoError as exc:
             logger.error('Turso registration insert failed: %s', exc)
             return Response({'error': 'Registration could not be saved. Please try again.'}, status=500)
+
+        email_sent = send_registration_confirmation(email, name, event_title, event_type, event_date)
+
+        if email_sent:
+            try:
+                row_id = turso_client.execute('SELECT last_insert_rowid() AS id')
+                if row_id:
+                    turso_client.execute(
+                        'UPDATE registrations SET email_sent = 1 WHERE id = :id',
+                        {'id': row_id[0]['id']},
+                    )
+            except turso_client.TursoError:
+                pass
     else:
         logger.warning('Turso not configured — registration from %s not persisted', email)
-
-    email_sent = send_registration_confirmation(email, name, event_title, event_type, event_date)
+        email_sent = send_registration_confirmation(email, name, event_title, event_type, event_date)
 
     return Response({
         'status': 'registered',
