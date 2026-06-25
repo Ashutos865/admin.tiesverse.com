@@ -1,7 +1,8 @@
 from django.contrib.auth.models import User, Permission
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions, views, response, status
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .serializers import UserSerializer, PermissionSerializer, CustomTokenObtainPairSerializer
+from .serializers import UserSerializer, PermissionSerializer, CustomTokenObtainPairSerializer, SettingSerializer
+from .models import Setting
 
 
 class IsSuperUser(permissions.BasePermission):
@@ -42,3 +43,44 @@ class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
 class CustomTokenObtainPairView(TokenObtainPairView):
     """Uses our custom serializer that embeds permissions into the JWT."""
     serializer_class = CustomTokenObtainPairSerializer
+
+
+class SettingViewSet(viewsets.ModelViewSet):
+    queryset = Setting.objects.all()
+    serializer_class = SettingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'key'
+    lookup_value_regex = '[^/]+'
+
+    def get_queryset(self):
+        defaults = {
+            'event_display_limit_pc': '2',
+            'event_display_limit_mobile': '1',
+            'article_display_limit_pc': '3',
+            'article_display_limit_mobile': '3',
+            'youtube_display_limit_pc': '3',
+            'youtube_display_limit_mobile': '2'
+        }
+        if not Setting.objects.exists():
+            Setting.objects.bulk_create([
+                Setting(key=k, value=v) for k, v in defaults.items()
+            ])
+        return Setting.objects.all()
+
+
+class UserProfileView(views.APIView):
+    """
+    Endpoint to get or update the authenticated user's profile and settings.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        serializer = UserSerializer(request.user)
+        return response.Response(serializer.data)
+
+    def put(self, request):
+        serializer = UserSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return response.Response(serializer.data)
+        return response.Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

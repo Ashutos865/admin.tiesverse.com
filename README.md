@@ -1,10 +1,14 @@
 # Admin Control Center - Tiesverse
 
+**🚨 CRITICAL SETUP UPDATES (Read before running locally) 🚨**
+1. **Database Connection:** We have migrated to a Supabase PostgreSQL connection. You must ensure your `.env` file uses a URL-encoded password if your password contains special characters. Please refer to your team lead for the exact connection string format.
+2. **Frontend Dependencies:** New dependencies have been added for the modal system and routing. Please run `npm install` inside the `frontend/` directory before starting the dev server.
+
 This repository contains the central Admin Control Center for Tiesverse, managing three distinct portals:
 1. **Tiesverse Portal**: Events, Articles, YouTube Videos, Workshops, Team, and Guests.
 2. **Career Portal**: Position tracking, enrollments, and offer letters.
 3. **Webinar Portal**: Managing upcoming events, webinar registrations, and calendar sync.
-4. **Accounts Portal**: Authentication, Superuser staff management, and Role-Based Access Control (RBAC).
+4. **Accounts Portal**: Authentication, Superuser staff management, and Role-Based Access Control (RBAC), and Theme Settings.
 
 ## Architecture
 

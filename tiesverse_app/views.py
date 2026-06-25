@@ -1,9 +1,9 @@
 from rest_framework import viewsets
 from rest_framework.permissions import DjangoModelPermissions, IsAuthenticated
-from .models import Event, Article, YouTubeVideo, Workshop, TeamMember, Guest
+from .models import Event, Article, YouTubeVideo, Workshop, TeamMember, Guest, WebinarListing
 from .serializers import (
     EventSerializer, ArticleSerializer, YouTubeVideoSerializer,
-    WorkshopSerializer, TeamMemberSerializer, GuestSerializer
+    WorkshopSerializer, TeamMemberSerializer, GuestSerializer, WebinarListingSerializer
 )
 from . import supabase_sync
 
@@ -67,4 +67,9 @@ class TeamMemberViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
 class GuestViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
     queryset = Guest.objects.all().order_by('-created_at')
     serializer_class = GuestSerializer
+    permission_classes = [IsAuthenticated, StaffModelPermissions]
+
+class WebinarListingViewSet(viewsets.ModelViewSet):
+    queryset = WebinarListing.objects.all()
+    serializer_class = WebinarListingSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
