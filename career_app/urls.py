@@ -4,7 +4,7 @@ from .views import PositionViewSet, EnrollmentViewSet, OfferLetterViewSet
 
 router = DefaultRouter()
 router.register(r'positions', PositionViewSet)
-router.register(r'enrollments', EnrollmentViewSet)
+router.register(r'enrollments', EnrollmentViewSet, basename='enrollment')
 router.register(r'offer-letters', OfferLetterViewSet)
 
 urlpatterns = [

@@ -37,7 +37,12 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
+    "https://tiesverse.com",
+    "https://www.tiesverse.com",
 ]
+
+# Allow the landing site to POST to the public registration endpoint
+CORS_URLS_REGEX = r'^/api/.*$'
 
 
 # Application definition
@@ -162,14 +167,28 @@ CLOUDINARY_STORAGE = {
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # ---------------------------------------------------------
-# Future-proofing for Cloudflare R2
+# Cloudflare (career candidates — D1 database)
 # ---------------------------------------------------------
-# To switch to Cloudflare R2 in the future, install 'django-storages' and 'boto3',
-# comment out CLOUDINARY_STORAGE and DEFAULT_FILE_STORAGE above, and uncomment below:
-#
-# AWS_ACCESS_KEY_ID = os.environ.get('R2_ACCESS_KEY_ID')
-# AWS_SECRET_ACCESS_KEY = os.environ.get('R2_SECRET_ACCESS_KEY')
-# AWS_STORAGE_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME')
-# AWS_S3_ENDPOINT_URL = os.environ.get('R2_ENDPOINT_URL')
-# DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+CLOUDFLARE_ACCOUNT_ID = os.environ.get('CLOUDFLARE_ACCOUNT_ID', '')
+CLOUDFLARE_D1_DATABASE_ID = os.environ.get('CLOUDFLARE_D1_DATABASE_ID', '')
+CLOUDFLARE_API_TOKEN = os.environ.get('CLOUDFLARE_API_TOKEN', '')
+CLOUDFLARE_R2_ACCESS_KEY_ID = os.environ.get('CLOUDFLARE_R2_ACCESS_KEY_ID', '')
+CLOUDFLARE_R2_SECRET_ACCESS_KEY = os.environ.get('CLOUDFLARE_R2_SECRET_ACCESS_KEY', '')
+CLOUDFLARE_R2_BUCKET = os.environ.get('CLOUDFLARE_R2_BUCKET', 'career-tiesverse')
+
 # ---------------------------------------------------------
+# Turso (event / webinar registrations)
+# TURSO_DATABASE_URL  — e.g. https://dbname-org.turso.io
+# TURSO_AUTH_TOKEN    — JWT token from Turso dashboard
+# (TURSO_USER / TURSO_DB_PASSWORD are the platform login, not the DB token)
+# ---------------------------------------------------------
+TURSO_DATABASE_URL = os.environ.get('TURSO_DATABASE_URL', '')
+TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN', '')
+
+# ---------------------------------------------------------
+# AWS SES (registration confirmation emails)
+# ---------------------------------------------------------
+AWS_SES_ACCESS_KEY_ID = os.environ.get('AWS_SES_ACCESS_KEY_ID', '')
+AWS_SES_SECRET_ACCESS_KEY = os.environ.get('AWS_SES_SECRET_ACCESS_KEY', '')
+AWS_SES_REGION = os.environ.get('AWS_SES_REGION', 'ap-south-1')
+SES_FROM_EMAIL = os.environ.get('SES_FROM_EMAIL', 'noreply@tiesverse.com')

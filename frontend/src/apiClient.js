@@ -91,16 +91,21 @@ export const createWebinarListing = (data) => adminFetch('/api/landing/webinars'
 export const updateWebinarListing = (id, data) => adminFetch(`/api/landing/webinars/${id}`, 'PATCH', data);
 export const deleteWebinarListing = (id) => adminFetch(`/api/landing/webinars/${id}`, 'DELETE');
 
-// CAREER (Portal)
+// CAREER (Portal) — candidates sourced from Cloudflare D1
 export const getPositions = () => adminFetch('/api/career/positions').catch(() => []);
 export const createPosition = (data) => adminFetch('/api/career/positions', 'POST', data);
-export const getEnrollments = () => adminFetch('/api/career/enrollments').catch(() => []);
+export const getCandidates = () => adminFetch('/api/career/enrollments').catch(() => []);
+export const getEnrollments = getCandidates; // alias kept for legacy callers
+export const updateCandidateStatus = (id, data) => adminFetch(`/api/career/enrollments/${id}/update_status`, 'PATCH', data);
 export const getOfferLetters = () => adminFetch('/api/career/offer-letters').catch(() => []);
 
-// WEBINAR (Portal)
+// WEBINAR (Portal) — registrations sourced from Turso
 export const getWebinarEvents = () => adminFetch('/api/webinar/events').catch(() => []);
 export const createWebinarEvent = (data) => adminFetch('/api/webinar/events', 'POST', data);
-export const getWebinarRegistrations = () => adminFetch('/api/webinar/registrations').catch(() => []);
+export const getWebinarRegistrations = () =>
+  adminFetch('/api/webinar/registrations')
+    .then(r => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []))
+    .catch(() => []);
 
 // SITE SETTINGS
 export const getSettings = () => adminFetch('/api/settings').catch(() => []);

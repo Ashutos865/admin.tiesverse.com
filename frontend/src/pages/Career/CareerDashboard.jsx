@@ -1,235 +1,170 @@
 import React, { useState, useEffect } from 'react';
-import { getPositions, getEnrollments, getOfferLetters, createPosition } from '../../apiClient';
-import { Briefcase, FileText, Mail, Percent, Download, Plus, RefreshCw, ArrowUpRight } from 'lucide-react';
+import { getCandidates, updateCandidateStatus, getPositions } from '../../apiClient';
+import { Briefcase, FileText, RefreshCw, ChevronDown } from 'lucide-react';
+
+const DECISIONS = ['Under Review', 'Shortlisted', 'Accepted', 'Rejected'];
+const STATUSES = ['Pending Setup', 'Interview Scheduled', 'Interview Done', 'On Hold'];
 
 const CareerDashboard = () => {
-  const [stats, setStats] = useState({
-    positions: 0,
-    enrollments: 0,
-    offers: 0,
-    acceptanceRate: 8.4
-  });
+  const [candidates, setCandidates] = useState([]);
+  const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [actionStatus, setActionStatus] = useState('');
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState('All');
+  const [updating, setUpdating] = useState(null);
 
-  const fetchStats = async () => {
+  const fetchData = async () => {
     setLoading(true);
+    setError('');
     try {
-      const [positions, enrollments, offers] = await Promise.all([
-        getPositions().catch(() => []),
-        getEnrollments().catch(() => []),
-        getOfferLetters().catch(() => [])
-      ]);
-
-      const totalEnrollments = Array.isArray(enrollments) ? enrollments.length : 0;
-      const totalOffers = Array.isArray(offers) ? offers.length : 0;
-      const rate = totalEnrollments > 0 ? ((totalOffers / totalEnrollments) * 100).toFixed(1) : 8.4;
-
-      setStats({
-        positions: Array.isArray(positions) ? positions.filter(p => p.is_open).length : 0,
-        enrollments: totalEnrollments,
-        offers: totalOffers,
-        acceptanceRate: Number(rate)
-      });
-    } catch (err) {
-      console.error("Error loading career dashboard stats:", err);
+      const [cands, pos] = await Promise.all([getCandidates(), getPositions()]);
+      if (cands && cands.error) {
+        setError(cands.error);
+        setCandidates([]);
+      } else {
+        setCandidates(Array.isArray(cands) ? cands : []);
+      }
+      setPositions(Array.isArray(pos) ? pos : []);
+    } catch (e) {
+      setError('Failed to load candidates');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  const handleDownloadReport = () => {
-    const reportData = {
-      timestamp: new Date().toISOString(),
-      statistics: stats,
-      details: "Career Portal Administrative Report"
-    };
-    const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `career-report-${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    setActionStatus('Applicant statistics downloaded successfully!');
-    setTimeout(() => setActionStatus(''), 3000);
+  const handleDecision = async (id, field, value) => {
+    setUpdating(id);
+    const cand = candidates.find(c => String(c.id) === String(id));
+    if (!cand) return;
+    await updateCandidateStatus(id, {
+      interview_status: field === 'interview_status' ? value : (cand.interview_status || ''),
+      interviewer: cand.interviewer || '',
+      rating: cand.rating || 0,
+      final_decision: field === 'final_decision' ? value : (cand.final_decision || 'Under Review'),
+    });
+    setCandidates(prev => prev.map(c => String(c.id) === String(id) ? { ...c, [field]: value } : c));
+    setUpdating(null);
   };
 
-  const handleAddMockPosition = async () => {
-    setActionStatus('Creating mock position...');
-    try {
-      const mockPosition = {
-        title: "Policy & Strategy Analyst",
-        department: "Governance & Ethics",
-        description: "Review policy formulations, draft briefing reports, and assist senior administrators in managing program guidelines.",
-        is_open: true
-      };
-      await createPosition(mockPosition);
-      setActionStatus('Mock position created successfully!');
-      fetchStats();
-    } catch (err) {
-      setActionStatus('Failed to create mock position');
-    }
-    setTimeout(() => setActionStatus(''), 3000);
-  };
+  const departments = ['All', ...Array.from(new Set(candidates.map(c => c.department).filter(Boolean)))];
+  const shown = filter === 'All' ? candidates : candidates.filter(c => c.department === filter);
+
+  const openCount = positions.filter(p => p.is_open).length;
+  const pending = candidates.filter(c => c.final_decision === 'Under Review').length;
+  const accepted = candidates.filter(c => c.final_decision === 'Accepted').length;
 
   return (
     <div className="dashboard-container">
       <div className="dashboard-title-section">
-        <div>
-          <h1 className="page-title">Career Dashboard</h1>
-          <p className="dashboard-desc">Monitor job listings, applications, and recruitment statistics.</p>
-        </div>
-        <button className="btn btn-primary" onClick={fetchStats} disabled={loading}>
-          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          Refresh Stats
+        <h1 className="dashboard-title">Career Portal</h1>
+        <p className="dashboard-subtitle">Applications from Cloudflare D1</p>
+        <button className="action-btn-small" onClick={fetchData} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <RefreshCw size={14} /> Refresh
         </button>
       </div>
 
-      {actionStatus && (
-        <div style={{
-          padding: '1rem',
-          background: 'rgba(232, 90, 36, 0.1)',
-          border: '1px solid rgba(232, 90, 36, 0.3)',
-          color: '#FE7A00',
-          borderRadius: 'var(--radius)',
-          fontWeight: 600,
-          fontSize: '0.875rem'
-        }}>
-          {actionStatus}
+      {/* Stats */}
+      <div className="dashboard-grid" style={{ marginBottom: 24 }}>
+        {[
+          { label: 'Open Positions', value: openCount, icon: <Briefcase size={20} />, color: '#FE7A00' },
+          { label: 'Total Applicants', value: candidates.length, icon: <FileText size={20} />, color: '#3B82F6' },
+          { label: 'Pending Review', value: pending, icon: <FileText size={20} />, color: '#A855F7' },
+          { label: 'Accepted', value: accepted, icon: <FileText size={20} />, color: '#22C55E' },
+        ].map(s => (
+          <div className="metric-card" key={s.label}>
+            <div className="metric-content">
+              <span className="metric-label">{s.label}</span>
+              <div className="metric-value-row">
+                <span className="metric-value">{s.value}</span>
+              </div>
+            </div>
+            <div className="metric-icon-box" style={{ background: s.color + '22', color: s.color }}>{s.icon}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter bar */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        {departments.map(d => (
+          <button key={d} onClick={() => setFilter(d)}
+            style={{
+              padding: '6px 14px', borderRadius: 20, border: '1px solid',
+              borderColor: filter === d ? '#FE7A00' : '#334155',
+              background: filter === d ? '#FE7A00' : 'transparent',
+              color: filter === d ? '#fff' : '#94a3b8',
+              cursor: 'pointer', fontSize: 13,
+            }}>
+            {d}
+          </button>
+        ))}
+      </div>
+
+      {/* Error / loading */}
+      {error && (
+        <div style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: '#f87171', marginBottom: 16 }}>
+          {error} — check Cloudflare D1 credentials in admin .env
         </div>
       )}
 
-      <div className="dashboard-grid">
-        <div className="metric-card">
-          <div className="metric-content">
-            <span className="metric-label">Open Positions</span>
-            <div className="metric-value-row">
-              <span className="metric-value">{stats.positions || 8}</span>
-              <span className="metric-change positive">+10.0%</span>
-            </div>
-          </div>
-          <div className="metric-icon-box" style={{ background: 'rgba(232, 90, 36, 0.1)', color: '#FE7A00' }}>
-            <Briefcase size={20} />
-          </div>
+      {loading ? (
+        <p style={{ color: '#94a3b8' }}>Loading candidates…</p>
+      ) : shown.length === 0 ? (
+        <p style={{ color: '#94a3b8' }}>No applicants yet{filter !== 'All' ? ` in ${filter}` : ''}.</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #1e293b' }}>
+                {['Name', 'Email', 'Dept / Role', 'City', 'Status', 'Decision', 'Date'].map(h => (
+                  <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map(c => (
+                <tr key={c.id} style={{ borderBottom: '1px solid #0f172a' }}>
+                  <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
+                    {c.first_name} {c.last_name}
+                  </td>
+                  <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{c.email}</td>
+                  <td style={{ padding: '10px 12px' }}>
+                    <span style={{ fontSize: 12, background: '#1e293b', padding: '2px 8px', borderRadius: 4 }}>{c.department}</span>
+                    {c.roles && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{c.roles}</div>}
+                  </td>
+                  <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{c.city || '—'}</td>
+                  <td style={{ padding: '10px 12px' }}>
+                    <select
+                      value={c.interview_status || 'Pending Setup'}
+                      disabled={updating === c.id}
+                      onChange={e => handleDecision(c.id, 'interview_status', e.target.value)}
+                      style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 4, padding: '4px 8px', fontSize: 12 }}>
+                      {STATUSES.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </td>
+                  <td style={{ padding: '10px 12px' }}>
+                    <select
+                      value={c.final_decision || 'Under Review'}
+                      disabled={updating === c.id}
+                      onChange={e => handleDecision(c.id, 'final_decision', e.target.value)}
+                      style={{
+                        background: '#1e293b',
+                        color: c.final_decision === 'Accepted' ? '#22C55E' : c.final_decision === 'Rejected' ? '#f87171' : '#e2e8f0',
+                        border: '1px solid #334155', borderRadius: 4, padding: '4px 8px', fontSize: 12,
+                      }}>
+                      {DECISIONS.map(d => <option key={d}>{d}</option>)}
+                    </select>
+                  </td>
+                  <td style={{ padding: '10px 12px', color: '#64748b', fontSize: 12, whiteSpace: 'nowrap' }}>
+                    {c.created_at ? new Date(c.created_at).toLocaleDateString('en-IN') : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-
-        <div className="metric-card">
-          <div className="metric-content">
-            <span className="metric-label">Total Enrollments</span>
-            <div className="metric-value-row">
-              <span className="metric-value">{stats.enrollments || 214}</span>
-              <span className="metric-change positive">+12.4%</span>
-            </div>
-          </div>
-          <div className="metric-icon-box" style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6' }}>
-            <FileText size={20} />
-          </div>
-        </div>
-
-        <div className="metric-card">
-          <div className="metric-content">
-            <span className="metric-label">Offer Letters</span>
-            <div className="metric-value-row">
-              <span className="metric-value">{stats.offers || 18}</span>
-              <span className="metric-change positive">+8.3%</span>
-            </div>
-          </div>
-          <div className="metric-icon-box" style={{ background: 'rgba(168, 85, 247, 0.1)', color: '#A855F7' }}>
-            <Mail size={20} />
-          </div>
-        </div>
-
-        <div className="metric-card">
-          <div className="metric-content">
-            <span className="metric-label">Acceptance Rate</span>
-            <div className="metric-value-row">
-              <span className="metric-value">{stats.acceptanceRate}%</span>
-              <span className="metric-change positive">+2.1%</span>
-            </div>
-          </div>
-          <div className="metric-icon-box" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10B981' }}>
-            <Percent size={20} />
-          </div>
-        </div>
-      </div>
-
-      <div className="charts-grid">
-        <div className="chart-card">
-          <div className="chart-header">
-            <div>
-              <h3 className="chart-title">Application Funnel</h3>
-              <span className="chart-subtitle">Conversion rate across stages</span>
-            </div>
-            <ArrowUpRight size={18} style={{ color: '#FE7A00' }} />
-          </div>
-          <div className="chart-container">
-            <svg viewBox="0 0 400 200" className="chart-svg">
-              <g fill="#FE7A00" opacity="0.8">
-                {/* Funnel sections modeled as polygons */}
-                <polygon points="50,20 350,20 310,60 90,60" fill="#E85A24" />
-                <polygon points="90,70 310,70 270,110 130,110" fill="#3B82F6" />
-                <polygon points="130,120 270,120 230,160 170,160" fill="#A855F7" />
-              </g>
-              <text x="200" y="45" fill="#fff" fontSize="10" fontWeight="bold" textAnchor="middle">Applied (100%)</text>
-              <text x="200" y="95" fill="#fff" fontSize="10" fontWeight="bold" textAnchor="middle">Reviewed (42%)</text>
-              <text x="200" y="145" fill="#fff" fontSize="10" fontWeight="bold" textAnchor="middle">Accepted (8.4%)</text>
-            </svg>
-          </div>
-        </div>
-
-        <div className="chart-card">
-          <div className="chart-header">
-            <div>
-              <h3 className="chart-title">Monthly Applications</h3>
-              <span className="chart-subtitle">Number of applications received</span>
-            </div>
-            <ArrowUpRight size={18} style={{ color: '#FE7A00' }} />
-          </div>
-          <div className="chart-container">
-            <svg viewBox="0 0 400 200" className="chart-svg">
-              <g stroke="#334155" strokeWidth="0.5" strokeDasharray="4 4">
-                <line x1="0" y1="50" x2="400" y2="50" />
-                <line x1="0" y1="100" x2="400" y2="100" />
-                <line x1="0" y1="150" x2="400" y2="150" />
-              </g>
-              <g fill="#3B82F6">
-                <rect x="25" y="120" width="25" height="80" rx="3" />
-                <rect x="85" y="100" width="25" height="100" rx="3" />
-                <rect x="145" y="70" width="25" height="130" rx="3" />
-                <rect x="205" y="110" width="25" height="90" rx="3" />
-                <rect x="265" y="60" width="25" height="140" rx="3" />
-                <rect x="325" y="40" width="25" height="160" rx="3" />
-              </g>
-              <text x="28" y="195" fill="#000" fontSize="8" fontWeight="bold">Jan</text>
-              <text x="88" y="195" fill="#000" fontSize="8" fontWeight="bold">Feb</text>
-              <text x="148" y="195" fill="#000" fontSize="8" fontWeight="bold">Mar</text>
-              <text x="208" y="195" fill="#000" fontSize="8" fontWeight="bold">Apr</text>
-              <text x="268" y="195" fill="#000" fontSize="8" fontWeight="bold">May</text>
-              <text x="328" y="195" fill="#000" fontSize="8" fontWeight="bold">Jun</text>
-            </svg>
-          </div>
-        </div>
-      </div>
-
-      <div className="actions-card">
-        <h3 className="chart-title">Administrative Actions</h3>
-        <div className="actions-grid">
-          <button className="action-btn" onClick={handleDownloadReport}>
-            <Download size={18} style={{ color: '#FE7A00' }} />
-            <span className="action-btn-title">Export Candidate Sheet</span>
-            <span className="action-btn-desc">Download complete lists of applicants and review status.</span>
-          </button>
-          <button className="action-btn" onClick={handleAddMockPosition}>
-            <Plus size={18} style={{ color: '#FE7A00' }} />
-            <span className="action-btn-title">Create Mock Job Opening</span>
-            <span className="action-btn-desc">Instantly populate a mock analyst position listing in local DB.</span>
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
