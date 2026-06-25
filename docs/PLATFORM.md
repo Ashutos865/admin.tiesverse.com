@@ -1,7 +1,7 @@
 # Tiesverse Platform — Developer Reference
 
 Living document. Updated as development progresses.
-Last updated: 2026-06-26
+Last updated: 2026-06-26 (session 3)
 
 ---
 
@@ -71,6 +71,31 @@ Career page backend (Django)
   └─ Cloudflare API token       →  read/write D1 directly
 ```
 
+### Admin's local databases + router ⚠️ IMPORTANT
+
+The admin panel does **not** use one SQLite file. It runs **two** local SQLite
+databases with a router (`config/routers.py`):
+
+| Django DB alias | File | Holds |
+|---|---|---|
+| `default` | `supabase_db.sqlite3` | auth, accounts, sessions, admin, contenttypes |
+| `turso_db` | `turso_db.sqlite3` | `tiesverse_app`, `career_app`, `webinar_app` models |
+
+`config/routers.py::AppRouter` routes those three app labels to `turso_db`
+for read **and** write; everything else goes to `default`. The local DB is the
+admin's **source of truth**; Supabase/D1/Turso are downstream replicas.
+
+**Consequence for migrations** — plain `python manage.py migrate` only touches
+`default`. The routed apps must be migrated explicitly:
+
+```bash
+python manage.py migrate                       # default DB (auth/accounts)
+python manage.py migrate --database=turso_db   # tiesverse/career/webinar apps
+```
+
+If the routed tables are missing ("no such table …"), the cause is almost
+always that `--database=turso_db` was never run.
+
 ### Security rules
 - `SUPABASE_SERVICE_KEY` lives **only** in `Admin-panel-ties/.env`. Never in any frontend.
 - `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET` live **only** in `Admin-panel-ties/.env`.
@@ -130,9 +155,26 @@ upsert(instance)   # called on perform_create / perform_update
 delete(instance)   # called on perform_destroy
 ```
 
-- Uses `django_id` (Django PK) as upsert conflict key in Supabase.
-- Each model implements `to_supabase_dict()` → Supabase column names.
+- Uses `django_id` (Django PK) as upsert conflict key in Supabase. Every synced
+  Supabase table therefore needs a `django_id` column (+ a unique index) so the
+  `on_conflict='django_id'` upsert updates the right row instead of duplicating.
+- Each model implements `to_supabase_dict()` → Supabase column names (1:1).
 - Silent no-op if credentials not set.
+
+### Backfilling the admin from Supabase
+
+Seed content loaded straight into Supabase never existed in the admin's local
+DB, so admin lists showed empty. The management command pulls each Supabase row
+into the matching Django model **and** stamps the Supabase row's `django_id`
+with the new PK, so later admin edits/deletes target the same row (no dupes):
+
+```bash
+python manage.py import_from_supabase                       # all collections
+python manage.py import_from_supabase --models events team_members departments
+```
+
+Idempotent — a Supabase row already linked to a live Django object is skipped.
+Source: `tiesverse_app/management/commands/import_from_supabase.py`.
 
 ### Authentication
 
@@ -415,23 +457,39 @@ Key columns: `id`, `timestamp`, `department`, `roles`, `first_name`, `last_name`
 
 ## 13. Local Development Quickstart
 
+### Port map (run each in its own terminal)
+
+| Service | Command dir | URL | Notes |
+|---|---|---|---|
+| Admin backend (Django) | `Admin-panel-ties` | http://localhost:8000 | API only |
+| Admin dashboard (Vite) | `Admin-panel-ties/frontend` | http://localhost:5173 | login `admin` / `admin123` |
+| Landing site (Vite) | `tiesversewebsitev0.2` | http://localhost:3000 | port pinned in `vite.config.js` |
+| Career (Django, all-in-one) | `tiesverse-career-page/backend` | http://localhost:8001 | serves pages **and** `/api/` |
+
+> The admin backend is hardcoded to `:8000` in the admin frontend + landing
+> `.env`, so keep it there and run the career backend on `:8001`.
+
 ### Admin panel
 
 ```bash
 cd Admin-panel-ties
 source venv/bin/activate
 pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver          # API on :8000
+python manage.py migrate                       # default DB (auth/accounts)
+python manage.py migrate --database=turso_db   # routed apps (tiesverse/career/webinar)
+python manage.py runserver 8000                # API on :8000
 
 # Frontend (separate terminal)
-cd frontend && npm install && npm run dev   # dashboard on :5173
+cd frontend && npm install && npm run dev      # dashboard on :5173
 
 # Create admin user (first time only)
 python manage.py shell -c "
 from django.contrib.auth.models import User
-User.objects.create_superuser('admin','admin@tiesverse.com','<password>')
+User.objects.create_superuser('admin','admin@tiesverse.com','admin123')
 "
+
+# First-time content backfill (pull Supabase seed data into the admin)
+python manage.py import_from_supabase
 ```
 
 ### Landing site
@@ -439,17 +497,27 @@ User.objects.create_superuser('admin','admin@tiesverse.com','<password>')
 ```bash
 cd tiesversewebsitev0.2
 npm install
-npm run dev     # :5174
-# Needs .env with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+npm run dev     # :3000
+# .env needs VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY,
+#           VITE_ADMIN_API_URL (http://localhost:8000), VITE_RAZORPAY_KEY_ID
 ```
 
-### Career page backend
+### Career page (single Django process — serves frontend + API)
 
 ```bash
 cd tiesverse-career-page/backend
 source .venv/bin/activate
-python manage.py runserver 8002
-# Needs backend/env with Cloudflare + SES credentials
+python manage.py runserver 8001
+# Open http://localhost:8001/  (index, portals, /api/ all on this one port)
+# Needs ../backend/env with Cloudflare + SES credentials
+# Do NOT also run `python -m http.server` — Django already serves the pages.
+```
+
+### Stop everything
+
+```bash
+pkill -f "manage.py runserver"
+for p in 5173 3000; do fuser -k ${p}/tcp; done
 ```
 
 ---
@@ -516,3 +584,63 @@ python manage.py runserver 8002
 - [ ] Fill guest/team `photo_url` fields from admin page
 - [ ] Deploy admin panel to AWS EC2
 - [ ] Razorpay live keys after KYC verification
+
+---
+
+### 2026-06-26 — Session 3
+
+**Razorpay frontend (landing site)**
+- Razorpay test keys added to `.env` (admin backend); both create-order and
+  verify-payment verified live (real `order_…` returned).
+- New `tiesversewebsitev0.2/src/components/RegisterModal.jsx`: in-page
+  registration form. Free → `/api/webinar/register/`; paid → create-order →
+  Razorpay checkout → verify-payment. `key_id` comes from the backend response,
+  so no secret touches the frontend. Loads `checkout.js` on demand.
+- `EventDetail.jsx` register CTA opens the modal (was an external link).
+- `apiClient.js`: `registerForEvent` / `createPaymentOrder` / `verifyPayment`
+  posting to `VITE_ADMIN_API_URL`.
+
+**Admin 500s — broken DB state fixed**
+- Root cause: routed apps (`tiesverse_app`/`career_app`/`webinar_app`) live in
+  `turso_db` (see §3), but `turso_db.sqlite3` was never migrated → every
+  ORM-backed endpoint 500'd ("no such table"). Fixed with
+  `migrate --database=turso_db`.
+- `tiesverse_app/migrations/0001_initial.py` carried `UniqueConstraint`s on
+  non-existent fields (`EventRegistration.event`, `TeamMemberSocial.team_member`)
+  from the merge → table creation crashed. Dropped them; removed the matching
+  `RemoveConstraint` ops from `0002`.
+
+**Form ↔ model alignment (the "created but empty" bug)**
+- `adminFetch` returns the DRF 400 body (field-keyed errors) with no `error`
+  key, so `if (!res.error)` reported success on validation failures. Both
+  `EventsManagement.jsx` and `Admin.jsx` now detect success via `res.id` and
+  surface the first field error.
+- All Tiesverse forms were posting stale schemas and 400ing. Rewrote them to
+  mirror the models exactly:
+  - Events: `date` (required) + category/city/venue/time/host/price/…
+  - Departments → Articles editor: title, slug, dek, cat, topic, kind, cover_url…
+  - Speakers → name, role, org, quote, photo_url, featured
+  - Workshops → title, description, date, time_tz, host, cover_url, register_url, status
+  - Team Members → department, display_order, is_founder
+
+**Supabase backfill**
+- Added `import_from_supabase` management command (see §4). Imported and linked
+  by `django_id`: events 7, articles 12, team_members 5, guests 12, workshops 3,
+  youtube_videos 4, webinars 11. No duplicates; admin now displays all of it.
+- Added missing `django_id` column (+ unique index) to the Supabase `webinars`
+  table so webinar edits sync cleanly.
+
+**Career page**
+- `tv-config.js` hardcoded the API to `:8000`; the career Django serves pages
+  and `/api/` from the same origin, so it now uses `window.location.origin`.
+  Form submission works on any port (fixes the 404 on submit).
+- Added missing `import base64` in `careers/views.py` (silent resume-save fail).
+
+**Infra**
+- CORS: added `http://localhost:3000` (landing) to admin `CORS_ALLOWED_ORIGINS`
+  (registration POSTs were blocked → "NetworkError").
+
+**Verified working end-to-end**
+- Tiesverse portal: events, articles, team, speakers, workshops, webinars all
+  display live and CRUD round-trips to Supabase.
+- Event/webinar registration (free + paid) and career application + SES email.
