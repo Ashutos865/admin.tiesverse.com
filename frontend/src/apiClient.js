@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:8000'; // Django backend
+const API_URL = 'http://127.0.0.1:8000'; // Django backend
 
 const getToken = () => {
     const authTokens = localStorage.getItem('authTokens');
@@ -31,16 +31,16 @@ const adminFetch = async (path, method = 'GET', body = null) => {
     };
     if (body) options.body = JSON.stringify(body);
     const res = await fetch(`${API_URL}${fetchPath}`, options);
-    
+
     if (res.status === 401) {
         localStorage.removeItem('authTokens');
         window.location.href = '/login';
         return { error: 'Session expired. Please log in again.' };
     }
-    
+
     // For DELETE or 204 No Content
     if (res.status === 204) return { success: true };
-    
+
     const text = await res.text();
     try {
         return JSON.parse(text);
