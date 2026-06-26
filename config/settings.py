@@ -25,23 +25,24 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-ckk$((ll8=s^xa^429nn_*v5(yv_*l974yni802g4rki%j#h&$'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-ckk$((ll8=s^xa^429nn_*v5(yv_*l974yni802g4rki%j#h&$')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() != 'false'
 
-ALLOWED_HOSTS = []
+_allowed = os.environ.get('ALLOWED_HOSTS', '')
+ALLOWED_HOSTS = [h.strip() for h in _allowed.split(',') if h.strip()] or ['localhost', '127.0.0.1']
 
+_cors_extra = [h.strip() for h in os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',') if h.strip()]
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
-    "http://localhost:3000",   # landing site (tiesversewebsitev0.2)
+    "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://tiesverse.com",
     "https://www.tiesverse.com",
-]
+] + _cors_extra
 
 # Allow the landing site to POST to the public registration endpoint
 CORS_URLS_REGEX = r'^/api/.*$'
