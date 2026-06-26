@@ -72,3 +72,9 @@ class EventRegistrationViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
     queryset = EventRegistration.objects.all()
     serializer_class = EventRegistrationSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
+
+
+class WebinarListingViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
+    queryset = WebinarListing.objects.all().order_by('-date')
+    serializer_class = WebinarListingSerializer
+    permission_classes = [IsAuthenticated, StaffModelPermissions]

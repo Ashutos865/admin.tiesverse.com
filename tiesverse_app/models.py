@@ -37,10 +37,11 @@ class TeamMember(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = 'events'
+        db_table = 'team_members'
+        ordering = ['display_order']
 
     def __str__(self):
-        return self.title
+        return self.name
 
 class TeamMemberSocial(models.Model):
     team_member = models.ForeignKey(TeamMember, on_delete=models.CASCADE)
@@ -48,10 +49,10 @@ class TeamMemberSocial(models.Model):
     url = models.CharField(max_length=500)
 
     class Meta:
-        db_table = 'event_speakers'
+        db_table = 'team_member_socials'
 
     def __str__(self):
-        return self.name
+        return self.platform
 
 class Event(models.Model):
     EVENT_TYPE_CHOICES = [
@@ -81,10 +82,10 @@ class Event(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['display_order']
+        db_table = 'events'
 
     def __str__(self):
-        return self.name
+        return self.title
 
 class EventSpeaker(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
@@ -97,10 +98,10 @@ class EventSpeaker(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'team_member_socials'
+        db_table = 'event_speakers'
 
     def __str__(self):
-        return self.title
+        return self.name
 
 class EventRegistration(models.Model):
     STATUS_CHOICES = [
@@ -121,7 +122,39 @@ class EventRegistration(models.Model):
     registered_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'webinars'
+        db_table = 'event_registrations'
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} - {self.event.title}"
+
+
+class WebinarListing(models.Model):
+    title = models.CharField(max_length=255)
+    speaker = models.CharField(max_length=255, blank=True)
+    org = models.CharField(max_length=255, blank=True)
+    date = models.CharField(max_length=50, blank=True)
+    time_tz = models.CharField(max_length=50, blank=True)
+    cover_url = models.URLField(blank=True)
+    registration_link = models.URLField(blank=True)
+    status = models.CharField(max_length=10, default='upcoming')
+    kind = models.CharField(max_length=50, default='webinar')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'webinars'
+
+    def __str__(self):
+        return self.title
+
+    def to_supabase_dict(self):
+        return {
+            'title':             self.title,
+            'speaker':           self.speaker,
+            'org':               self.org,
+            'date':              self.date,
+            'time_tz':           self.time_tz,
+            'cover_url':         self.cover_url,
+            'registration_link': self.registration_link,
+            'status':            self.status,
+            'kind':              self.kind,
+        }
