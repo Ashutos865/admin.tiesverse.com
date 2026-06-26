@@ -4,8 +4,10 @@ import axios from 'axios';
 
 export const AuthContext = createContext();
 
-// Auto-logout after this many ms of no user activity. Any activity resets it.
-const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+// Idle auto-logout window (minutes) used until the user's profile loads.
+// The real value comes from profile.session_timeout (the "Session Invalidation
+// Timeout" security setting), so there's a single source of truth.
+const DEFAULT_SESSION_TIMEOUT_MIN = 10;
 
 const darkenColor = (hex, percent) => {
   if (!hex || !hex.startsWith('#')) return hex;
@@ -113,10 +115,15 @@ export const AuthProvider = ({ children }) => {
   }, [authTokens]);
 
   // ── Idle auto-logout ──────────────────────────────────────────────
-  // While signed in, sign the user out after IDLE_TIMEOUT_MS with no
-  // activity. Any activity resets the countdown to zero.
+  // While signed in, sign the user out after the user's configured
+  // "Session Invalidation Timeout" (profile.session_timeout, in minutes) with
+  // no activity. Any activity resets the countdown to zero. Re-arms whenever
+  // the setting changes (saved in ProfileSettings → updateProfileState).
   useEffect(() => {
     if (!authTokens) return; // only run while signed in
+
+    const minutes = Number(profile?.session_timeout) || DEFAULT_SESSION_TIMEOUT_MIN;
+    const timeoutMs = minutes * 60 * 1000;
 
     let timerId;
     let lastReset = 0;
@@ -129,11 +136,11 @@ export const AuthProvider = ({ children }) => {
 
     const resetTimer = () => {
       clearTimeout(timerId);
-      timerId = setTimeout(handleIdle, IDLE_TIMEOUT_MS);
+      timerId = setTimeout(handleIdle, timeoutMs);
     };
 
     // Throttle: a stream of mousemove events shouldn't reset the timer on
-    // every fire — once per second is plenty for a 10-minute window.
+    // every fire — once per second is plenty for a multi-minute window.
     const onActivity = () => {
       const now = Date.now();
       if (now - lastReset < 1000) return;
@@ -149,7 +156,7 @@ export const AuthProvider = ({ children }) => {
       clearTimeout(timerId);
       events.forEach((e) => window.removeEventListener(e, onActivity));
     };
-  }, [authTokens]);
+  }, [authTokens, profile?.session_timeout]);
 
   // ── Cross-tab auth sync ───────────────────────────────────────────
   // If the user logs out (idle or manual) or in from another tab, mirror it.

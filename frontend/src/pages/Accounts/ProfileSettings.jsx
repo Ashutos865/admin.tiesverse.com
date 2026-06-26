@@ -15,7 +15,7 @@ const ProfileSettings = () => {
   const [pushNotifications, setPushNotifications] = useState(true);
   const [weeklyReports, setWeeklyReports] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
-  const [sessionTimeout, setSessionTimeout] = useState(30);
+  const [sessionTimeout, setSessionTimeout] = useState(10);
   const [theme, setTheme] = useState('dark');
   const [accentColor, setAccentColor] = useState('#FE7A00');
 
@@ -48,7 +48,7 @@ const ProfileSettings = () => {
           setPushNotifications(res.profile.push_notifications ?? true);
           setWeeklyReports(res.profile.weekly_reports ?? true);
           setTwoFactorEnabled(res.profile.two_factor_enabled ?? false);
-          setSessionTimeout(res.profile.session_timeout ?? 30);
+          setSessionTimeout(res.profile.session_timeout ?? 10);
           setTheme(res.profile.theme || 'dark');
           setAccentColor(res.profile.accent_color || '#FE7A00');
         }
@@ -123,7 +123,7 @@ const ProfileSettings = () => {
         setPushNotifications(profile.push_notifications ?? true);
         setWeeklyReports(profile.weekly_reports ?? true);
         setTwoFactorEnabled(profile.two_factor_enabled ?? false);
-        setSessionTimeout(profile.session_timeout ?? 30);
+        setSessionTimeout(profile.session_timeout ?? 10);
         setTheme(profile.theme || 'dark');
         setAccentColor(profile.accent_color || '#FE7A00');
         

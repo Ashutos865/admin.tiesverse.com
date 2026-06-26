@@ -22,7 +22,7 @@ class UserProfile(models.Model):
     push_notifications = models.BooleanField(default=True)
     weekly_reports = models.BooleanField(default=True)
     two_factor_enabled = models.BooleanField(default=False)
-    session_timeout = models.IntegerField(default=30)
+    session_timeout = models.IntegerField(default=10)  # minutes of inactivity before auto-logout
     theme = models.CharField(max_length=50, default='dark')
     accent_color = models.CharField(max_length=50, default='#FE7A00')
 

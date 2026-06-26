@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getCandidates, updateCandidateStatus, getPositions } from '../../apiClient';
 import { Briefcase, FileText, RefreshCw, ChevronDown } from 'lucide-react';
 
-const DECISIONS = ['Under Review', 'Shortlisted', 'Accepted', 'Rejected'];
+const DECISIONS = ['Under Review', 'Shortlisted', 'Selected', 'Rejected'];
 const STATUSES = ['Pending Setup', 'Interview Scheduled', 'Interview Done', 'On Hold'];
 
 const CareerDashboard = () => {
@@ -53,7 +53,7 @@ const CareerDashboard = () => {
 
   const openCount = positions.filter(p => p.is_open).length;
   const pending = candidates.filter(c => c.final_decision === 'Under Review').length;
-  const accepted = candidates.filter(c => c.final_decision === 'Accepted').length;
+  const selected = candidates.filter(c => c.final_decision === 'Selected').length;
 
   return (
     <div className="dashboard-container">
@@ -71,7 +71,7 @@ const CareerDashboard = () => {
           { label: 'Open Positions', value: openCount, icon: <Briefcase size={20} />, color: '#FE7A00' },
           { label: 'Total Applicants', value: candidates.length, icon: <FileText size={20} />, color: '#3B82F6' },
           { label: 'Pending Review', value: pending, icon: <FileText size={20} />, color: '#A855F7' },
-          { label: 'Accepted', value: accepted, icon: <FileText size={20} />, color: '#22C55E' },
+          { label: 'Selected', value: selected, icon: <FileText size={20} />, color: '#22C55E' },
         ].map(s => (
           <div className="metric-card" key={s.label}>
             <div className="metric-content">
@@ -150,10 +150,10 @@ const CareerDashboard = () => {
                       onChange={e => handleDecision(c.id, 'final_decision', e.target.value)}
                       style={{
                         background: '#1e293b',
-                        color: c.final_decision === 'Accepted' ? '#22C55E' : c.final_decision === 'Rejected' ? '#f87171' : '#e2e8f0',
+                        color: (c.final_decision === 'Selected' || c.final_decision === 'Accepted') ? '#22C55E' : c.final_decision === 'Rejected' ? '#f87171' : '#e2e8f0',
                         border: '1px solid #334155', borderRadius: 4, padding: '4px 8px', fontSize: 12,
                       }}>
-                      {DECISIONS.map(d => <option key={d}>{d}</option>)}
+                      {(DECISIONS.includes(c.final_decision) || !c.final_decision ? DECISIONS : [c.final_decision, ...DECISIONS]).map(d => <option key={d}>{d}</option>)}
                     </select>
                   </td>
                   <td style={{ padding: '10px 12px', color: '#64748b', fontSize: 12, whiteSpace: 'nowrap' }}>
