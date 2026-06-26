@@ -39,38 +39,38 @@ class SupabaseSyncMixin:
 
 
 class DepartmentViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
-    queryset = Department.objects.all()
+    queryset = Department.objects.all().order_by('-created_at')
     serializer_class = DepartmentSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
 
 
-class TeamMemberViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
-    queryset = TeamMember.objects.all()
-    serializer_class = TeamMemberSerializer
-    permission_classes = [IsAuthenticated, StaffModelPermissions]
-
-
-class TeamMemberSocialViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
-    queryset = TeamMemberSocial.objects.all()
-    serializer_class = TeamMemberSocialSerializer
-    permission_classes = [IsAuthenticated, StaffModelPermissions]
-
-
 class EventViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
-    queryset = Event.objects.all()
+    queryset = Event.objects.all().order_by('date')
     serializer_class = EventSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
 
 
 class EventSpeakerViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
-    queryset = EventSpeaker.objects.all()
+    queryset = EventSpeaker.objects.all().order_by('-created_at')
     serializer_class = EventSpeakerSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
 
 
 class EventRegistrationViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
-    queryset = EventRegistration.objects.all()
+    queryset = EventRegistration.objects.all().order_by('date')
     serializer_class = EventRegistrationSerializer
+    permission_classes = [IsAuthenticated, StaffModelPermissions]
+
+
+class TeamMemberViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
+    queryset = TeamMember.objects.all().order_by('display_order')
+    serializer_class = TeamMemberSerializer
+    permission_classes = [IsAuthenticated, StaffModelPermissions]
+
+
+class TeamMemberSocialViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
+    queryset = TeamMemberSocial.objects.all().order_by('-created_at')
+    serializer_class = TeamMemberSocialSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
 
 
