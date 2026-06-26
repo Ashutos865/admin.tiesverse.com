@@ -9,7 +9,7 @@ import {
 } from '../../apiClient';
 import { Plus, Edit2, Trash2, X, Sparkles, Briefcase, FileText, Mail, Users, ToggleRight, CheckCircle, ExternalLink, Search, Download, Eye } from 'lucide-react';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 // ===== SHARED STYLES =====
 const inputStyle = {
@@ -111,7 +111,7 @@ const CareerAdmin = ({ tab = 'positions' }) => {
             doc.setFontSize(12);
             doc.text(`Dear ${candidate.first_name} ${candidate.last_name},`, 20, 55);
             doc.text('We are pleased to offer you a position at Tiesverse. Please find the details below:', 20, 70, { maxWidth: 170 });
-            doc.autoTable({
+            const offerTable = autoTable(doc, {
                 startY: 90,
                 head: [['Field', 'Details']],
                 body: [
@@ -123,7 +123,7 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                 headStyles: { fillColor: [254, 122, 0] },
                 styles: { fontSize: 10 },
             });
-            const finalY = doc.lastAutoTable.finalY + 20;
+            const finalY = (offerTable?.finalY ?? doc.lastAutoTable?.finalY ?? 110) + 20;
             doc.text('Congratulations on being selected! Our team will be in touch shortly with next steps.', 20, finalY, { maxWidth: 170 });
             doc.text('Regards,\nTiesverse HR Team', 20, finalY + 20);
 
@@ -250,7 +250,7 @@ const CareerAdmin = ({ tab = 'positions' }) => {
             ]);
         }
 
-        doc.autoTable({
+        autoTable(doc, {
             startY: 50,
             head: [tableColumns],
             body: tableRows,
