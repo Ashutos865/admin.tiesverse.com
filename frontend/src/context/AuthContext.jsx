@@ -51,7 +51,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUserProfile = async (token) => {
     try {
-      const response = await axios.get('${API_URL}/api/accounts/profile/', {
+      const response = await axios.get(`${API_URL}/api/accounts/profile/`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -67,7 +67,7 @@ export const AuthProvider = ({ children }) => {
 
   const loginUser = async (username, password) => {
     try {
-      const response = await axios.post('${API_URL}/api/token/', {
+      const response = await axios.post(`${API_URL}/api/token/`, {
         username,
         password
       });

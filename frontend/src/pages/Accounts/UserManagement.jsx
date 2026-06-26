@@ -26,7 +26,7 @@ const UserManagement = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await axios.get('${API_URL}/api/accounts/users/', {
+      const response = await axios.get(`${API_URL}/api/accounts/users/`, {
         headers: {
           'Authorization': `Bearer ${authTokens?.access}`
         }
@@ -95,7 +95,7 @@ const UserManagement = () => {
           headers: { 'Authorization': `Bearer ${authTokens?.access}` }
         });
       } else {
-        await axios.post('${API_URL}/api/accounts/users/', payload, {
+        await axios.post(`${API_URL}/api/accounts/users/`, payload, {
           headers: { 'Authorization': `Bearer ${authTokens?.access}` }
         });
       }

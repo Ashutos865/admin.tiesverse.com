@@ -31,8 +31,8 @@ const PermissionsManagement = () => {
     setLoading(true);
     try {
       const [usersRes, permsRes] = await Promise.all([
-        axios.get('${API_URL}/api/accounts/users/', { headers }),
-        axios.get('${API_URL}/api/accounts/permissions/', { headers }),
+        axios.get(`${API_URL}/api/accounts/users/`, { headers }),
+        axios.get(`${API_URL}/api/accounts/permissions/`, { headers }),
       ]);
       const staffUsers = usersRes.data.filter(u => !u.is_superuser);
       setUsers(staffUsers);
