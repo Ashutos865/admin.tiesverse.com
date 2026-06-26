@@ -129,11 +129,8 @@ const CareerAdmin = ({ tab = 'positions' }) => {
 
             const pdfBase64 = doc.output('datauristring').split(',')[1];
             await sendOffer({
-                candidate_id: candidate.id,
-                candidate_email: candidate.email,
-                candidate_name: `${candidate.first_name} ${candidate.last_name}`,
-                role: candidate.roles,
-                department: candidate.department,
+                email: candidate.email,
+                name: `${candidate.first_name} ${candidate.last_name}`,
                 pdf_base64: pdfBase64,
             });
             setOfferSent(prev => ({ ...prev, [candidate.id]: true }));
