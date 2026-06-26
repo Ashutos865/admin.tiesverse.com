@@ -7,6 +7,7 @@ from .serializers import (
 )
 from . import supabase_sync
 
+
 class StaffModelPermissions(DjangoModelPermissions):
     perms_map = {
         'GET':    ['%(app_label)s.view_%(model_name)s'],
@@ -33,42 +34,37 @@ class SupabaseSyncMixin:
         instance.delete()
 
 
-class EventViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
-    queryset = Event.objects.all().order_by('date')
-    serializer_class = EventSerializer
-    permission_classes = [IsAuthenticated, StaffModelPermissions]
-
-
-class ArticleViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
-    queryset = Article.objects.all().order_by('-created_at')
-    serializer_class = ArticleSerializer
-    permission_classes = [IsAuthenticated, StaffModelPermissions]
-
-
-class YouTubeVideoViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
-    queryset = YouTubeVideo.objects.all().order_by('-created_at')
-    serializer_class = YouTubeVideoSerializer
-    permission_classes = [IsAuthenticated, StaffModelPermissions]
-
-
-class WorkshopViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
-    queryset = Workshop.objects.all().order_by('date')
-    serializer_class = WorkshopSerializer
+class DepartmentViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
+    queryset = Department.objects.all()
+    serializer_class = DepartmentSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
 
 
 class TeamMemberViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
-    queryset = TeamMember.objects.all().order_by('created_at')
+    queryset = TeamMember.objects.all()
     serializer_class = TeamMemberSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
 
 
-class GuestViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
-    queryset = Guest.objects.all().order_by('-created_at')
-    serializer_class = GuestSerializer
+class TeamMemberSocialViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
+    queryset = TeamMemberSocial.objects.all()
+    serializer_class = TeamMemberSocialSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
 
-class WebinarListingViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
-    queryset = WebinarListing.objects.all().order_by('-date')
-    serializer_class = WebinarListingSerializer
+
+class EventViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
+    queryset = Event.objects.all()
+    serializer_class = EventSerializer
+    permission_classes = [IsAuthenticated, StaffModelPermissions]
+
+
+class EventSpeakerViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
+    queryset = EventSpeaker.objects.all()
+    serializer_class = EventSpeakerSerializer
+    permission_classes = [IsAuthenticated, StaffModelPermissions]
+
+
+class EventRegistrationViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
+    queryset = EventRegistration.objects.all()
+    serializer_class = EventRegistrationSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]

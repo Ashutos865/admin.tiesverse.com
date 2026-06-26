@@ -19,11 +19,10 @@ import WebinarDashboard from './pages/Webinar/WebinarDashboard';
 
 // Tiesverse
 import EventsManagement from './pages/Tiesverse/EventsManagement';
-import { ArticlesManagement, YoutubeVideos, WorkshopList, TeamList, GuestList, Webinars } from './pages/Tiesverse/index.jsx';
 import TiesverseAdminPanel from './pages/Tiesverse/Admin.jsx';
 
 // Career
-import { CareerAdmin } from './pages/Career/index.jsx';
+import CareerAdmin from './pages/Career/Admin.jsx';
 
 // Webinar
 import { ManagingList, ManageEvents, UserSubmissionsReview } from './pages/Webinar/index.jsx';
