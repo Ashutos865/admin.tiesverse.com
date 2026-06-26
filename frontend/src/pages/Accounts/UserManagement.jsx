@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 import { Plus, Edit2, Trash2, Shield, User as UserIcon, X } from 'lucide-react';
 
 const UserManagement = () => {
@@ -24,7 +26,7 @@ const UserManagement = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/api/accounts/users/', {
+      const response = await axios.get('${API_URL}/api/accounts/users/', {
         headers: {
           'Authorization': `Bearer ${authTokens?.access}`
         }
@@ -89,11 +91,11 @@ const UserManagement = () => {
 
     try {
       if (isEditing) {
-        await axios.patch(`http://localhost:8000/api/accounts/users/${formData.id}/`, payload, {
+        await axios.patch(`${API_URL}/api/accounts/users/${formData.id}/`, payload, {
           headers: { 'Authorization': `Bearer ${authTokens?.access}` }
         });
       } else {
-        await axios.post('http://localhost:8000/api/accounts/users/', payload, {
+        await axios.post('${API_URL}/api/accounts/users/', payload, {
           headers: { 'Authorization': `Bearer ${authTokens?.access}` }
         });
       }
@@ -108,7 +110,7 @@ const UserManagement = () => {
   const handleDelete = async (id) => {
     if (window.confirm("Are you sure you want to delete this user?")) {
       try {
-        await axios.delete(`http://localhost:8000/api/accounts/users/${id}/`, {
+        await axios.delete(`${API_URL}/api/accounts/users/${id}/`, {
           headers: { 'Authorization': `Bearer ${authTokens?.access}` }
         });
         fetchUsers();

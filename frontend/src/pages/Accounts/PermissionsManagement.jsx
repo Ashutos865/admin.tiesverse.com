@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 import { Save, RefreshCw, Shield, Check, User as UserIcon, Settings, X as XIcon } from 'lucide-react';
 
 const PermissionsManagement = () => {
@@ -29,8 +31,8 @@ const PermissionsManagement = () => {
     setLoading(true);
     try {
       const [usersRes, permsRes] = await Promise.all([
-        axios.get('http://localhost:8000/api/accounts/users/', { headers }),
-        axios.get('http://localhost:8000/api/accounts/permissions/', { headers }),
+        axios.get('${API_URL}/api/accounts/users/', { headers }),
+        axios.get('${API_URL}/api/accounts/permissions/', { headers }),
       ]);
       const staffUsers = usersRes.data.filter(u => !u.is_superuser);
       setUsers(staffUsers);
@@ -106,7 +108,7 @@ const PermissionsManagement = () => {
     setSaving(userId);
     try {
       const permsList = Array.from(userPerms[userId] || []);
-      await axios.patch(`http://localhost:8000/api/accounts/users/${userId}/`, { permissions: permsList }, { headers });
+      await axios.patch(`${API_URL}/api/accounts/users/${userId}/`, { permissions: permsList }, { headers });
       showToast('Permissions saved successfully!');
     } catch (error) {
       console.error("Error saving permissions:", error);

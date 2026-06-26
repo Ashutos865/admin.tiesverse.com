@@ -2,6 +2,8 @@ import React, { createContext, useState, useEffect } from 'react';
 import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
 export const AuthContext = createContext();
 
 // Idle auto-logout window (minutes) used until the user's profile loads.
@@ -49,7 +51,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUserProfile = async (token) => {
     try {
-      const response = await axios.get('http://localhost:8000/api/accounts/profile/', {
+      const response = await axios.get('${API_URL}/api/accounts/profile/', {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -65,7 +67,7 @@ export const AuthProvider = ({ children }) => {
 
   const loginUser = async (username, password) => {
     try {
-      const response = await axios.post('http://localhost:8000/api/token/', {
+      const response = await axios.post('${API_URL}/api/token/', {
         username,
         password
       });
