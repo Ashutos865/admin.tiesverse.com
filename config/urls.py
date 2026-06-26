@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
 from accounts_app.views import CustomTokenObtainPairView, SettingViewSet
+from tiesverse_app.media_views import MediaUploadView, CloudinaryImageListView
 from rest_framework.routers import DefaultRouter
 
 router = DefaultRouter()
@@ -31,5 +32,7 @@ urlpatterns = [
     path('api/landing/', include('tiesverse_app.urls')),
     path('api/career/', include('career_app.urls')),
     path('api/webinar/', include('webinar_app.urls')),
+    path('api/media/upload/', MediaUploadView.as_view(), name='media_upload'),
+    path('api/media/images/', CloudinaryImageListView.as_view(), name='media_images'),
     path('api/', include(router.urls)),
 ]

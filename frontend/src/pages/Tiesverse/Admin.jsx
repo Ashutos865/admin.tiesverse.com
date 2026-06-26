@@ -5,9 +5,11 @@ import {
     getTeamMembers, createTeamMember, updateTeamMember, deleteTeamMember,
     getEventSpeakers, createEventSpeaker, updateEventSpeaker, deleteEventSpeaker,
     getEventRegistrations, createEventRegistration, updateEventRegistration, deleteEventRegistration,
-    getSettings, updateSetting
+    getSettings, updateSetting, uploadImage, listCloudinaryImages
 } from '../../apiClient';
-import { Plus, Edit2, Trash2, X, Sparkles, BookOpen, PlaySquare, Users, Video, Calendar, ExternalLink, Image, FileText, Briefcase } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Sparkles, BookOpen, PlaySquare, Users, Video, Calendar, ExternalLink, FileText, Briefcase } from 'lucide-react';
+import ImageUploadField from '../../components/ImageUploadField';
+import { resolveImg } from '../../utils/img';
 
 // ===== SHARED STYLES =====
 const inputStyle = {
@@ -96,6 +98,7 @@ const Admin = ({ tab = 'articles' }) => {
     const [teamFileBatch, setTeamFileBatch] = useState([]);
     const [workshopFilter, setWorkshopFilter] = useState('ALL');
     const [sizeWarning, setSizeWarning] = useState({ open: false, file: null });
+    const [uploadingImage, setUploadingImage] = useState(false);
 
     const showNotice = (msg, type = 'success') => {
         setNotification({ msg, type });
@@ -153,6 +156,42 @@ const Admin = ({ tab = 'articles' }) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
+
+    // ===== IMAGE UPLOAD (Cloudinary) =====
+    // Upload a picked file → store the returned secure_url in the active tab's
+    // image field (config.imageField). Used by ImageUploadField.
+    const handleImageFile = async (file) => {
+        setUploadingImage(true);
+        const res = await uploadImage(file);
+        setUploadingImage(false);
+        if (res?.secure_url) {
+            setFormData(prev => ({ ...prev, [config.imageField]: res.secure_url }));
+            setPreviewUrl(res.secure_url);
+            showNotice('Image uploaded');
+        } else {
+            showNotice(res?.error || 'Image upload failed', 'error');
+        }
+    };
+
+    const openLibrary = async () => {
+        setCloudinaryPicker({ open: true, images: [], loading: true });
+        const res = await listCloudinaryImages();
+        setCloudinaryPicker({ open: true, images: res?.images || [], loading: false });
+    };
+
+    // Picks one image from the library into the active tab's image field.
+    const selectCloudinaryImage = (url) => {
+        setFormData(prev => ({ ...prev, [config.imageField]: url }));
+        setPreviewUrl(url);
+        setCloudinaryPicker({ open: false, images: [], loading: false });
+        setMultiPickerSelected([]);
+    };
+
+    // Vestigial handlers for legacy picker branches (size-warning modal and
+    // team bulk-add) that are no longer reachable with single-select. Defined
+    // so the unreachable JSX can't throw a ReferenceError if ever rendered.
+    const proceedWithImage = () => setSizeWarning({ open: false, file: null });
+    const confirmTeamPickerSelection = () => setCloudinaryPicker({ open: false, images: [], loading: false });
 
     // ===== SETTINGS =====
     const handleUpdateSetting = async (key, value) => {
@@ -224,7 +263,7 @@ const Admin = ({ tab = 'articles' }) => {
                     <FormField label="Read time" name="read_time" value={formData.read_time} onChange={handleInputChange} placeholder="e.g. 6 min read" />
                 </div>
                 <FormField label="Date" name="date" value={formData.date} onChange={handleInputChange} placeholder="e.g. Jun 24, 2026" />
-                <FormField label="Cover Image URL *" name="cover_url" value={formData.cover_url} onChange={handleInputChange} placeholder="https://…" required />
+                <ImageUploadField label="Cover Image URL *" name="cover_url" value={formData.cover_url} onChange={handleInputChange} placeholder="https://…" required onFile={handleImageFile} onBrowse={openLibrary} uploading={uploadingImage} />
                 <div style={{ display: 'flex', gap: '24px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem' }}>
                         <input type="checkbox" name="featured" checked={!!formData.featured} onChange={e => handleInputChange({ target: { name: 'featured', value: e.target.checked } })} /> Featured
@@ -241,7 +280,7 @@ const Admin = ({ tab = 'articles' }) => {
                 <FormField label="Full Name *" name="name" value={formData.name} onChange={handleInputChange} placeholder="Jane Doe" required />
                 <FormField label="Role / Title *" name="role" value={formData.role} onChange={handleInputChange} placeholder="e.g. Researcher" required />
                 <div><FieldLabel>Bio</FieldLabel><textarea name="bio" value={formData.bio || ''} onChange={handleInputChange} style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} placeholder="Brief bio..." /></div>
-                <FormField label="Photo URL" name="photo_url" value={formData.photo_url} onChange={handleInputChange} placeholder="https://example.com/photo.jpg" />
+                <ImageUploadField label="Photo URL" name="photo_url" value={formData.photo_url} onChange={handleInputChange} placeholder="https://example.com/photo.jpg" onFile={handleImageFile} onBrowse={openLibrary} uploading={uploadingImage} />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <FormField label="Department" name="department" value={formData.department} onChange={handleInputChange} placeholder="e.g. Research" />
                     <FormField label="Display order" name="display_order" value={formData.display_order} onChange={handleInputChange} placeholder="0" type="number" />
@@ -258,7 +297,7 @@ const Admin = ({ tab = 'articles' }) => {
                 <FormField label="Role / Designation *" name="role" value={formData.role} onChange={handleInputChange} placeholder="e.g. CEO, Author, Diplomat" required />
                 <FormField label="Organization" name="org" value={formData.org} onChange={handleInputChange} placeholder="e.g. Ministry of External Affairs" />
                 <div><FieldLabel>Quote</FieldLabel><textarea name="quote" value={formData.quote || ''} onChange={handleInputChange} style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} placeholder="A notable quote from this guest..." /></div>
-                <FormField label="Photo URL" name="photo_url" value={formData.photo_url} onChange={handleInputChange} placeholder="https://example.com/photo.jpg" />
+                <ImageUploadField label="Photo URL" name="photo_url" value={formData.photo_url} onChange={handleInputChange} placeholder="https://example.com/photo.jpg" onFile={handleImageFile} onBrowse={openLibrary} uploading={uploadingImage} />
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem' }}>
                     <input type="checkbox" name="featured" checked={!!formData.featured} onChange={e => handleInputChange({ target: { name: 'featured', value: e.target.checked } })} /> Featured
                 </label>
@@ -274,7 +313,7 @@ const Admin = ({ tab = 'articles' }) => {
                     <FormField label="Time / TZ" name="time_tz" value={formData.time_tz} onChange={handleInputChange} placeholder="e.g. 4:00 PM IST" />
                 </div>
                 <FormField label="Host" name="host" value={formData.host} onChange={handleInputChange} placeholder="e.g. Nimble" />
-                <FormField label="Cover Image URL" name="cover_url" value={formData.cover_url} onChange={handleInputChange} placeholder="https://…" />
+                <ImageUploadField label="Cover Image URL" name="cover_url" value={formData.cover_url} onChange={handleInputChange} placeholder="https://…" onFile={handleImageFile} onBrowse={openLibrary} uploading={uploadingImage} />
                 <FormField label="Registration URL" name="register_url" value={formData.register_url} onChange={handleInputChange} placeholder="https://…" />
                 <div>
                     <FieldLabel>Status</FieldLabel>
@@ -311,7 +350,7 @@ const Admin = ({ tab = 'articles' }) => {
                 {/* Thumbnail */}
                 {thumb && (
                     <div style={{ width: '100%', height: '160px', overflow: 'hidden', background: '#0a0a0a' }}>
-                        <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <img src={resolveImg(thumb)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     </div>
                 )}
 

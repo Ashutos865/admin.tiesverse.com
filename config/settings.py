@@ -162,6 +162,20 @@ CLOUDFLARE_R2_SECRET_ACCESS_KEY = os.environ.get('CLOUDFLARE_R2_SECRET_ACCESS_KE
 CLOUDFLARE_R2_BUCKET = os.environ.get('CLOUDFLARE_R2_BUCKET', 'career-tiesverse')
 
 # ---------------------------------------------------------
+# Cloudinary (image hosting for landing/webinar content)
+# Admins upload images via /api/media/upload/; we store the returned
+# secure_url in the model's *_url field.
+# ---------------------------------------------------------
+import cloudinary
+cloudinary.config(
+    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME', ''),
+    api_key=os.environ.get('CLOUDINARY_API_KEY', ''),
+    api_secret=os.environ.get('CLOUDINARY_API_SECRET', ''),
+    secure=True,
+)
+CLOUDINARY_UPLOAD_FOLDER = os.environ.get('CLOUDINARY_UPLOAD_FOLDER', 'tiesverse_admin')
+
+# ---------------------------------------------------------
 # Turso (event / webinar registrations)
 # TURSO_DATABASE_URL  — e.g. https://dbname-org.turso.io
 # TURSO_AUTH_TOKEN    — JWT token from Turso dashboard
@@ -177,6 +191,12 @@ AWS_SES_ACCESS_KEY_ID = os.environ.get('AWS_SES_ACCESS_KEY_ID', '')
 AWS_SES_SECRET_ACCESS_KEY = os.environ.get('AWS_SES_SECRET_ACCESS_KEY', '')
 AWS_SES_REGION = os.environ.get('AWS_SES_REGION', 'ap-south-1')
 SES_FROM_EMAIL = os.environ.get('SES_FROM_EMAIL', 'noreply@tiesverse.com')
+
+# Offer letters are emailed from the no-reply careers address. Sending stays
+# DISABLED until careers@tiesverse.com is verified in SES — flip
+# OFFER_EMAIL_ENABLED=True in env to go live.
+SES_CAREERS_FROM_EMAIL = os.environ.get('SES_CAREERS_FROM_EMAIL', 'careers@tiesverse.com')
+OFFER_EMAIL_ENABLED = os.environ.get('OFFER_EMAIL_ENABLED', 'False').lower() == 'true'
 
 RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '')
 RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '')

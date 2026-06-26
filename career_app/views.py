@@ -131,6 +131,72 @@ class FormGateView(APIView):
             return Response({'status': 'error', 'message': str(e)}, status=500)
 
 
+class SendOfferLetterView(APIView):
+    """Email a (frontend-generated) offer-letter PDF to a candidate from the
+    no-reply careers address.
+
+    Sending is STUBBED by default (settings.OFFER_EMAIL_ENABLED=False): we log
+    what would be sent and return a 'stubbed' status so no real mail goes out
+    until careers@tiesverse.com is verified in SES. The live SES path below is
+    fully implemented — flip OFFER_EMAIL_ENABLED=True in env to enable it.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from django.conf import settings as dj_settings
+        email = (request.data.get('email') or '').strip()
+        name = request.data.get('name') or 'Candidate'
+        pdf_base64 = request.data.get('pdf_base64') or ''
+        subject = request.data.get('subject') or 'Your Offer Letter — Tiesverse'
+        body_text = request.data.get('body') or (
+            f"Dear {name},\n\nCongratulations! Please find your offer letter attached.\n\n"
+            "Warm regards,\nTiesverse Careers"
+        )
+        if not email:
+            return Response({'status': 'error', 'message': 'Recipient email is required.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        from_addr = dj_settings.SES_CAREERS_FROM_EMAIL
+        if not getattr(dj_settings, 'OFFER_EMAIL_ENABLED', False):
+            print(f"[OFFER EMAIL STUB] would send '{subject}' to {email} ({name}) "
+                  f"from {from_addr}; pdf_base64 chars={len(pdf_base64)}")
+            return Response({
+                'status': 'stubbed',
+                'message': f"Email sending is disabled — offer NOT sent to {email}. "
+                           f"(Verify {from_addr} in SES and set OFFER_EMAIL_ENABLED=True to enable.)",
+            })
+
+        # ── Live SES send (only when explicitly enabled) ──
+        import base64
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.mime.application import MIMEApplication
+        import boto3
+
+        msg = MIMEMultipart()
+        msg['Subject'] = subject
+        msg['From'] = from_addr
+        msg['To'] = email
+        msg.attach(MIMEText(body_text, 'plain'))
+        if pdf_base64:
+            part = MIMEApplication(base64.b64decode(pdf_base64), _subtype='pdf')
+            part.add_header('Content-Disposition', 'attachment', filename='Offer-Letter.pdf')
+            msg.attach(part)
+        try:
+            client = boto3.client(
+                'ses',
+                region_name=dj_settings.AWS_SES_REGION,
+                aws_access_key_id=dj_settings.AWS_SES_ACCESS_KEY_ID,
+                aws_secret_access_key=dj_settings.AWS_SES_SECRET_ACCESS_KEY,
+            )
+            client.send_raw_email(Source=from_addr, Destinations=[email],
+                                  RawMessage={'Data': msg.as_string()})
+        except Exception as e:
+            return Response({'status': 'error', 'message': f'SES send failed: {e}'},
+                            status=status.HTTP_502_BAD_GATEWAY)
+        return Response({'status': 'sent', 'message': f'Offer letter sent to {email}.'})
+
+
 class ResumeDownloadView(APIView):
     permission_classes = [IsAuthenticated]
 

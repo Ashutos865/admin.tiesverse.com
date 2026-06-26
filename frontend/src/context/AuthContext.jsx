@@ -4,6 +4,9 @@ import axios from 'axios';
 
 export const AuthContext = createContext();
 
+// Auto-logout after this many ms of no user activity. Any activity resets it.
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
 const darkenColor = (hex, percent) => {
   if (!hex || !hex.startsWith('#')) return hex;
   try {
@@ -108,6 +111,57 @@ export const AuthProvider = ({ children }) => {
     }
     setLoading(false);
   }, [authTokens]);
+
+  // ── Idle auto-logout ──────────────────────────────────────────────
+  // While signed in, sign the user out after IDLE_TIMEOUT_MS with no
+  // activity. Any activity resets the countdown to zero.
+  useEffect(() => {
+    if (!authTokens) return; // only run while signed in
+
+    let timerId;
+    let lastReset = 0;
+
+    const handleIdle = () => {
+      // Flag read by the Login page to explain the redirect.
+      sessionStorage.setItem('sessionExpired', 'idle');
+      logoutUser();
+    };
+
+    const resetTimer = () => {
+      clearTimeout(timerId);
+      timerId = setTimeout(handleIdle, IDLE_TIMEOUT_MS);
+    };
+
+    // Throttle: a stream of mousemove events shouldn't reset the timer on
+    // every fire — once per second is plenty for a 10-minute window.
+    const onActivity = () => {
+      const now = Date.now();
+      if (now - lastReset < 1000) return;
+      lastReset = now;
+      resetTimer();
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'wheel'];
+    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
+    resetTimer(); // start the countdown
+
+    return () => {
+      clearTimeout(timerId);
+      events.forEach((e) => window.removeEventListener(e, onActivity));
+    };
+  }, [authTokens]);
+
+  // ── Cross-tab auth sync ───────────────────────────────────────────
+  // If the user logs out (idle or manual) or in from another tab, mirror it.
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === 'authTokens') {
+        setAuthTokens(e.newValue ? JSON.parse(e.newValue) : null);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   const contextData = {
     user,

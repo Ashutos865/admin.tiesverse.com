@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import PositionViewSet, EnrollmentViewSet, OfferLetterViewSet
-from .views import CandidateListView, CandidateDetailView, FormGateView, ResumeDownloadView
+from .views import CandidateListView, CandidateDetailView, FormGateView, ResumeDownloadView, SendOfferLetterView
 
 router = DefaultRouter()
 router.register(r'positions', PositionViewSet)
@@ -14,4 +14,5 @@ urlpatterns = [
     path('candidates/<int:pk>/', CandidateDetailView.as_view(), name='career-candidate-detail'),
     path('form-gates/', FormGateView.as_view(), name='career-form-gates'),
     path('resume/<int:pk>/', ResumeDownloadView.as_view(), name='career-resume'),
+    path('send-offer/', SendOfferLetterView.as_view(), name='career-send-offer'),
 ]

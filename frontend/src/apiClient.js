@@ -49,6 +49,30 @@ const adminFetch = async (path, method = 'GET', body = null) => {
     }
 };
 
+// MEDIA (Cloudinary image upload) — multipart, so no JSON Content-Type.
+export const uploadImage = async (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_URL}/api/media/upload/`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+        body: form,
+    });
+    if (res.status === 401) {
+        localStorage.removeItem('authTokens');
+        window.location.href = '/login';
+        return { error: 'Session expired. Please log in again.' };
+    }
+    const text = await res.text();
+    try {
+        return JSON.parse(text);
+    } catch {
+        return { error: `Upload failed (${res.status}).` };
+    }
+};
+export const listCloudinaryImages = () =>
+    adminFetch('/api/media/images').catch(() => ({ images: [] }));
+
 export const downloadFile = async (path, filename) => {
     const fetchPath = path.startsWith('http') ? path : `${API_URL}${path}`;
     const res = await fetch(fetchPath, {
@@ -143,6 +167,9 @@ export const updateApplicant = updateCandidateStatus;
 export const getOffers = getOfferLetters;
 export const createOffer = createOfferLetter;
 export const updateOffer = (id, data) => updateOfferLetter(id, data);
+// Email an offer-letter PDF (base64) to a candidate. Sending is stubbed
+// server-side until careers@tiesverse.com is SES-verified.
+export const sendOffer = (payload) => adminFetch('/api/career/send-offer', 'POST', payload);
 
 // Team member aliases
 export const getTeam = getTeamMembers;

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
-  getEvents, createEvent, updateEvent, deleteEvent
+  getEvents, createEvent, updateEvent, deleteEvent, uploadImage
 } from '../../apiClient';
 import { Plus, Edit2, Trash2, CheckCircle, XCircle, MapPin, Calendar, Sparkles, X, Users, Tag, IndianRupee } from 'lucide-react';
+import ImageUploadField from '../../components/ImageUploadField';
 
 // Mirrors the Django Event model (tiesverse_app.models.Event).
 const EMPTY_EVENT = {
@@ -19,6 +20,7 @@ const EventsManagement = () => {
   const [toast, setToast] = useState({ message: '', type: '' });
   const [deleteModal, setDeleteModal] = useState({ open: false, id: null, title: '' });
   const [formModalOpen, setFormModalOpen] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => { fetchEvents(); }, []);
 
@@ -41,6 +43,19 @@ const EventsManagement = () => {
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  // Upload a picked image to Cloudinary and store its secure_url in cover_url.
+  const handleCoverUpload = async (file) => {
+    setUploadingImage(true);
+    const res = await uploadImage(file);
+    setUploadingImage(false);
+    if (res?.secure_url) {
+      setFormData(prev => ({ ...prev, cover_url: res.secure_url }));
+      showToast('Image uploaded', 'success');
+    } else {
+      showToast(res?.error || 'Image upload failed', 'error');
+    }
   };
 
   // Build a payload that matches the serializer's field types.
@@ -403,7 +418,7 @@ const EventsManagement = () => {
                 <FormField label="Capacity" name="capacity" type="number" value={formData.capacity} onChange={handleChange} placeholder="optional" />
               </div>
 
-              <FormField label="Cover Image URL" name="cover_url" value={formData.cover_url} onChange={handleChange} placeholder="https://…" />
+              <ImageUploadField label="Cover Image URL" name="cover_url" value={formData.cover_url} onChange={handleChange} placeholder="https://…" onFile={handleCoverUpload} uploading={uploadingImage} />
               <FormField label="Registration URL" name="register_url" value={formData.register_url} onChange={handleChange} placeholder="https://…" />
 
               <div>

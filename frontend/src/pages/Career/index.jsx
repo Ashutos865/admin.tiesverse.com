@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { jsPDF } from 'jspdf';
 import { Plus, Edit2, Trash2, ToggleLeft, ToggleRight, ChevronRight } from 'lucide-react';
 import {
   getPositions, createPosition, updatePosition, deletePosition,
-  getApplicants, updateApplicant,
-  getOffers, createOffer, updateOffer,
+  getCandidates, updateCandidateStatus, sendOffer,
+  getFormGates, updateFormGates,
 } from '../../apiClient';
 
 // ── Position Tracker ─────────────────────────────────────────────────────────
@@ -126,129 +127,51 @@ export function PositionTracker() {
 
 // ── Enrollment Tracker ────────────────────────────────────────────────────────
 
+const DECISION_OPTIONS = ['Under Review', 'Shortlisted', 'Selected', 'Rejected'];
+const DECISION_COLORS = { Selected: '#10B981', Accepted: '#10B981', Rejected: '#EF4444', Shortlisted: '#F59E0B', 'Under Review': '#9CA3AF' };
+
 export function EnrollmentTracker() {
-  const [positions, setPositions] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [applicants, setApplicants] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    getPositions().then((data) => {
-      if (!data?.error) setPositions(Array.isArray(data) ? data : []);
-      setLoading(false);
-    });
-  }, []);
-
-  const selectPosition = async (pos) => {
-    setSelected(pos);
-    const data = await getApplicants(pos.id);
-    setApplicants(Array.isArray(data) ? data : []);
-  };
-
-  const moveStage = async (applicant, stage) => {
-    await updateApplicant(applicant.id, { stage });
-    selectPosition(selected);
-  };
-
-  const STAGES = ['applied', 'review', 'interview', 'offered', 'hired', 'rejected'];
-
-  return (
-    <div>
-      <div className="page-header">
-        <h1 className="page-title">Enrollment Tracker</h1>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '1rem' }}>
-        <div className="card" style={{ padding: '0.5rem' }}>
-          <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', padding: '0.5rem 0.75rem', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Positions</p>
-          {loading && <p style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>Loading…</p>}
-          {positions.map((p) => (
-            <button key={p.id} onClick={() => selectPosition(p)}
-              style={{ width: '100%', textAlign: 'left', padding: '0.6rem 0.75rem', borderRadius: '6px', border: 'none', cursor: 'pointer', background: selected?.id === p.id ? 'var(--primary-light, #EEF2FF)' : 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: 500, fontSize: '14px' }}>{p.title}</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{p.sector}</div>
-              </div>
-              <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
-            </button>
-          ))}
-        </div>
-
-        <div className="card">
-          {!selected && <p style={{ padding: '1rem', color: 'var(--text-muted)' }}>Select a position to view applicants.</p>}
-          {selected && (
-            <>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', padding: '0 0.5rem' }}>
-                <h3>{selected.title} <span style={{ background: selected.position_var ? '#D1FAE5' : '#F3F4F6', color: selected.position_var ? '#065F46' : '#6B7280', padding: '2px 8px', borderRadius: '999px', fontSize: '12px', marginLeft: '8px' }}>{selected.position_var ? 'OPEN' : 'CLOSED'}</span></h3>
-                <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>{applicants.length} applicants</span>
-              </div>
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr><th>Applicant</th><th>Applied</th><th>Stage</th><th>Action</th></tr>
-                  </thead>
-                  <tbody>
-                    {applicants.length === 0 && (
-                      <tr><td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No applicants yet.</td></tr>
-                    )}
-                    {applicants.map((a) => (
-                      <tr key={a.id}>
-                        <td>
-                          <strong>{a.name}</strong>
-                          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{a.email}</div>
-                        </td>
-                        <td>{a.applied_at ? new Date(a.applied_at).toLocaleDateString() : '—'}</td>
-                        <td>
-                          <select value={a.stage || 'applied'} onChange={(e) => moveStage(a, e.target.value)}
-                            style={{ padding: '0.25rem 0.5rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}>
-                            {STAGES.map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-                          </select>
-                        </td>
-                        <td>
-                          {a.resume_url && (
-                            <a href={a.resume_url} target="_blank" rel="noreferrer" className="btn" style={{ fontSize: '13px', padding: '0.25rem 0.75rem' }}>Resume</a>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Offer Letters ─────────────────────────────────────────────────────────────
-
-export function OfferLetter() {
-  const [offers, setOffers] = useState([]);
+  const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [filter, setFilter] = useState('All');
 
   useEffect(() => {
-    getOffers().then((data) => {
+    getCandidates().then((data) => {
       if (data?.error) setError(data.error);
-      else setOffers(Array.isArray(data) ? data : []);
+      else setCandidates(Array.isArray(data) ? data : (data?.data || data?.results || []));
       setLoading(false);
     });
   }, []);
 
-  const updateStatus = async (id, status) => {
-    await updateOffer(id, { status });
-    const data = await getOffers();
-    if (!data?.error) setOffers(Array.isArray(data) ? data : []);
-  };
+  const fullName = (c) => `${c.first_name || ''} ${c.last_name || ''}`.trim() || '—';
+  const departments = ['All', ...Array.from(new Set(candidates.map((c) => c.department).filter(Boolean)))];
+  const shown = filter === 'All' ? candidates : candidates.filter((c) => c.department === filter);
 
-  const STATUS_COLORS = { draft: '#9CA3AF', sent: '#3B82F6', signed: '#10B981' };
+  // Keep a legacy value (e.g. "Accepted") selectable so it still displays.
+  const optionsFor = (cur) => (cur && !DECISION_OPTIONS.includes(cur) ? [cur, ...DECISION_OPTIONS] : DECISION_OPTIONS);
+
+  const setDecision = async (c, final_decision) => {
+    setCandidates((prev) => prev.map((x) => (x.id === c.id ? { ...x, final_decision } : x)));
+    await updateCandidateStatus(c.id, {
+      interview_status: c.interview_status || '',
+      interviewer: c.interviewer || '',
+      rating: c.rating || 0,
+      final_decision,
+    });
+  };
 
   return (
     <div>
-      <div className="page-header">
-        <h1 className="page-title">Offer Letters</h1>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1 className="page-title">Enrollment Tracker</h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>All applicants from the public career forms.</p>
+        </div>
+        <select value={filter} onChange={(e) => setFilter(e.target.value)}
+          style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}>
+          {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
       </div>
       <div className="card">
         {loading && <p style={{ padding: '1rem' }}>Loading…</p>}
@@ -257,24 +180,22 @@ export function OfferLetter() {
           <div className="table-container">
             <table>
               <thead>
-                <tr><th>Applicant</th><th>Role</th><th>Salary</th><th>Start Date</th><th>Status</th></tr>
+                <tr><th>Applicant</th><th>Department</th><th>Role</th><th>City</th><th>Decision</th></tr>
               </thead>
               <tbody>
-                {offers.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No offers generated yet.</td></tr>
+                {shown.length === 0 && (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No applicants.</td></tr>
                 )}
-                {offers.map((o) => (
-                  <tr key={o.id}>
-                    <td><strong>{o.applicants?.name ?? '—'}</strong><div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{o.applicants?.email}</div></td>
-                    <td>{o.positions?.title ?? o.role_title}</td>
-                    <td>{o.salary}</td>
-                    <td>{o.start_date}</td>
+                {shown.map((c) => (
+                  <tr key={c.id}>
+                    <td><strong>{fullName(c)}</strong><div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{c.email}</div></td>
+                    <td>{c.department || '—'}</td>
+                    <td>{c.roles || '—'}</td>
+                    <td>{c.city || '—'}</td>
                     <td>
-                      <select value={o.status || 'draft'} onChange={(e) => updateStatus(o.id, e.target.value)}
-                        style={{ padding: '0.25rem 0.5rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px', color: STATUS_COLORS[o.status] || '#9CA3AF' }}>
-                        <option value="draft">Draft</option>
-                        <option value="sent">Sent</option>
-                        <option value="signed">Signed</option>
+                      <select value={c.final_decision || 'Under Review'} onChange={(e) => setDecision(c, e.target.value)}
+                        style={{ padding: '0.25rem 0.5rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px', fontWeight: 600, color: DECISION_COLORS[c.final_decision] || '#9CA3AF' }}>
+                        {optionsFor(c.final_decision).map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
                   </tr>
@@ -288,8 +209,232 @@ export function OfferLetter() {
   );
 }
 
+// ── Offer Letters ─────────────────────────────────────────────────────────────
+
+const olLabel = { display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', margin: '0.6rem 0 0.25rem' };
+const olField = { width: '100%', padding: '0.5rem 0.6rem', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', boxSizing: 'border-box' };
+const olGhost = { padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: '13px' };
+const olPrimary = { padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '13px' };
+
+// Only "Selected" candidates appear in the offer-letter roster.
+const ACCEPTED_DECISIONS = ['Selected'];
+
+export function OfferLetter() {
+  const [candidates, setCandidates] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [modal, setModal] = useState(null);            // candidate being offered
+  const [form, setForm] = useState({ role_title: '', salary: '', joining_date: '' });
+  const [sending, setSending] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    getCandidates().then((data) => {
+      if (data?.error) setError(data.error);
+      else setCandidates(Array.isArray(data) ? data : (data?.data || data?.results || []));
+      setLoading(false);
+    });
+  }, []);
+
+  const accepted = candidates.filter((c) => ACCEPTED_DECISIONS.includes(c.final_decision));
+  const fullName = (c) => `${c.first_name || ''} ${c.last_name || ''}`.trim() || '—';
+
+  const openModal = (c) => {
+    setModal(c);
+    setForm({ role_title: c.roles || c.department || '', salary: '', joining_date: '' });
+    setToast(null);
+  };
+
+  // Frontend jsPDF generation of the offer letter.
+  const buildPdf = (c) => {
+    const doc = new jsPDF();
+    const name = fullName(c);
+    const today = new Date().toLocaleDateString();
+    doc.setFontSize(22); doc.text('Tiesverse', 20, 24);
+    doc.setFontSize(13); doc.setTextColor(90); doc.text('Letter of Offer', 20, 33);
+    doc.setTextColor(0); doc.setFontSize(11);
+    const lines = [
+      `Date: ${today}`, '',
+      `Dear ${name},`, '',
+      'We are delighted to offer you the position of',
+      `${form.role_title || c.roles || 'Team Member'} in our ${c.department || 'team'} at Tiesverse.`,
+      '',
+      ...(form.salary ? [`Compensation: ${form.salary}`] : []),
+      ...(form.joining_date ? [`Proposed joining date: ${form.joining_date}`] : []),
+      '',
+      'We were genuinely impressed by your application and are excited about',
+      'the prospect of you joining us. Please reply to this email to confirm',
+      'your acceptance of this offer.',
+      '', 'Warm regards,', 'Tiesverse Careers', 'careers@tiesverse.com',
+    ];
+    let y = 48;
+    lines.forEach((line) => { doc.text(line, 20, y); y += 8; });
+    return doc;
+  };
+
+  const downloadPdf = () => buildPdf(modal).save(`Offer-${fullName(modal).replace(/\s+/g, '-')}.pdf`);
+
+  const sendEmail = async () => {
+    setSending(true);
+    const pdf_base64 = buildPdf(modal).output('datauristring').split(',')[1];
+    const res = await sendOffer({
+      email: modal.email, name: fullName(modal), pdf_base64,
+      subject: 'Your Offer Letter — Tiesverse',
+    });
+    setSending(false);
+    setToast(res?.message || res?.error || 'Done');
+  };
+
+  return (
+    <div>
+      <div className="page-header">
+        <h1 className="page-title">Offer Letters</h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>
+          Accepted candidates — generate and send their offer letter from careers@tiesverse.com.
+        </p>
+      </div>
+      <div className="card">
+        {loading && <p style={{ padding: '1rem' }}>Loading…</p>}
+        {error && <p style={{ color: '#EF4444', padding: '1rem' }}>{error}</p>}
+        {!loading && !error && (
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr><th>Candidate</th><th>Department</th><th>Role</th><th>Decision</th><th></th></tr>
+              </thead>
+              <tbody>
+                {accepted.length === 0 && (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No accepted candidates yet.</td></tr>
+                )}
+                {accepted.map((c) => (
+                  <tr key={c.id}>
+                    <td><strong>{fullName(c)}</strong><div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{c.email}</div></td>
+                    <td>{c.department || '—'}</td>
+                    <td>{c.roles || '—'}</td>
+                    <td><span style={{ fontSize: '12px', fontWeight: 700, color: '#10B981' }}>{c.final_decision}</span></td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button onClick={() => openModal(c)} style={olPrimary}>Create Offer</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {modal && (
+        <div onClick={() => setModal(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: '440px', maxWidth: '92vw', padding: '1.5rem' }}>
+            <h2 style={{ margin: '0 0 0.25rem' }}>Offer — {fullName(modal)}</h2>
+            <p style={{ margin: '0 0 0.5rem', fontSize: '13px', color: 'var(--text-muted)' }}>{modal.email}</p>
+            <label style={olLabel}>Role / Title</label>
+            <input style={olField} value={form.role_title} onChange={(e) => setForm({ ...form, role_title: e.target.value })} placeholder="e.g. Frontend Engineer" />
+            <label style={olLabel}>Compensation</label>
+            <input style={olField} value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} placeholder="e.g. ₹6,00,000 / yr" />
+            <label style={olLabel}>Joining Date</label>
+            <input type="date" style={olField} value={form.joining_date} onChange={(e) => setForm({ ...form, joining_date: e.target.value })} />
+            {toast && <div style={{ margin: '0.75rem 0 0', padding: '0.6rem', borderRadius: '8px', background: '#3B82F620', color: '#3B82F6', fontSize: '13px' }}>{toast}</div>}
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setModal(null)} style={olGhost}>Close</button>
+              <button onClick={downloadPdf} style={olGhost}>Download PDF</button>
+              <button onClick={sendEmail} disabled={sending} style={{ ...olPrimary, opacity: sending ? 0.6 : 1 }}>
+                {sending ? 'Sending…' : 'Generate & Send'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Form Gates ──────────────────────────────────────────────────────────────
+// Open/close the public application forms. Gates are a category→role hierarchy
+// stored in Cloudflare D1; closing a category cascades to its roles.
+const GATE_GROUPS = [
+  { cat: 'Tech', roles: ['tech_roles'] },
+  { cat: 'Content', roles: ['content_editor', 'content_writer_upsc', 'upsc_strategist', 'graphic_designer_canva', 'uiux_designer'] },
+  { cat: 'Media', roles: ['video_editor_reels_yt', 'social_media_manager_ig', 'youtube_manager'] },
+  { cat: 'Operations', roles: ['hr', 'marketing_outreach', 'management_coordination', 'collab_outreach'] },
+];
+const prettyGate = (k) => k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+function GateToggle({ on, onClick }) {
+  return (
+    <button onClick={onClick} aria-pressed={on} style={{
+      width: 42, height: 24, borderRadius: 999, border: 'none', cursor: 'pointer', position: 'relative',
+      background: on ? '#10B981' : 'var(--border)', transition: 'background 0.15s',
+    }}>
+      <span style={{
+        position: 'absolute', top: 3, left: on ? 21 : 3, width: 18, height: 18, borderRadius: '50%',
+        background: '#fff', transition: 'left 0.15s',
+      }} />
+    </button>
+  );
+}
+
+export function FormGates() {
+  const [gates, setGates] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    getFormGates().then((res) => {
+      setGates(res?.gates || {});
+      setLoading(false);
+    });
+  }, []);
+
+  const toggle = (key) => setGates((g) => ({ ...g, [key]: !g[key] }));
+
+  const save = async () => {
+    setSaving(true);
+    const res = await updateFormGates({ gates });
+    setSaving(false);
+    setToast(res?.status === 'success' ? 'Form gates saved.' : (res?.message || 'Save failed.'));
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  return (
+    <div>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1 className="page-title">Form Gates</h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Open or close the public application forms. Closing a category closes all its roles.</p>
+        </div>
+        <button onClick={save} disabled={loading || saving} style={{ padding: '0.5rem 1.1rem', borderRadius: '8px', border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+          {saving ? 'Saving…' : 'Save Changes'}
+        </button>
+      </div>
+      {toast && <div style={{ margin: '0 0 1rem', padding: '0.6rem 0.9rem', borderRadius: '8px', background: '#10B98120', color: '#10B981', fontSize: '13px' }}>{toast}</div>}
+      {loading ? <p style={{ padding: '1rem' }}>Loading…</p> : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+          {GATE_GROUPS.map((grp) => (
+            <div key={grp.cat} className="card" style={{ padding: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.6rem', marginBottom: '0.6rem', borderBottom: '1px solid var(--border)' }}>
+                <strong>{grp.cat}</strong>
+                <GateToggle on={gates[grp.cat] !== false} onClick={() => toggle(grp.cat)} />
+              </div>
+              {grp.roles.map((r) => (
+                <div key={r} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.35rem 0', opacity: gates[grp.cat] === false ? 0.45 : 1 }}>
+                  <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{prettyGate(r)}</span>
+                  <GateToggle on={gates[r] !== false} onClick={() => toggle(r)} />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CareerAdmin({ tab }) {
   if (tab === 'enrollments') return <EnrollmentTracker />;
   if (tab === 'offers')      return <OfferLetter />;
+  if (tab === 'form_gates')  return <FormGates />;
   return <PositionTracker />;
 }

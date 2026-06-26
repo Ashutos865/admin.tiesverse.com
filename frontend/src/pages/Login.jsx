@@ -7,6 +7,14 @@ const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
+  // Shown once when the user was redirected here by the idle auto-logout.
+  const [notice, setNotice] = useState(() => {
+    if (sessionStorage.getItem('sessionExpired') === 'idle') {
+      sessionStorage.removeItem('sessionExpired');
+      return 'You were signed out due to inactivity. Please log in again.';
+    }
+    return null;
+  });
   const { loginUser } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -32,6 +40,11 @@ const Login = () => {
         <h2 style={{ textAlign: 'center', marginBottom: '1.5rem', color: 'var(--primary)' }}>
           Admin Control Center
         </h2>
+        {notice && (
+          <div style={{ background: '#3B82F620', color: '#3B82F6', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', textAlign: 'center' }}>
+            {notice}
+          </div>
+        )}
         {error && (
           <div style={{ background: '#EF444420', color: '#EF4444', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', textAlign: 'center' }}>
             {error}
