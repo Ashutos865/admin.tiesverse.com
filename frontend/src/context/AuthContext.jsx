@@ -102,9 +102,11 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     if (authTokens) {
+      setApiToken(authTokens.access);
       setUser(jwtDecode(authTokens.access));
       fetchUserProfile(authTokens.access);
     } else {
+      setApiToken(null);
       setUser(null);
       setProfile(null);
       const root = document.documentElement;
