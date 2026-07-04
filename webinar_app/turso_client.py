@@ -117,6 +117,13 @@ def setup_tables():
         ('discount_amount',     'INTEGER DEFAULT 0'),
         ('final_amount',        'INTEGER DEFAULT 0'),
         ('coupon_redeemed',     'INTEGER DEFAULT 0'),
+        ('attended',            'INTEGER DEFAULT 0'),
+        ('role',                'TEXT'),
+        ('organization',        'TEXT'),
+        ('country',             'TEXT'),
+        ('source',              'TEXT'),
+        ('expectations',        'TEXT'),
+        ('speaker_question',    'TEXT'),
     ]:
         if col in existing_columns:
             continue

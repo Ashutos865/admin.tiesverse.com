@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils.text import slugify as _slugify
 
 
 # ── Article (stored as 'departments' table in migration) ──────────────────────
@@ -68,6 +69,8 @@ class Event(models.Model):
     past = models.BooleanField(default=False)
     cover_url = models.URLField(blank=True)
     register_url = models.URLField(blank=True)
+    certificate_template_id   = models.CharField(max_length=255, blank=True)
+    certificate_template_name = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -179,10 +182,19 @@ class EventRegistration(models.Model):
         choices=[('upcoming', 'Upcoming'), ('past', 'Past')],
         default='upcoming',
     )
+    # Certificate distribution — assigned from Certificate Portal
+    certificate_template_id   = models.CharField(max_length=255, blank=True)
+    certificate_template_name = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'event_registrations'
+
+    def save(self, *args, **kwargs):
+        if self.title:
+            kind_path = 'webinar' if self.kind == 'webinar' else 'workshop'
+            self.register_url = f'https://tiesverse.com/{kind_path}/{_slugify(self.title)}'
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.title

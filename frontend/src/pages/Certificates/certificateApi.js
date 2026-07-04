@@ -165,6 +165,13 @@ export const markCertificateRecordsEmailed = (recordIds, emailStatus = 'sent') =
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ record_ids: recordIds, email_status: emailStatus }),
 });
+// Bulk-send branded certificate emails via SES (stubbed to console unless
+// CERT_EMAIL_ENABLED + SES creds are set). Marks the records emailed on success.
+export const sendCertificateEmails = (recordIds) => appRequest('/api/certificates/records/send-emails/', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ record_ids: recordIds }),
+});
 export const downloadCertificateRecordsCsv = async (recordIds) => {
   const response = await fetch(`${API_URL}/api/certificates/records/csv/`, {
     method: 'POST',

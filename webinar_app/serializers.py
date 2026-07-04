@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import WebinarEvent, RegistrationForm, CalendarEvent
+from .models import WebinarEvent, RegistrationForm, CalendarEvent, EventFormQuestion
 
 class WebinarEventSerializer(serializers.ModelSerializer):
     class Meta:
@@ -14,4 +14,9 @@ class RegistrationFormSerializer(serializers.ModelSerializer):
 class CalendarEventSerializer(serializers.ModelSerializer):
     class Meta:
         model = CalendarEvent
+        fields = '__all__'
+
+class EventFormQuestionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventFormQuestion
         fields = '__all__'

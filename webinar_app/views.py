@@ -11,8 +11,11 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny, DjangoModelPermissions, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import WebinarEvent, RegistrationForm, CalendarEvent
-from .serializers import WebinarEventSerializer, RegistrationFormSerializer, CalendarEventSerializer
+from .models import WebinarEvent, RegistrationForm, CalendarEvent, EventFormQuestion
+from .serializers import (
+    WebinarEventSerializer, RegistrationFormSerializer,
+    CalendarEventSerializer, EventFormQuestionSerializer,
+)
 from . import turso_client
 from . import razorpay_client
 from .ses_email import send_registration_confirmation
@@ -351,18 +354,26 @@ def register_for_event(request):
             turso_client.setup_tables()
             turso_client.execute(
                 """INSERT INTO registrations
-                   (event_id, event_title, event_type, event_date, name, email, phone, city, registered_at)
-                   VALUES (:event_id, :event_title, :event_type, :event_date, :name, :email, :phone, :city, :registered_at)""",
+                   (event_id, event_title, event_type, event_date, name, email, phone,
+                    role, organization, country, city, source, expectations, speaker_question, registered_at)
+                   VALUES (:event_id, :event_title, :event_type, :event_date, :name, :email, :phone,
+                           :role, :organization, :country, :city, :source, :expectations, :speaker_question, :registered_at)""",
                 {
-                    'event_id':     str(data.get('event_id') or ''),
-                    'event_title':  event_title,
-                    'event_type':   event_type,
-                    'event_date':   event_date,
-                    'name':         name,
-                    'email':        email,
-                    'phone':        str(data.get('phone') or ''),
-                    'city':         str(data.get('city') or ''),
-                    'registered_at': now,
+                    'event_id':        str(data.get('event_id') or ''),
+                    'event_title':     event_title,
+                    'event_type':      event_type,
+                    'event_date':      event_date,
+                    'name':            name,
+                    'email':           email,
+                    'phone':           str(data.get('phone') or ''),
+                    'role':            str(data.get('role') or ''),
+                    'organization':    str(data.get('organization') or ''),
+                    'country':         str(data.get('country') or ''),
+                    'city':            str(data.get('city') or ''),
+                    'source':          str(data.get('source') or ''),
+                    'expectations':    str(data.get('expectations') or ''),
+                    'speaker_question':str(data.get('speaker_question') or ''),
+                    'registered_at':   now,
                 },
             )
         except turso_client.TursoError as exc:
@@ -693,4 +704,229 @@ def razorpay_webhook(request):
         except turso_client.TursoError:
             pass
 
-    return HttpResponse('ok')
+
+# ─── Form Questions ───────────────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def form_questions(request):
+    """List or create form questions for an event/webinar.
+    GET is public (website reads form schema). POST requires a logged-in admin.
+    """
+    event_key  = request.query_params.get('event_key', '').strip()
+    event_type = request.query_params.get('event_type', '').strip()
+
+    if request.method == 'GET':
+        qs = EventFormQuestion.objects.filter(event_key=event_key, event_type=event_type).order_by('order')
+        return Response(EventFormQuestionSerializer(qs, many=True).data)
+
+    # POST — admin only
+    if not request.user or not request.user.is_authenticated:
+        return Response({'error': 'Authentication required.'}, status=status.HTTP_403_FORBIDDEN)
+
+    # POST — create; prefer body values, fall back to query params
+    body_key  = str(request.data.get('event_key') or '').strip()
+    body_type = str(request.data.get('event_type') or '').strip()
+    data = {
+        **request.data,
+        'event_key':  body_key  or event_key,
+        'event_type': body_type or event_type,
+    }
+    serializer = EventFormQuestionSerializer(data=data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def form_question_detail(request, pk):
+    """Retrieve, update or delete a single form question."""
+    try:
+        question = EventFormQuestion.objects.get(pk=pk)
+    except EventFormQuestion.DoesNotExist:
+        return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(EventFormQuestionSerializer(question).data)
+
+    if request.method == 'PATCH':
+        serializer = EventFormQuestionSerializer(question, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    # DELETE
+    question.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reorder_form_questions(request):
+    """Bulk-update `order` field. Body: { items: [{id, order}, …] }"""
+    items = request.data.get('items', [])
+    updated = []
+    for item in items:
+        try:
+            q = EventFormQuestion.objects.get(pk=item['id'])
+            q.order = item['order']
+            q.save(update_fields=['order'])
+            updated.append(q.id)
+        except (EventFormQuestion.DoesNotExist, KeyError):
+            pass
+    return Response({'updated': updated})
+
+
+# ─── Public events listing (website) ─────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_public_events(request):
+    """
+    Public endpoint — no JWT required.
+    Returns all EventRegistration rows so the website can list them dynamically.
+    """
+    from tiesverse_app.models import EventRegistration
+    status_filter = request.query_params.get('status', '')
+    try:
+        qs = EventRegistration.objects.using('turso_db').all()
+        if status_filter in ('upcoming', 'past'):
+            qs = qs.filter(status=status_filter)
+        data = [
+            {
+                'kind':           e.kind or 'webinar',
+                'title':          e.title or '',
+                'description':    e.description or '',
+                'date':           e.date or '',
+                'time_tz':        e.time_tz or '',
+                'host':           e.host or '',
+                'host_image_url': e.host_image_url or '',
+                'price':          int(e.price or 0),
+                'cover_url':      e.cover_url or '',
+                'status':         e.status or 'upcoming',
+                'slug':           slugify(e.title or ''),
+            }
+            for e in qs
+        ]
+        return Response(data)
+    except Exception as exc:
+        logger.warning('list_public_events failed: %s', exc)
+        return Response([])
+
+
+# ─── Attendee Tracking (Turso) ────────────────────────────────────────────────
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def mark_attended(request):
+    """
+    Toggle the `attended` flag on Turso registration rows.
+    Body: { ids: [int, …], attended: true|false }
+    """
+    ids      = request.data.get('ids', [])
+    attended = bool(request.data.get('attended', True))
+
+    if not ids:
+        return Response({'error': 'No ids provided.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not turso_client.is_configured():
+        return Response({'error': 'Turso not configured.'}, status=503)
+
+    try:
+        turso_client.setup_tables()
+    except turso_client.TursoError:
+        pass
+
+    placeholders = ', '.join([':id' + str(i) for i in range(len(ids))])
+    params = {f'id{i}': id_val for i, id_val in enumerate(ids)}
+    params['attended'] = 1 if attended else 0
+
+    try:
+        turso_client.execute(
+            f"UPDATE registrations SET attended=:attended WHERE id IN ({placeholders})",
+            params,
+        )
+    except turso_client.TursoError as exc:
+        logger.error('mark_attended update failed: %s', exc)
+        return Response({'error': str(exc)}, status=503)
+    return Response({'updated': len(ids), 'attended': attended})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_registrations_extended(request):
+    """
+    Same as list_registrations but includes the `attended` column.
+    GET /api/webinar/registrations-full/
+    Optional query: ?event_key=... to filter by event
+    """
+    if not turso_client.is_configured():
+        return Response({'rows': [], 'count': 0})
+    try:
+        turso_client.setup_tables()
+    except turso_client.TursoError as exc:
+        logger.error('setup_tables failed in list_registrations_extended: %s', exc)
+        return Response({'rows': [], 'count': 0, 'error': str(exc)}, status=503)
+
+    event_key = request.query_params.get('event_key', '').strip()
+    try:
+        if event_key:
+            rows = turso_client.execute(
+                "SELECT * FROM registrations WHERE event_id=:ek ORDER BY registered_at DESC LIMIT 1000",
+                {'ek': event_key},
+            )
+        else:
+            rows = turso_client.execute(
+                "SELECT * FROM registrations ORDER BY registered_at DESC LIMIT 1000"
+            )
+        return Response({'rows': rows, 'count': len(rows)})
+    except turso_client.TursoError as exc:
+        logger.error('list_registrations_extended query failed: %s', exc)
+        return Response({'rows': [], 'count': 0, 'error': str(exc)}, status=503)
+
+
+# ─── Event Certificate Link ───────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def event_certificate_link(request):
+    """
+    GET  ?event_key=...&event_type=event|webinar  → current cert assignment
+    POST { event_key, event_type, template_id, template_name }  → save assignment
+    """
+    from tiesverse_app.models import EventRegistration, Event
+
+    event_key  = request.query_params.get('event_key') or request.data.get('event_key', '')
+    event_type = request.query_params.get('event_type') or request.data.get('event_type', 'webinar')
+    event_key  = str(event_key).strip()
+    event_type = str(event_type).strip().lower()
+
+    def _get_obj():
+        if event_type == 'event':
+            return Event.objects.filter(id=event_key).first() or \
+                   Event.objects.filter(title__iexact=event_key).first()
+        return EventRegistration.objects.filter(id=event_key).first() or \
+               EventRegistration.objects.filter(title__iexact=event_key).first()
+
+    if request.method == 'GET':
+        obj = _get_obj()
+        if not obj:
+            return Response({'template_id': '', 'template_name': ''})
+        return Response({
+            'template_id':   getattr(obj, 'certificate_template_id', ''),
+            'template_name': getattr(obj, 'certificate_template_name', ''),
+        })
+
+    # POST — save assignment
+    template_id   = str(request.data.get('template_id', '')).strip()
+    template_name = str(request.data.get('template_name', '')).strip()
+    obj = _get_obj()
+    if not obj:
+        return Response({'error': 'Event/webinar not found.'}, status=404)
+
+    obj.certificate_template_id   = template_id
+    obj.certificate_template_name = template_name
+    obj.save(update_fields=['certificate_template_id', 'certificate_template_name'])
+    return Response({'saved': True, 'template_id': template_id, 'template_name': template_name})

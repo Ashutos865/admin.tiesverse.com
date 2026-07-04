@@ -279,7 +279,11 @@ export function OfferLetter() {
     const pdf_base64 = buildPdf(modal).output('datauristring').split(',')[1];
     const res = await sendOffer({
       email: modal.email, name: fullName(modal), pdf_base64,
-      subject: 'Your Offer Letter — Tiesverse',
+      subject: `Offer Letter — ${form.role_title || modal.roles || 'Tiesverse'} | Tiesverse`,
+      role: form.role_title || modal.roles || 'Team Member',
+      department: modal.department || 'N/A',
+      status: 'Selected',
+      effective_date: form.joining_date || today,
     });
     setSending(false);
     setToast(res?.message || res?.error || 'Done');

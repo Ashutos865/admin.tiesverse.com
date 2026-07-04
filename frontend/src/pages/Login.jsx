@@ -1,5 +1,5 @@
 import { useContext, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, LoaderCircle, Lock, User } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import './Login.css';
@@ -53,13 +53,13 @@ const Login = () => {
 
           <form className="login-form" onSubmit={handleSubmit}>
             <label className="login-field">
-              <span>Username or Email</span>
+              <span>Username</span>
               <div className="login-input">
                 <User size={19} aria-hidden="true" />
                 <input
                   type="text"
                   autoComplete="username"
-                  placeholder="ahan"
+                  placeholder="your username"
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
                   required
@@ -94,6 +94,8 @@ const Login = () => {
               {submitting && <LoaderCircle size={19} className="login-spinner" aria-hidden="true" />}
               {submitting ? 'Authenticating…' : 'Log In'}
             </button>
+
+            <Link to="/forgot-password" className="login-forgot">Forgot password?</Link>
           </form>
         </div>
       </section>

@@ -223,3 +223,7 @@ __marimo__/
 # Local standalone career site
 temp_main_site_of_carrer/
 
+# Runtime server logs
+server_err.txt
+server_out.txt
+

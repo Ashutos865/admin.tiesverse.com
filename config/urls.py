@@ -26,6 +26,7 @@ from config.certificate_workflow import (
     certificate_mark_emailed,
     certificate_records,
     certificate_records_csv,
+    certificate_send_emails,
     certificate_sources,
 )
 from rest_framework.routers import DefaultRouter
@@ -50,5 +51,6 @@ urlpatterns = [
     path('api/certificates/records/', certificate_records, name='certificate_records'),
     path('api/certificates/records/csv/', certificate_records_csv, name='certificate_records_csv'),
     path('api/certificates/records/mark-emailed/', certificate_mark_emailed, name='certificate_mark_emailed'),
+    path('api/certificates/records/send-emails/', certificate_send_emails, name='certificate_send_emails'),
     path('api/', include(router.urls)),
 ]
