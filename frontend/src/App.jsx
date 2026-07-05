@@ -41,6 +41,8 @@ import AssetsPage from './pages/Career/AssetsPage.jsx';
 import TasksPage from './pages/Career/TasksPage.jsx';
 import MyWork from './pages/MyWork/MyWork.jsx';
 import AdvisoryPanel from './pages/Advisory/AdvisoryPanel.jsx';
+import SignupApprovals from './pages/Career/SignupApprovals.jsx';
+import PublicSignup from './pages/Signup/PublicSignup.jsx';
 
 // Certificate Generator
 import CertificateTemplates from './pages/Certificates/CertificateTemplates.jsx';
@@ -62,6 +64,7 @@ function App() {
           <Router>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/signup/:hash" element={<PublicSignup />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/" element={<Navigate to="/tiesverse/dashboard" replace />} />
@@ -123,6 +126,7 @@ function App() {
               <Route path="/hr/offboarding" element={<OffboardingPage />} />
               <Route path="/hr/assets" element={<AssetsPage />} />
               <Route path="/hr/tasks" element={<TasksPage />} />
+              <Route path="/hr/signups" element={<SignupApprovals />} />
 
               {/* Advisory oversight + weekly updates */}
               <Route path="/advisory" element={<AdvisoryPanel />} />

@@ -105,6 +105,7 @@ const portals = [
       { name: 'Offboarding',     path: '/hr/offboarding', icon: LogOut,            perms: ['view_offboardingrequest'] },
       { name: 'Assets',          path: '/hr/assets',      icon: PackageOpen,       perms: ['view_asset'] },
       { name: 'Tasks',           path: '/hr/tasks',       icon: MonitorSmartphone, perms: ['view_task'] },
+      { name: 'New Signups',     path: '/hr/signups',     icon: Users,             perms: ['view_onboardingsubmission', 'add_onboardingsubmission'] },
     ],
   },
   {

@@ -332,6 +332,17 @@ export const getAdvisoryTaskOversight = () => adminFetch('/api/career/advisory/t
 export const getAdvisoryDailyUpdates = () => adminFetch('/api/career/advisory/daily-updates/');
 export const getWeeklyUpdates = () => adminFetch('/api/career/weekly-updates/');
 export const submitWeeklyUpdate = (data) => adminFetch('/api/career/weekly-updates/', 'POST', data);
+
+// Self-service signup — public (no auth) submit + OTP; HR (authed) review
+export const publicSignup = (linkHash, formData) =>
+  fetch(`${API_URL}/api/career/signup/${linkHash}/`, { method: 'POST', body: formData }).then(r => r.json());
+export const verifySignupOtp = (linkHash, email, otp) =>
+  fetch(`${API_URL}/api/career/signup/${linkHash}/verify/`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, otp }),
+  }).then(r => r.json());
+export const getSignups = () => adminFetch('/api/career/signups/');
+export const approveSignup = (id, data) => adminFetch(`/api/career/signups/${id}/approve/`, 'POST', data);
+export const rejectSignup = (id) => adminFetch(`/api/career/signups/${id}/reject/`, 'POST', {});
 // MASTER DIRECTORY — unified people search across members, registrations, certificates
 export const searchDirectory = (q) => adminFetch(`/api/career/directory?q=${encodeURIComponent(q || '')}`);
 

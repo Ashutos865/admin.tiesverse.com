@@ -1697,6 +1697,20 @@ class PublicSignupView(APIView):
         name = (request.data.get('name') or '').strip()
         email = (request.data.get('email') or '').strip().lower()
         photo_url = (request.data.get('photo_url') or '').strip()
+        # A multipart `photo` file -> convert to WebP -> Cloudinary (min storage)
+        photo_file = request.FILES.get('photo')
+        if photo_file and not photo_url:
+            try:
+                from tiesverse_app.media_views import to_webp
+                import cloudinary.uploader
+                from django.conf import settings as dj
+                webp = to_webp(photo_file)
+                res = cloudinary.uploader.upload(
+                    webp, folder=getattr(dj, 'CLOUDINARY_UPLOAD_FOLDER', 'tiesverse_admin'),
+                    resource_type='image', format='webp')
+                photo_url = res.get('secure_url') or ''
+            except Exception as exc:  # noqa: BLE001
+                print(f'[SIGNUP PHOTO] {exc}')
         if not name or not email:
             return Response({'error': 'Name and email are required.'}, status=400)
         if OnboardingSubmission.objects.filter(candidate_email__iexact=email).exists():
