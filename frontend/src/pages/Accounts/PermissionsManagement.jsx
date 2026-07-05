@@ -1,12 +1,18 @@
 import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
+import { usePermissions } from '../../context/PermissionContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-import { Save, RefreshCw, Shield, Check, User as UserIcon, Settings, X as XIcon } from 'lucide-react';
+import { Save, RefreshCw, Shield, Check, User as UserIcon, Settings, X as XIcon, Users } from 'lucide-react';
 
 const PermissionsManagement = () => {
   const { authTokens } = useContext(AuthContext);
+  const { isSuperuser, hasPermission } = usePermissions();
+
+  // Team lead mode: can delegate but not a superuser
+  const isDelegateMode = !isSuperuser && hasPermission('can_delegate_permissions');
+
   const [users, setUsers] = useState([]);
   const [availablePermissions, setAvailablePermissions] = useState([]);
   const [userPerms, setUserPerms] = useState({});
@@ -30,13 +36,20 @@ const PermissionsManagement = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
+      const usersUrl = isDelegateMode
+        ? `${API_URL}/api/accounts/team-members-for-delegation/`
+        : `${API_URL}/api/accounts/users/`;
+      const permsUrl = isDelegateMode
+        ? `${API_URL}/api/accounts/delegatable-permissions/`
+        : `${API_URL}/api/accounts/permissions/`;
+
       const [usersRes, permsRes] = await Promise.all([
-        axios.get(`${API_URL}/api/accounts/users/`, { headers }),
-        axios.get(`${API_URL}/api/accounts/permissions/`, { headers }),
+        axios.get(usersUrl, { headers }),
+        axios.get(permsUrl, { headers }),
       ]);
-      const staffUsers = usersRes.data.filter(u => !u.is_superuser);
+      const staffUsers = (usersRes.data || []).filter(u => !u.is_superuser);
       setUsers(staffUsers);
-      setAvailablePermissions(permsRes.data);
+      setAvailablePermissions(permsRes.data || []);
       const permMap = {};
       staffUsers.forEach(u => { permMap[u.id] = new Set(u.user_permissions || []); });
       setUserPerms(permMap);
@@ -56,19 +69,53 @@ const PermissionsManagement = () => {
   }, {});
 
   const friendlyModelNames = {
-    'event': 'Events', 'article': 'Articles', 'youtubevideo': 'YouTube Videos',
-    'workshop': 'Workshops', 'teammember': 'Team Members', 'guest': 'Guests',
-    'position': 'Positions', 'enrollment': 'Applications', 'offerletter': 'Offer Letters',
-    'webinarevent': 'Webinar Events', 'registrationform': 'Registrations',
+    // Tiesverse
+    'event': 'Events',
+    'article': 'Articles',
+    'department': 'Departments',
+    'youtubevideo': 'YouTube Videos',
+    'workshop': 'Workshops',
+    'teammember': 'Team Members',
+    'guest': 'Guests',
+    // Career Portal
+    'position': 'Positions',
+    'enrollment': 'Applications',
+    'offerletter': 'Offer Letters',
+    'onboardingsubmission': 'Onboarding / Team Members',
+    'memberaccount': 'Member Accounts',
+    'documentauditlog': 'Document Audit Logs',
+    // HR Portal
+    'hrdepartment': 'HR Departments',
+    'attendancerecord': 'Attendance',
+    'leaverequest': 'Leave Requests',
+    'asset': 'Assets',
+    'task': 'Tasks',
+    // Accounts (special delegation permission)
+    'userprofile': 'Delegation Access',
+    // Webinar
+    'webinarevent': 'Webinar Events',
+    'registrationform': 'Registrations',
     'eventregistration': 'Webinars & Workshops',
     'calendarevent': 'Calendar Events',
+    'eventspeaker': 'Speakers',
+    'coupon': 'Coupons',
+    'eventformquestion': 'Form Questions',
   };
   const friendlyAppNames = {
-    'tiesverse_app': 'Tiesverse Portal', 'career_app': 'Career Portal', 'webinar_app': 'Webinar Portal',
+    'tiesverse_app': 'Tiesverse Portal',
+    'career_app': 'Career & HR Portal',
+    'webinar_app': 'Webinar Portal',
+    'accounts_app': 'Admin Access',
   };
   const appColors = {
-    'tiesverse_app': '#8B5CF6', 'career_app': '#3B82F6', 'webinar_app': '#10B981',
+    'tiesverse_app': '#8B5CF6',
+    'career_app': '#3B82F6',
+    'webinar_app': '#10B981',
+    'accounts_app': '#F59E0B',
   };
+
+  // Models that belong to the HR Portal section within career_app
+  const hrModels = new Set(['hrdepartment', 'attendancerecord', 'leaverequest', 'asset', 'task', 'memberaccount', 'documentauditlog']);
   const actionLabels = { 'view': 'View', 'add': 'Add', 'change': 'Edit', 'delete': 'Delete' };
   const actionColors = { 'view': '#3B82F6', 'add': '#10B981', 'change': '#F59E0B', 'delete': '#EF4444' };
 
@@ -109,7 +156,10 @@ const PermissionsManagement = () => {
     setSaving(userId);
     try {
       const permsList = Array.from(userPerms[userId] || []);
-      await axios.patch(`${API_URL}/api/accounts/users/${userId}/`, { permissions: permsList }, { headers });
+      const url = isDelegateMode
+        ? `${API_URL}/api/accounts/users/${userId}/delegate/`
+        : `${API_URL}/api/accounts/users/${userId}/`;
+      await axios.patch(url, { permissions: permsList }, { headers });
       showToast('Permissions saved successfully!');
     } catch (error) {
       console.error("Error saving permissions:", error);
@@ -170,6 +220,11 @@ const PermissionsManagement = () => {
                 </h3>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                   Configuring access for <b>{selectedUserObj?.username}</b>
+                  {isDelegateMode && (
+                    <span style={{ marginLeft: '0.5rem', color: '#F59E0B', fontWeight: 600 }}>
+                      · Team Lead Mode
+                    </span>
+                  )}
                 </span>
               </div>
               <button onClick={() => setActiveModal(null)} style={styles.closeBtn}>
@@ -223,15 +278,28 @@ const PermissionsManagement = () => {
         </div>
       )}
 
+      {/* ── Delegation Mode Banner ── */}
+      {isDelegateMode && (
+        <div style={styles.delegateBanner}>
+          <Users size={16} />
+          <div>
+            <strong>Team Lead Mode</strong> — You can only assign permissions you personally hold.
+            Permissions granted by admins outside your scope are preserved automatically.
+          </div>
+        </div>
+      )}
+
       {/* ── Page Header ── */}
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>
             <Shield size={26} style={{ color: 'var(--primary)' }} />
-            Permissions Management
+            {isDelegateMode ? 'Team Permissions' : 'Permissions Management'}
           </h1>
           <p style={styles.subtitle}>
-            Select a user on the left, then click the settings gear to configure module permissions.
+            {isDelegateMode
+              ? 'Manage permissions for your team members. You can only grant permissions you hold.'
+              : 'Select a user on the left, then click the settings gear to configure module permissions.'}
           </p>
         </div>
         <button onClick={fetchData} style={styles.refreshBtn}>
@@ -244,6 +312,13 @@ const PermissionsManagement = () => {
           <UserIcon size={40} style={{ color: 'var(--text-muted)', marginBottom: '0.75rem' }} />
           <p style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>
             No staff users found. Create staff users first from User Management.
+          </p>
+        </div>
+      ) : isDelegateMode && users.length === 0 ? (
+        <div style={styles.emptyState}>
+          <Users size={40} style={{ color: 'var(--text-muted)', marginBottom: '0.75rem' }} />
+          <p style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>
+            No team members found in your department. Make sure your profile email matches your onboarding record.
           </p>
         </div>
       ) : (
@@ -319,6 +394,41 @@ const PermissionsManagement = () => {
                     const someChecked = allPerms.some(p => userPerms[selectedUser]?.has(p.codename));
                     const color = appColors[appLabel] || 'var(--primary)';
 
+                    // Split career_app into two visual subsections
+                    const modelEntries = Object.entries(models);
+                    const careerModels = appLabel === 'career_app'
+                      ? modelEntries.filter(([mn]) => !hrModels.has(mn))
+                      : modelEntries;
+                    const hrModelEntries = appLabel === 'career_app'
+                      ? modelEntries.filter(([mn]) => hrModels.has(mn))
+                      : [];
+
+                    const renderModelRow = ([modelName, perms]) => {
+                      const summary = getModelSummary(selectedUser, perms);
+                      const orderedActions = ['view', 'add', 'change', 'delete'];
+                      const sortedPerms = [...perms].sort((a, b) => {
+                        const aA = a.codename.split('_')[0];
+                        const bA = b.codename.split('_')[0];
+                        return orderedActions.indexOf(aA) - orderedActions.indexOf(bA);
+                      });
+                      return (
+                        <div key={modelName} style={styles.modelRow}>
+                          <div style={styles.modelLeft}>
+                            <span style={styles.modelName}>{friendlyModelNames[modelName] || modelName}</span>
+                          </div>
+                          <div style={styles.modelRight}>
+                            <span style={{ ...styles.summaryText, color: summary.color }}>{summary.text}</span>
+                            <button
+                              onClick={() => setActiveModal({ appLabel, modelName, perms: sortedPerms })}
+                              style={styles.configBtn}
+                            >
+                              <Settings size={14} /> Configure
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    };
+
                     return (
                       <div key={appLabel} style={styles.appSection}>
                         <div style={styles.appHeader}>
@@ -344,38 +454,27 @@ const PermissionsManagement = () => {
                           </button>
                         </div>
 
-                        {Object.entries(models).map(([modelName, perms]) => {
-                          const summary = getModelSummary(selectedUser, perms);
-                          
-                          // FORCE ORDER: view, add, change, delete
-                          const orderedActions = ['view', 'add', 'change', 'delete'];
-                          const sortedPerms = [...perms].sort((a, b) => {
-                            const aAction = a.codename.split('_')[0];
-                            const bAction = b.codename.split('_')[0];
-                            return orderedActions.indexOf(aAction) - orderedActions.indexOf(bAction);
-                          });
+                        {/* Career section */}
+                        {careerModels.length > 0 && (
+                          <>
+                            {appLabel === 'career_app' && (
+                              <div style={styles.subSectionHeader}>
+                                <span style={{ color: '#3B82F6' }}>⬤</span> Career Portal
+                              </div>
+                            )}
+                            {careerModels.map(renderModelRow)}
+                          </>
+                        )}
 
-                          return (
-                            <div key={modelName} style={styles.modelRow}>
-                              <div style={styles.modelLeft}>
-                                <span style={styles.modelName}>
-                                  {friendlyModelNames[modelName] || modelName}
-                                </span>
-                              </div>
-                              <div style={styles.modelRight}>
-                                <span style={{ ...styles.summaryText, color: summary.color }}>
-                                  {summary.text}
-                                </span>
-                                <button
-                                  onClick={() => setActiveModal({ appLabel, modelName, perms: sortedPerms })}
-                                  style={styles.configBtn}
-                                >
-                                  <Settings size={14} /> Configure
-                                </button>
-                              </div>
+                        {/* HR section (career_app only) */}
+                        {hrModelEntries.length > 0 && (
+                          <>
+                            <div style={styles.subSectionHeader}>
+                              <span style={{ color: '#10B981' }}>⬤</span> HR Portal
                             </div>
-                          );
-                        })}
+                            {hrModelEntries.map(renderModelRow)}
+                          </>
+                        )}
                       </div>
                     );
                   })}
@@ -391,6 +490,12 @@ const PermissionsManagement = () => {
 
 /* ─── Styles Object ─── */
 const styles = {
+  delegateBanner: {
+    display: 'flex', alignItems: 'flex-start', gap: '0.6rem',
+    padding: '0.75rem 1.1rem', borderRadius: '10px', marginBottom: '1rem',
+    background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)',
+    color: '#92400e', fontSize: '0.82rem', lineHeight: 1.4,
+  },
   loadingWrap: {
     display: 'flex', justifyContent: 'center', alignItems: 'center',
     height: '50vh', flexDirection: 'column', gap: '0.75rem',
@@ -507,6 +612,16 @@ const styles = {
   grantAllBtn: {
     padding: '5px 14px', borderRadius: '6px', border: '1px solid var(--border)',
     cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, transition: 'all 0.2s',
+  },
+
+  /* ── Sub-section divider inside an app block ── */
+  subSectionHeader: {
+    padding: '0.5rem 1.2rem',
+    fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase',
+    letterSpacing: '0.08em', color: 'var(--text-muted)',
+    background: 'rgba(0,0,0,0.04)',
+    borderBottom: '1px solid var(--border)',
+    display: 'flex', alignItems: 'center', gap: '0.5rem',
   },
 
   /* ── Model Row ── */

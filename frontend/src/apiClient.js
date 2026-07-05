@@ -7,16 +7,48 @@ export const setApiToken = (token) => { _accessToken = token; };
 const getToken = () => _accessToken;
 export const getApiToken = getToken;
 
+// Add trailing slash to path portion only — never to query string
+const withSlash = (path) => {
+    const qi = path.indexOf('?');
+    if (qi >= 0) {
+        const p = path.slice(0, qi);
+        return (p.endsWith('/') ? p : `${p}/`) + path.slice(qi);
+    }
+    return path.endsWith('/') ? path : `${path}/`;
+};
+
 const publicFetch = async (path) => {
-    // Django viewsets usually require a trailing slash
-    const fetchPath = path.endsWith('/') ? path : `${path}/`;
-    const res = await fetch(`${API_URL}${fetchPath}`);
+    const res = await fetch(`${API_URL}${withSlash(path)}`);
     if (!res.ok) return { error: res.statusText };
     return res.json();
 };
 
+// Unauthenticated POST (password reset, etc.) — no bearer token.
+const publicPost = async (path, body = {}) => {
+    try {
+        const res = await fetch(`${API_URL}${withSlash(path)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const text = await res.text();
+        let data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text.slice(0, 160) }; }
+        if (!res.ok && !data.error) data.error = `Request failed (${res.status})`;
+        return data;
+    } catch {
+        return { error: 'Network error. Please try again.' };
+    }
+};
+
+// PASSWORD RESET (public)
+export const requestPasswordReset = (identifier) =>
+    publicPost('/api/accounts/password-reset/', { email: identifier });
+export const confirmPasswordReset = ({ uid, token, password }) =>
+    publicPost('/api/accounts/password-reset/confirm/', { uid, token, password });
+
 const adminFetch = async (path, method = 'GET', body = null) => {
-    const fetchPath = path.endsWith('/') ? path : `${path}/`;
+    const fetchPath = withSlash(path);
     const options = {
         method,
         headers: {
@@ -67,6 +99,29 @@ export const uploadImage = async (file) => {
 };
 export const listCloudinaryImages = () =>
     adminFetch('/api/media/images').catch(() => ({ images: [] }));
+
+// Fetch an authenticated document (photo/aadhaar/etc.) as a blob URL. The API
+// needs the JWT in a header, so a plain <a href> to it 401s — use this instead.
+export const fetchDocBlobUrl = async (path) => {
+    const url = path.startsWith('http') ? path : `${API_URL}${path}`;
+    try {
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } });
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        return URL.createObjectURL(blob);
+    } catch {
+        return null;
+    }
+};
+
+// Open an authenticated document in a new tab (fetches with the JWT first).
+export const viewDoc = async (path) => {
+    const blobUrl = await fetchDocBlobUrl(path);
+    if (!blobUrl) return { error: 'Could not open document (are you still signed in?).' };
+    window.open(blobUrl, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    return { ok: true };
+};
 
 export const downloadFile = async (path, filename) => {
     const fetchPath = path.startsWith('http') ? path : `${API_URL}${path}`;
@@ -126,6 +181,7 @@ export const deletePosition = (id) => adminFetch(`/api/career/positions/${id}`, 
 export const getCandidates = () => adminFetch('/api/career/enrollments').catch(() => []);
 export const getEnrollments = getCandidates;
 export const updateCandidateStatus = (id, data) => adminFetch(`/api/career/enrollments/${id}/update_status`, 'PATCH', data);
+export const scheduleInterview = (id, data) => adminFetch(`/api/career/enrollments/${id}/schedule_interview`, 'POST', data);
 export const updateEnrollment = updateCandidateStatus;
 export const deleteEnrollment = (id) => adminFetch(`/api/career/enrollments/${id}`, 'DELETE');
 
@@ -156,6 +212,44 @@ export const updateCoupon = (id, data) => adminFetch(`/api/webinar/coupons/${id}
 export const deleteCoupon = (id) => adminFetch(`/api/webinar/coupons/${id}`, 'DELETE');
 export const validateCoupon = (data) => adminFetch('/api/webinar/validate-coupon', 'POST', data);
 
+// WEBINAR — Registrations (extended, with attended column)
+export const getWebinarRegistrationsFull = (event_key = '') =>
+  adminFetch(`/api/webinar/registrations-full/${event_key ? `?event_key=${encodeURIComponent(event_key)}` : ''}`)
+    .then(r => (r?.error ? r : (r?.rows || [])))
+    .catch(() => []);
+
+// WEBINAR — Attendee tracking
+export const markAttended = (ids, attended) =>
+  adminFetch('/api/webinar/mark-attended', 'POST', { ids, attended });
+
+// WEBINAR — Form Questions (custom registration fields per event/webinar)
+export const getFormQuestions = (event_key, event_type) =>
+  adminFetch(`/api/webinar/form-questions/?event_key=${encodeURIComponent(event_key)}&event_type=${encodeURIComponent(event_type)}`)
+    .then(r => (Array.isArray(r) ? r : []))
+    .catch(() => []);
+export const createFormQuestion = (data) => adminFetch('/api/webinar/form-questions', 'POST', data);
+export const updateFormQuestion = (id, data) => adminFetch(`/api/webinar/form-questions/${id}`, 'PATCH', data);
+export const deleteFormQuestion = (id) => adminFetch(`/api/webinar/form-questions/${id}`, 'DELETE');
+export const reorderFormQuestions = (items) => adminFetch('/api/webinar/form-questions/reorder', 'POST', { items });
+
+// WEBINAR — Certificate template assignment per event/webinar
+export const getEventCertificateLink = (event_key, event_type) =>
+  adminFetch(`/api/webinar/event-certificate/?event_key=${encodeURIComponent(event_key)}&event_type=${encodeURIComponent(event_type)}`)
+    .catch(() => ({ template_id: '', template_name: '' }));
+export const saveEventCertificateLink = (data) => adminFetch('/api/webinar/event-certificate', 'POST', data);
+
+// WEBINAR — Meeting (one Google Meet per event)
+export const generateWebinarMeeting = (payload) => adminFetch('/api/webinar/generate-meeting/', 'POST', payload);
+export const getWebinarMeetingGuests = (event_pk) =>
+  adminFetch(`/api/webinar/meeting-guests/?event_pk=${encodeURIComponent(event_pk)}`)
+    .catch(() => ({ attendees: [], guests_can_see_other_guests: false, has_meeting: false }));
+
+// WEBINAR — Per-webinar mail automation (broadcast) + send analytics
+export const webinarBroadcast = (payload) => adminFetch('/api/webinar/broadcast/', 'POST', payload);
+export const getWebinarSendHistory = (event_key) =>
+  adminFetch(`/api/webinar/send-history/?event_key=${encodeURIComponent(event_key)}`)
+    .catch(() => ({ summary: {}, recipients: [], log: [] }));
+
 // SITE SETTINGS
 export const getSettings = () => adminFetch('/api/settings').catch(() => []);
 export const updateSetting = (key, data) => adminFetch(`/api/settings/${key}`, 'PATCH', data).catch(() => ({}));
@@ -163,6 +257,14 @@ export const updateSetting = (key, data) => adminFetch(`/api/settings/${key}`, '
 // PROFILE SETTINGS
 export const getProfile = () => adminFetch('/api/accounts/profile');
 export const updateProfile = (data) => adminFetch('/api/accounts/profile', 'PUT', data);
+
+// DELEGATED PERMISSIONS (team leads + superusers)
+export const getDelegatablePermissions = () =>
+    adminFetch('/api/accounts/delegatable-permissions').catch(() => []);
+export const getTeamMembersForDelegation = () =>
+    adminFetch('/api/accounts/team-members-for-delegation').catch(() => []);
+export const delegatePermissions = (userId, perms) =>
+    adminFetch(`/api/accounts/users/${userId}/delegate`, 'PATCH', { permissions: perms });
 
 // Career page aliases used by older pages
 export const getApplicants = getCandidates;
@@ -205,3 +307,102 @@ export const deleteGuest = (id) => deleteEventSpeaker(id);
 export const getWebinarListings = () => adminFetch('/api/landing/webinars').catch(() => []);
 export const updateWebinarEvent = (id, data) => adminFetch(`/api/landing/webinars/${id}`, 'PATCH', data);
 export const deleteWebinarEvent = (id) => adminFetch(`/api/landing/webinars/${id}`, 'DELETE');
+
+// HR DEPARTMENTS
+export const getHRDepartments = () => adminFetch('/api/career/hr-departments').catch(() => []);
+export const createHRDepartment = (data) => adminFetch('/api/career/hr-departments', 'POST', data);
+export const updateHRDepartment = (id, data) => adminFetch(`/api/career/hr-departments/${id}`, 'PATCH', data);
+export const deleteHRDepartment = (id) => adminFetch(`/api/career/hr-departments/${id}`, 'DELETE');
+
+// ONBOARDING
+export const initiateOnboarding = (data) => adminFetch('/api/career/onboarding/initiate', 'POST', data);
+export const getOnboardingList = () => adminFetch('/api/career/onboarding').catch(() => []);
+export const getOnboardingDetail = (id) => adminFetch(`/api/career/onboarding/${id}`);
+export const verifyOnboarding = (id, data) => adminFetch(`/api/career/onboarding/${id}/verify`, 'PATCH', data);
+export const getOnboardingDocUrl = (id, docType) => `${API_URL}/api/career/onboarding/${id}/doc/${docType}/`;
+export const addTeamMember = (data) => adminFetch('/api/career/onboarding/manual-add', 'POST', data);
+
+// CURRENT MEMBER — who am I + my access scope (drives self-service + role-aware nav)
+export const getMe = () => adminFetch('/api/career/me');
+// MASTER DIRECTORY — unified people search across members, registrations, certificates
+export const searchDirectory = (q) => adminFetch(`/api/career/directory?q=${encodeURIComponent(q || '')}`);
+
+// EMAIL TEMPLATES (superuser) — manage every send point's design/subject/sender
+export const getEmailTemplates = () => adminFetch('/api/accounts/email-templates');
+export const createEmailTemplate = (data) => adminFetch('/api/accounts/email-templates', 'POST', data);
+export const updateEmailTemplate = (id, data) => adminFetch(`/api/accounts/email-templates/${id}`, 'PATCH', data);
+export const deleteEmailTemplate = (id) => adminFetch(`/api/accounts/email-templates/${id}`, 'DELETE');
+export const testEmailTemplate = (id, to) => adminFetch(`/api/accounts/email-templates/${id}/test`, 'POST', { to });
+// Bulk mail-merge campaigns
+export const sendCampaign = (templateId, payload) => adminFetch(`/api/accounts/email-templates/${templateId}/send-campaign`, 'POST', payload);
+export const getCampaigns = () => adminFetch('/api/accounts/email-campaigns');
+export const getSESSenders = () => adminFetch('/api/accounts/ses-senders');
+
+// FEATURED CONTENT — homepage cards shown on the public website
+export const getFeatured = () => adminFetch('/api/accounts/featured');
+export const createFeatured = (data) => adminFetch('/api/accounts/featured', 'POST', data);
+export const updateFeatured = (id, data) => adminFetch(`/api/accounts/featured/${id}`, 'PATCH', data);
+export const deleteFeatured = (id) => adminFetch(`/api/accounts/featured/${id}`, 'DELETE');
+
+// CERTIFICATES & AUDIT LOG
+export const issueCertificate = (memberId, data) =>
+    adminFetch(`/api/career/onboarding/${memberId}/certificate`, 'PATCH', data);
+export const sendCertificateEmail = (memberId, data) =>
+    adminFetch(`/api/career/onboarding/${memberId}/send-certificate`, 'POST', data);
+export const getDocumentAuditLog = (memberId) =>
+    adminFetch(`/api/career/onboarding/${memberId}/audit-log`).catch(() => []);
+
+// ATTENDANCE
+export const getAttendanceList = (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return adminFetch(`/api/career/attendance${qs ? '?' + qs : ''}`).catch(() => []);
+};
+export const createAttendanceRecord = (data) => adminFetch('/api/career/attendance', 'POST', data);
+export const getAttendanceDetail = (id) => adminFetch(`/api/career/attendance/${id}`);
+export const updateAttendanceRecord = (id, data) => adminFetch(`/api/career/attendance/${id}`, 'PATCH', data);
+export const checkIn = (memberId) => adminFetch(`/api/career/attendance/member/${memberId}/checkin`, 'POST');
+export const checkOut = (memberId, data) => adminFetch(`/api/career/attendance/member/${memberId}/checkout`, 'PATCH', data);
+export const approveAttendance = (id, data) => adminFetch(`/api/career/attendance/${id}/approve`, 'PATCH', data);
+
+// LEAVE MANAGEMENT
+export const getLeaveList = (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return adminFetch(`/api/career/leave${qs ? '?' + qs : ''}`).catch(() => []);
+};
+export const createLeaveRequest = (data) => adminFetch('/api/career/leave', 'POST', data);
+export const getLeaveDetail = (id) => adminFetch(`/api/career/leave/${id}`);
+export const updateLeaveRequest = (id, data) => adminFetch(`/api/career/leave/${id}`, 'PATCH', data);
+export const reviewLeaveRequest = (id, data) => adminFetch(`/api/career/leave/${id}/review`, 'PATCH', data);
+
+// OFFBOARDING
+export const getOffboardingList = (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return adminFetch(`/api/career/offboarding${qs ? '?' + qs : ''}`).catch(() => []);
+};
+export const createOffboardingRequest = (data) => adminFetch('/api/career/offboarding', 'POST', data);
+export const getOffboardingDetail = (id) => adminFetch(`/api/career/offboarding/${id}`);
+export const updateOffboardingRequest = (id, data) => adminFetch(`/api/career/offboarding/${id}`, 'PATCH', data);
+export const reviewOffboardingRequest = (id, data) => adminFetch(`/api/career/offboarding/${id}/review`, 'PATCH', data);
+export const revokeOffboardingAccess = (id) => adminFetch(`/api/career/offboarding/${id}/revoke`, 'POST', {});
+export const reactivateOffboardedMember = (id) => adminFetch(`/api/career/offboarding/${id}/reactivate`, 'POST', {});
+
+// ASSET MANAGEMENT
+export const getAssets = (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return adminFetch(`/api/career/assets${qs ? '?' + qs : ''}`).catch(() => []);
+};
+export const createAsset = (data) => adminFetch('/api/career/assets', 'POST', data);
+export const getAssetDetail = (id) => adminFetch(`/api/career/assets/${id}`);
+export const updateAsset = (id, data) => adminFetch(`/api/career/assets/${id}`, 'PATCH', data);
+export const deleteAsset = (id) => adminFetch(`/api/career/assets/${id}`, 'DELETE');
+export const assignAsset = (id, data) => adminFetch(`/api/career/assets/${id}/assign`, 'PATCH', data);
+
+// TASK MANAGEMENT
+export const getTasks = (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return adminFetch(`/api/career/tasks${qs ? '?' + qs : ''}`).catch(() => []);
+};
+export const createTask = (data) => adminFetch('/api/career/tasks', 'POST', data);
+export const getTaskDetail = (id) => adminFetch(`/api/career/tasks/${id}`);
+export const updateTask = (id, data) => adminFetch(`/api/career/tasks/${id}`, 'PATCH', data);
+export const deleteTask = (id) => adminFetch(`/api/career/tasks/${id}`, 'DELETE');

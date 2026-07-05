@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -51,6 +51,8 @@ const defaultMailTemplate = {
 const CertificateGenerate = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const presetEventKey = location.state?.event_key || '';
   const [template, setTemplate] = useState(null);
   const [mode, setMode] = useState('single');
   const [values, setValues] = useState({});
@@ -64,7 +66,7 @@ const CertificateGenerate = () => {
   const [error, setError] = useState('');
   const [sources, setSources] = useState({ webinar_events: [], offer_letters: { total: 0, pending: 0 } });
   const [sourceType, setSourceType] = useState('webinar');
-  const [eventKey, setEventKey] = useState('');
+  const [eventKey, setEventKey] = useState(presetEventKey);
   const [sourceRows, setSourceRows] = useState([]);
   const [sourceLoading, setSourceLoading] = useState(false);
 
@@ -92,7 +94,7 @@ const CertificateGenerate = () => {
       .then((data) => {
         setSources(data);
         const firstEvent = data.webinar_events?.[0]?.event_key || '';
-        setEventKey((current) => current || firstEvent);
+        setEventKey((current) => current || presetEventKey || firstEvent);
       })
       .catch(() => {});
   }, [id]);

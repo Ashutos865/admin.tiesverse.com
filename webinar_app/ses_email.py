@@ -5,7 +5,7 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
-def send_registration_confirmation(to_email, name, event_title, event_type, event_date=''):
+def send_registration_confirmation(to_email, name, event_title, event_type, event_date='', meeting_link=''):
     """
     Send a confirmation email via AWS SES.
     Silently logs a warning if SES is not configured — never raises.
@@ -30,6 +30,13 @@ def send_registration_confirmation(to_email, name, event_title, event_type, even
 
         kind_label = 'webinar' if event_type == 'webinar' else 'event'
         date_line = f'<p style="margin:0 0 8px">Date: {event_date}</p>' if event_date else ''
+        meet_block = (
+            f'<div style="margin:0 0 24px">'
+            f'<a href="{meeting_link}" style="display:inline-block;background:#FE7A00;color:#fff;'
+            f'text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:700">Join the meeting</a>'
+            f'<p style="margin:10px 0 0;font-size:13px;color:#666;word-break:break-all">Or open this link at the scheduled time:<br>{meeting_link}</p>'
+            f'</div>'
+        ) if meeting_link else ''
 
         html_body = f"""
 <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
@@ -48,6 +55,7 @@ def send_registration_confirmation(to_email, name, event_title, event_type, even
       {date_line}
       <p style="margin:0;color:#666;font-size:14px">Type: {kind_label.title()}</p>
     </div>
+    {meet_block}
     <p style="margin:0;color:#666;font-size:13px">
       Questions? Reply to this email or reach us at contact@tiesverse.com
     </p>
@@ -61,6 +69,7 @@ def send_registration_confirmation(to_email, name, event_title, event_type, even
             f"Hi {name},\n\n"
             f"You're registered for: {event_title}\n"
             + (f"Date: {event_date}\n" if event_date else "")
+            + (f"Join link: {meeting_link}\n" if meeting_link else "")
             + "\nWe'll email you the joining link / venue details before the event.\n\n"
             "Questions? contact@tiesverse.com\n\n— Tiesverse"
         )

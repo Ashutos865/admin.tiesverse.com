@@ -216,6 +216,10 @@ class R2Storage:
         response = self.client().get_object(Bucket=bucket, Key=key)
         return response["Body"].read()
 
+    def put_object(self, key, file_bytes, content_type="application/octet-stream"):
+        bucket = os.environ.get("CLOUDFLARE_R2_BUCKET")
+        self.client().put_object(Bucket=bucket, Key=key, Body=file_bytes, ContentType=content_type)
+
     def ensure_configured(self):
         missing = [
             name

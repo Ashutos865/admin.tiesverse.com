@@ -2,7 +2,7 @@ from django.contrib.auth.models import User, Permission
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Setting, UserProfile
+from .models import Setting, UserProfile, EmailTemplate, EmailCampaign, FeaturedContent
 
 
 class PermissionSerializer(serializers.ModelSerializer):
@@ -22,6 +22,36 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'display_name', 'bio', 'email_notifications', 'push_notifications',
             'weekly_reports', 'two_factor_enabled', 'session_timeout', 'theme', 'accent_color'
         )
+
+
+class EmailTemplateSerializer(serializers.ModelSerializer):
+    # Generated server-side (or provided only in HTML mode), so never required.
+    body_html = serializers.CharField(required=False, allow_blank=True)
+    content_json = serializers.JSONField(required=False)
+
+    class Meta:
+        model = EmailTemplate
+        fields = (
+            'id', 'key', 'name', 'description', 'subject', 'from_name', 'from_email',
+            'content_json', 'body_html', 'is_enabled', 'allow_attachment', 'variables',
+            'is_custom', 'html_mode', 'updated_at', 'updated_by',
+        )
+        # body_html is derived unless html_mode; key/is_custom are managed by the view.
+        read_only_fields = ('id', 'key', 'is_custom', 'updated_at', 'updated_by')
+
+
+class EmailCampaignSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmailCampaign
+        fields = '__all__'
+        read_only_fields = ('id', 'created_at')
+
+
+class FeaturedContentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeaturedContent
+        fields = '__all__'
+        read_only_fields = ('id', 'created_at', 'updated_at')
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -114,16 +144,35 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['is_superuser'] = user.is_superuser
         token['is_staff'] = user.is_staff
 
-        # Embed all user permissions as a list of codenames
-        # For superusers, we embed a special flag — they bypass all checks anyway
+        # Embed all permissions (direct + group) as codenames so the frontend
+        # can check can_delegate_permissions regardless of how it was granted.
         if user.is_superuser:
             token['permissions'] = ['__all__']
         else:
-            token['permissions'] = list(
-                user.user_permissions.values_list('codename', flat=True)
+            direct = set(user.user_permissions.values_list('codename', flat=True))
+            group = set(
+                Permission.objects.filter(group__user=user).values_list('codename', flat=True)
             )
+            token['permissions'] = list(direct | group)
 
         return token
+
+    def validate(self, attrs):
+        # Authenticates + runs the stock is_active check, then enforces offboarding:
+        # if this member's last working day has arrived, revoke access and block login.
+        data = super().validate(attrs)
+        from rest_framework_simplejwt.exceptions import AuthenticationFailed
+        try:
+            from career_app.offboarding import enforce_offboarding_on_login
+            revoked = enforce_offboarding_on_login(self.user)
+        except AuthenticationFailed:
+            raise
+        except Exception:  # noqa: BLE001 — never let enforcement crash login for others
+            revoked = False
+        if revoked:
+            raise AuthenticationFailed('Your portal access has ended. Please contact HR.', 'offboarded')
+        return data
+
 
 class SettingSerializer(serializers.ModelSerializer):
     class Meta:

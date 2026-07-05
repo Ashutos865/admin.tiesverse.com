@@ -16,13 +16,22 @@ class AppRouter:
         return 'default'
 
     def allow_relation(self, obj1, obj2, **hints):
-        # Allow relations if both models are in the turso_db apps
-        if obj1._meta.app_label in self.route_app_labels and obj2._meta.app_label in self.route_app_labels:
+        labels = self.route_app_labels
+        a1, a2 = obj1._meta.app_label, obj2._meta.app_label
+
+        # Both sides in turso_db apps, or both in default-db apps.
+        if (a1 in labels) == (a2 in labels):
             return True
-        # Allow relations if both models are in the default db apps
-        elif obj1._meta.app_label not in self.route_app_labels and obj2._meta.app_label not in self.route_app_labels:
+
+        # Intentional cross-database FKs: career_app / webinar_app / tiesverse_app
+        # models reference auth.User (created_by, approved_by_user, reviewed_by_user,
+        # assigned_by_user, ...) and django_content_type. Those live in the default
+        # DB. SQLite doesn't enforce FKs across separate files and Django only stores
+        # the id, so these relations are safe to allow.
+        if {'auth', 'contenttypes'} & {a1, a2}:
             return True
-        # Cross-db relations are generally not allowed
+
+        # Any other cross-db relation stays disallowed.
         return False
 
     def allow_migrate(self, db, app_label, model_name=None, **hints):

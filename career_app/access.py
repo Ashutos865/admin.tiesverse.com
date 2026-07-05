@@ -1,0 +1,118 @@
+"""Central identity + team-scope resolution for the HR portal.
+
+Every "who am I / what am I allowed to see" decision goes through here so the
+rule lives in ONE place instead of being re-derived (and forgotten) per view.
+
+Model (department-match, no schema change):
+  - A logged-in User maps to a member (OnboardingSubmission) via MemberAccount.
+  - A member "leads" the departments where they are named lead/co-lead on an
+    HRDepartment (falling back to their own assigned_departments if they hold the
+    team_lead role but aren't named anywhere yet).
+  - A lead's team = every verified member who shares one of those departments.
+
+Scope returned by get_access_scope():
+  'all'  -> superusers, back-office staff with no member profile, and HR /
+            admin / advisory members: no row restriction (still permission-gated).
+  'team' -> team leads: their own team + themselves.
+  'self' -> ordinary members / interns: only their own rows.
+  'none' -> authenticated but resolves to nothing (defensive default).
+"""
+
+from __future__ import annotations
+
+from .models import OnboardingSubmission, MemberAccount, HRDepartment
+
+ORG_WIDE_ROLES = {'hr', 'admin', 'advisory'}
+ORG_WIDE_GROUPS = {'HR', 'Admins', 'Advisory'}
+
+
+def get_member_for_user(user):
+    """Resolve a Django User to their member record, or None.
+
+    Prefers the explicit MemberAccount link; falls back to an email match for
+    accounts created before the link existed.
+    """
+    if not user or not getattr(user, 'is_authenticated', False):
+        return None
+    acct = (
+        MemberAccount.objects.filter(user=user)
+        .select_related('submission')
+        .first()
+    )
+    if acct:
+        return acct.submission
+    if user.email:
+        return OnboardingSubmission.objects.filter(candidate_email__iexact=user.email).first()
+    return None
+
+
+def led_department_names(member):
+    """Set of department names this member leads."""
+    if not member:
+        return set()
+    name = (member.candidate_name or '').strip().lower()
+    led = set()
+    if name:
+        for dep in HRDepartment.objects.all():
+            if name in {
+                (dep.lead_name or '').strip().lower(),
+                (dep.co_lead_name or '').strip().lower(),
+            }:
+                led.add(dep.name)
+    # Fallback: a team_lead leads the departments they're assigned to, even if
+    # HR hasn't set lead_name to their exact name yet.
+    if not led and (member.portal_role or '') == 'team_lead':
+        led = set(member.assigned_departments or [])
+    return led
+
+
+def is_lead(member):
+    return bool(led_department_names(member))
+
+
+def team_member_ids(member):
+    """Member ids on this lead's team, including the lead. SQLite-safe (the
+    department overlap is computed in Python, not with a JSON __overlap query)."""
+    ids = {member.id} if member else set()
+    led = led_department_names(member)
+    if led:
+        for m in OnboardingSubmission.objects.filter(status='verified'):
+            if any(d in (m.assigned_departments or []) for d in led):
+                ids.add(m.id)
+    return ids
+
+
+def get_access_scope(user):
+    """Return (scope, member) — scope in {'all', 'team', 'self', 'none'}."""
+    if getattr(user, 'is_superuser', False):
+        return ('all', None)
+
+    member = get_member_for_user(user)
+
+    # Back-office staff (admin portal users with no member profile) keep org-wide
+    # access — their views are still gated by Django model permissions.
+    if member is None:
+        return ('all', None)
+
+    if (member.portal_role or '') in ORG_WIDE_ROLES or user.groups.filter(
+        name__in=ORG_WIDE_GROUPS
+    ).exists():
+        return ('all', member)
+
+    if is_lead(member):
+        return ('team', member)
+
+    return ('self', member)
+
+
+def scope_member_queryset(qs, user, field='member'):
+    """Restrict a queryset that has a FK to OnboardingSubmission (`field`) to the
+    rows the user is allowed to see."""
+    scope, member = get_access_scope(user)
+    if scope == 'all':
+        return qs
+    if scope == 'team' and member:
+        return qs.filter(**{f'{field}_id__in': team_member_ids(member)})
+    if scope == 'self' and member:
+        return qs.filter(**{f'{field}_id': member.id})
+    return qs.none()

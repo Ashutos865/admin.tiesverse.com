@@ -1,13 +1,20 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import {
     getPositions, createPosition, updatePosition, deletePosition,
     getOfferLetters, createOfferLetter, updateOfferLetter, deleteOfferLetter,
-    getCandidates, updateCandidateStatus, getFormGates, updateFormGates,
-    downloadFile, sendOffer
+    getCandidates, updateCandidateStatus, scheduleInterview, getFormGates, updateFormGates,
+    getOnboardingList, downloadFile, sendOffer, initiateOnboarding
 } from '../../apiClient';
-import { Plus, Edit2, Trash2, X, Sparkles, Briefcase, FileText, Mail, ToggleRight, CheckCircle, ExternalLink, Search, Download, Eye } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Sparkles, Briefcase, FileText, Mail, ToggleRight, CheckCircle, ExternalLink, Search, Download, Eye, UserCheck, Award, Send, CalendarDays, List as ListIcon } from 'lucide-react';
+import ScheduleCalendar from '../../components/ScheduleCalendar.jsx';
 import jsPDF from 'jspdf';
+
+const viewToggleStyle = (active) => ({
+    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: 'none',
+    borderRadius: 6, background: active ? 'var(--primary)' : 'transparent',
+    color: active ? '#fff' : 'var(--text-main)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+});
 import autoTable from 'jspdf-autotable';
 import './CareerPositions.css';
 import './ApplicationTracker.css';
@@ -161,6 +168,114 @@ const TAB_CONFIG = {
     },
 };
 
+// ── Certificate canvas (drawn once candidate is known) ──────────────────────
+function CertCanvas({ candidate }) {
+    const ref = useRef(null);
+    useEffect(() => {
+        const canvas = ref.current;
+        if (!canvas || !candidate) return;
+        const ctx = canvas.getContext('2d');
+        const W = 700, H = 490;
+        ctx.clearRect(0, 0, W, H);
+
+        // Background
+        ctx.fillStyle = '#fdfcf8';
+        ctx.fillRect(0, 0, W, H);
+
+        // Outer border
+        ctx.strokeStyle = '#3525cd';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(14, 14, W - 28, H - 28);
+        // Inner border
+        ctx.strokeStyle = '#c9a84c';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(22, 22, W - 44, H - 44);
+
+        // Corner ornaments
+        [[ 14, 14], [W-14, 14], [14, H-14], [W-14, H-14]].forEach(([x, y]) => {
+            ctx.fillStyle = '#3525cd';
+            ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
+        });
+
+        // Header block
+        ctx.fillStyle = '#3525cd';
+        ctx.fillRect(0, 0, W, 72);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 13px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.letterSpacing = '0.25em';
+        ctx.fillText('T I E S V E R S E', W / 2, 32);
+        ctx.font = '11px "Inter", sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fillText('CERTIFICATE OF SELECTION', W / 2, 52);
+
+        // Body text
+        ctx.fillStyle = '#5a5a7a';
+        ctx.font = '13px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('This is to certify that', W / 2, 120);
+
+        // Name
+        ctx.fillStyle = '#1a1a3e';
+        ctx.font = 'bold 34px Georgia, serif';
+        const fullName = `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim();
+        ctx.fillText(fullName, W / 2, 168);
+
+        // Divider
+        const grad = ctx.createLinearGradient(140, 180, W - 140, 180);
+        grad.addColorStop(0, 'transparent');
+        grad.addColorStop(0.3, '#c9a84c');
+        grad.addColorStop(0.7, '#c9a84c');
+        grad.addColorStop(1, 'transparent');
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(140, 186); ctx.lineTo(W - 140, 186); ctx.stroke();
+
+        ctx.fillStyle = '#5a5a7a';
+        ctx.font = '13px "Inter", sans-serif';
+        ctx.fillText('has been selected for the role of', W / 2, 220);
+
+        ctx.fillStyle = '#3525cd';
+        ctx.font = 'bold 22px Georgia, serif';
+        ctx.fillText(candidate.roles || 'Intern / Associate', W / 2, 258);
+
+        ctx.fillStyle = '#6b6b8a';
+        ctx.font = '12px "Inter", sans-serif';
+        ctx.fillText(`Department: ${candidate.department || 'General'}`, W / 2, 290);
+
+        const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+        ctx.fillText(`Effective Date: ${today}`, W / 2, 313);
+
+        // Seal circle
+        ctx.strokeStyle = '#c9a84c';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(W / 2, 375, 38, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(W / 2, 375, 32, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#3525cd';
+        ctx.font = 'bold 11px "Inter", sans-serif';
+        ctx.fillText('OFFICIAL', W / 2, 371);
+        ctx.fillText('SEAL', W / 2, 385);
+
+        // Signature lines
+        [[175, 440, 'Authorized Signatory', 'HR Team'], [525, 440, 'Date', today]].forEach(([x, y, label, val]) => {
+            ctx.strokeStyle = '#aaa';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x - 70, y - 18); ctx.lineTo(x + 70, y - 18); ctx.stroke();
+            ctx.fillStyle = '#9a9ab0';
+            ctx.font = '10px "Inter", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, x, y - 4);
+            ctx.fillStyle = '#555';
+            ctx.font = 'bold 10px "Inter", sans-serif';
+            ctx.fillText(val, x, y + 10);
+        });
+
+        ctx.textAlign = 'left';
+    }, [candidate]);
+
+    return <canvas ref={ref} width={700} height={490} style={{ width: '100%', borderRadius: 8, display: 'block' }} />;
+}
+
 const CareerAdmin = ({ tab = 'positions' }) => {
     const { user } = useContext(AuthContext);
     const config = TAB_CONFIG[tab];
@@ -181,7 +296,31 @@ const CareerAdmin = ({ tab = 'positions' }) => {
 
     // Offer letter sending
     const [sendingOffer, setSendingOffer] = useState(null);
-    const [offerSent, setOfferSent] = useState({});
+    const [offerSent, setOfferSentRaw] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('tv_offers_sent') || '{}'); } catch { return {}; }
+    });
+
+    // Onboarding initiation
+    const [initiatingOnboarding, setInitiatingOnboarding] = useState(null);
+    const [onboardingInitiated, setOnboardingInitiatedRaw] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('tv_onboarding_init') || '{}'); } catch { return {}; }
+    });
+
+    // localStorage-backed setters — email is the stable key for sheet-based candidates
+    const setOfferSent = (updater) => setOfferSentRaw(prev => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        try { localStorage.setItem('tv_offers_sent', JSON.stringify(next)); } catch {}
+        return next;
+    });
+    const setOnboardingInitiated = (updater) => setOnboardingInitiatedRaw(prev => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        try { localStorage.setItem('tv_onboarding_init', JSON.stringify(next)); } catch {}
+        return next;
+    });
+
+    // Offer Letters sub-tab + preview modals
+    const [offerSubTab, setOfferSubTab] = useState('pending'); // 'pending' | 'sent'
+    const [previewModal, setPreviewModal] = useState({ open: false, type: null, candidate: null });
 
     // Modals
     const [pdfModalOpen, setPdfModalOpen] = useState(false);
@@ -190,6 +329,19 @@ const CareerAdmin = ({ tab = 'positions' }) => {
     const [detailsTab, setDetailsTab] = useState('summary');
     const [applicationDrafts, setApplicationDrafts] = useState({});
     const [savingApplication, setSavingApplication] = useState(null);
+    const [schedulingId, setSchedulingId] = useState(null);
+    const [hrList, setHrList] = useState([]);   // interviewer options (verified HR/lead members)
+    const [appView, setAppView] = useState('list');   // 'list' | 'calendar' (applications tab)
+
+    useEffect(() => {
+        getOnboardingList().then((list) => {
+            const arr = Array.isArray(list) ? list : [];
+            const verified = arr.filter((m) => m.status === 'verified' && m.candidate_email);
+            const roled = verified.filter((m) => ['hr', 'admin', 'advisory', 'team_lead'].includes(m.portal_role));
+            const use = roled.length ? roled : verified;
+            setHrList(use.map((m) => ({ name: m.candidate_name, email: m.candidate_email, role: m.portal_role || '' })));
+        }).catch(() => {});
+    }, []);
     const [gateDraft, setGateDraft] = useState({});
     const [savingGates, setSavingGates] = useState(false);
 
@@ -198,45 +350,96 @@ const CareerAdmin = ({ tab = 'positions' }) => {
         setTimeout(() => setNotification(null), 4000);
     };
 
-    const handleSendOffer = async (candidate) => {
-        setSendingOffer(candidate.id);
-        try {
-            const doc = new jsPDF();
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(22);
-            doc.text('Offer Letter', 105, 30, { align: 'center' });
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(12);
-            doc.text(`Dear ${candidate.first_name} ${candidate.last_name},`, 20, 55);
-            doc.text('We are pleased to offer you a position at Tiesverse. Please find the details below:', 20, 70, { maxWidth: 170 });
-            const offerTable = autoTable(doc, {
-                startY: 90,
-                head: [['Field', 'Details']],
-                body: [
-                    ['Role', candidate.roles || 'N/A'],
-                    ['Department', candidate.department || 'N/A'],
-                    ['Status', 'Selected'],
-                ],
-                theme: 'grid',
-                headStyles: { fillColor: [254, 122, 0] },
-                styles: { fontSize: 10 },
-            });
-            const finalY = (offerTable?.finalY ?? doc.lastAutoTable?.finalY ?? 110) + 20;
-            doc.text('Congratulations on being selected! Our team will be in touch shortly with next steps.', 20, finalY, { maxWidth: 170 });
-            doc.text('Regards,\nTiesverse HR Team', 20, finalY + 20);
+    const buildOfferPdf = (candidate) => {
+        const doc = new jsPDF();
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(22);
+        doc.text('Offer Letter', 105, 30, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(12);
+        doc.text(`Dear ${candidate.first_name} ${candidate.last_name},`, 20, 55);
+        doc.text('We are pleased to offer you a position at Tiesverse. Please find the details below:', 20, 70, { maxWidth: 170 });
+        const offerTable = autoTable(doc, {
+            startY: 90,
+            head: [['Field', 'Details']],
+            body: [
+                ['Full Name', `${candidate.first_name} ${candidate.last_name}`],
+                ['Role', candidate.roles || 'N/A'],
+                ['Department', candidate.department || 'N/A'],
+                ['Status', 'Selected'],
+                ['Date', new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })],
+            ],
+            theme: 'grid',
+            headStyles: { fillColor: [53, 37, 205] },
+            styles: { fontSize: 10 },
+        });
+        const finalY = (offerTable?.finalY ?? doc.lastAutoTable?.finalY ?? 130) + 20;
+        doc.text('Congratulations on being selected! Our team will be in touch shortly with next steps.', 20, finalY, { maxWidth: 170 });
+        doc.text('Warm regards,\nTiesverse HR Team', 20, finalY + 25);
+        return doc;
+    };
 
+    const handleSendOffer = async (candidate) => {
+        const cKey = candidate.email;
+        setSendingOffer(cKey);
+        setPreviewModal({ open: false, type: null, candidate: null });
+        try {
+            const doc = buildOfferPdf(candidate);
             const pdfBase64 = doc.output('datauristring').split(',')[1];
             await sendOffer({
                 email: candidate.email,
                 name: `${candidate.first_name} ${candidate.last_name}`,
                 pdf_base64: pdfBase64,
+                subject: `Offer Letter — ${candidate.roles || 'Tiesverse'} | Tiesverse`,
+                role: candidate.roles || 'Tiesverse',
+                department: candidate.department || 'N/A',
+                status: 'Selected',
+                effective_date: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }),
             });
-            setOfferSent(prev => ({ ...prev, [candidate.id]: true }));
+            const sentDate = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+            setOfferSent(prev => ({ ...prev, [cKey]: sentDate }));
             showNotice(`Offer letter sent to ${candidate.email}!`);
+            // Auto-initiate onboarding
+            try {
+                const onbRes = await initiateOnboarding({
+                    candidate_id: String(candidate.row_index || candidate.id || candidate.email),
+                    candidate_name: `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim(),
+                    candidate_email: candidate.email,
+                    role_offered: candidate.roles || '',
+                });
+                if (onbRes?.error) {
+                    console.warn('[Onboarding] initiate error:', onbRes.error);
+                    showNotice(`Offer sent, but onboarding initiation failed: ${onbRes.error}`, 'error');
+                } else if (onbRes?.id || onbRes?.token) {
+                    setOnboardingInitiated(prev => ({ ...prev, [cKey]: true }));
+                }
+            } catch (onbErr) {
+                console.warn('[Onboarding] initiate exception:', onbErr);
+                showNotice(`Offer sent, but onboarding initiation failed: ${onbErr?.message || 'Unknown error'}`, 'error');
+            }
         } catch (err) {
             showNotice('Failed to send offer letter: ' + (err?.message || 'Unknown error'), 'error');
         }
         setSendingOffer(null);
+    };
+
+    const handleInitiateOnboarding = async (candidate) => {
+        const cKey = candidate.email;
+        setInitiatingOnboarding(cKey);
+        try {
+            const result = await initiateOnboarding({
+                candidate_id: String(candidate.row_index || candidate.id || candidate.email),
+                candidate_name: `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim(),
+                candidate_email: candidate.email,
+                role_offered: candidate.roles || '',
+            });
+            if (result?.error) throw new Error(result.error);
+            setOnboardingInitiated(prev => ({ ...prev, [cKey]: result.upload_link || true }));
+            showNotice(`Onboarding initiated for ${candidate.first_name}! Upload link sent to ${candidate.email}.`);
+        } catch (err) {
+            showNotice('Failed to initiate onboarding: ' + (err?.message || 'Unknown error'), 'error');
+        }
+        setInitiatingOnboarding(null);
     };
 
     const fetchData = async () => {
@@ -279,6 +482,28 @@ const CareerAdmin = ({ tab = 'positions' }) => {
             setApplicationDrafts({});
         }
     }, [tab, user]);
+
+    // Auto-reconcile: when offers tab loads, silently create onboarding records for
+    // any candidate who was sent an offer (localStorage) but has no onboarding entry yet.
+    // This repairs the gap from offer sends that happened before the DB table existed.
+    useEffect(() => {
+        if (tab !== 'offers' || !user || items.length === 0) return;
+        const needsSync = items.filter(c => offerSent[c.email] && !onboardingInitiated[c.email]);
+        if (needsSync.length === 0) return;
+        needsSync.forEach(async (c) => {
+            try {
+                const res = await initiateOnboarding({
+                    candidate_id: String(c.row_index || c.id || c.email),
+                    candidate_name: `${c.first_name || ''} ${c.last_name || ''}`.trim(),
+                    candidate_email: c.email,
+                    role_offered: c.roles || '',
+                });
+                if (res?.id || res?.token) {
+                    setOnboardingInitiated(prev => ({ ...prev, [c.email]: true }));
+                }
+            } catch (_) {}
+        });
+    }, [tab, items, user]);
 
     const filteredItems = items.filter(item => {
         if (tab !== 'applications') return true;
@@ -508,14 +733,18 @@ const CareerAdmin = ({ tab = 'positions' }) => {
 
     const getApplicationId = (application) => application.id ?? application.row_index;
 
+    const draftDefaults = (application) => ({
+        interview_status: application.interview_status || 'Pending Setup',
+        interviewer: application.interviewer || '',
+        interviewer_email: application.interviewer_email || '',
+        interview_at: application.interview_at ? String(application.interview_at).slice(0, 16) : '',
+        rating: Number(application.rating || 0),
+        final_decision: application.final_decision || 'Under Review',
+    });
+
     const getApplicationDraft = (application) => {
         const id = getApplicationId(application);
-        return applicationDrafts[id] || {
-            interview_status: application.interview_status || 'Pending Setup',
-            interviewer: application.interviewer || '',
-            rating: Number(application.rating || 0),
-            final_decision: application.final_decision || 'Under Review',
-        };
+        return applicationDrafts[id] || draftDefaults(application);
     };
 
     const updateApplicationDraft = (application, field, value) => {
@@ -523,14 +752,40 @@ const CareerAdmin = ({ tab = 'positions' }) => {
         setApplicationDrafts((current) => ({
             ...current,
             [id]: {
-                interview_status: application.interview_status || 'Pending Setup',
-                interviewer: application.interviewer || '',
-                rating: Number(application.rating || 0),
-                final_decision: application.final_decision || 'Under Review',
+                ...draftDefaults(application),
                 ...(current[id] || {}),
                 [field]: value,
             },
         }));
+    };
+
+    const handleScheduleInterview = async (application) => {
+        const id = getApplicationId(application);
+        const draft = getApplicationDraft(application);
+        if (!draft.interview_at) { showNotice('Pick an interview date and time first.', 'error'); return; }
+        setSchedulingId(id);
+        try {
+            const res = await scheduleInterview(id, {
+                interview_at: draft.interview_at,
+                interviewer: draft.interviewer || '',
+                interviewer_email: draft.interviewer_email || '',
+                duration_min: 30,
+                interview_status: 'Interview Scheduled',
+            });
+            if (res?.status !== 'scheduled') throw new Error(res?.error || 'Could not schedule');
+            setItems((current) => current.map((it) => (
+                String(getApplicationId(it)) === String(id)
+                    ? { ...it, interview_status: 'Interview Scheduled', interview_at: res.interview_at, meeting_link: res.meet_link, interviewer: draft.interviewer, interviewer_email: draft.interviewer_email }
+                    : it
+            )));
+            showNotice(res.meet_link
+                ? 'Interview scheduled — Google Meet link created and invites emailed.'
+                : (res.note || 'Interview date saved (Google Calendar not configured, so no Meet link/invite).'));
+        } catch (error) {
+            showNotice(`Could not schedule: ${error?.message || 'Unknown error'}`, 'error');
+        } finally {
+            setSchedulingId(null);
+        }
     };
 
     const resetFormGates = () => {
@@ -725,8 +980,44 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                         </label>
                         <label>
                             <span>Interviewer</span>
-                            <input value={draft.interviewer} onChange={(event) => updateApplicationDraft(item, 'interviewer', event.target.value)} placeholder="Assign interviewer" />
+                            <select
+                                value={hrList.some((h) => h.email === draft.interviewer_email) ? draft.interviewer_email : (draft.interviewer ? '__current__' : '')}
+                                onChange={(event) => {
+                                    const val = event.target.value;
+                                    if (val === '__current__') return;
+                                    const m = hrList.find((h) => h.email === val);
+                                    updateApplicationDraft(item, 'interviewer_email', val);
+                                    updateApplicationDraft(item, 'interviewer', m ? m.name : '');
+                                }}
+                            >
+                                <option value="">Select interviewer…</option>
+                                {draft.interviewer && !hrList.some((h) => h.email === draft.interviewer_email) && (
+                                    <option value="__current__">{draft.interviewer} (current)</option>
+                                )}
+                                {hrList.map((h) => (
+                                    <option key={h.email} value={h.email}>{h.name}{h.role ? ` · ${h.role.replace('_', ' ')}` : ''}</option>
+                                ))}
+                            </select>
                         </label>
+                        {(draft.interview_status === 'Scheduled' || draft.interview_status === 'Interview Scheduled') && (
+                            <div style={{ display: 'grid', gap: 8, marginTop: 4, paddingTop: 12, borderTop: '1px dashed color-mix(in srgb, var(--text-main) 15%, transparent)' }}>
+                                <label>
+                                    <span>Interview date &amp; time</span>
+                                    <input type="datetime-local" value={draft.interview_at || ''} onChange={(event) => updateApplicationDraft(item, 'interview_at', event.target.value)} />
+                                </label>
+                                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                    Invite goes to the candidate{draft.interviewer_email ? ` and ${draft.interviewer_email}` : ' — pick an interviewer above to invite them too'}.
+                                </div>
+                                <button type="button" className="application-save-button" disabled={schedulingId === id} onClick={() => handleScheduleInterview(item)}>
+                                    <Send size={13} /> {schedulingId === id ? 'Scheduling…' : 'Create Meet & send invites'}
+                                </button>
+                                {item.meeting_link && (
+                                    <a href={item.meeting_link} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>
+                                        Google Meet ↗{item.interview_at ? ` · ${new Date(item.interview_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}
+                                    </a>
+                                )}
+                            </div>
+                        )}
                         <fieldset>
                             <legend>Rating</legend>
                             <div className="application-stars">
@@ -754,6 +1045,22 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                         <button type="button" className="application-save-button" disabled={savingApplication === id} onClick={() => saveApplicationEvaluation(item)}>
                             {savingApplication === id ? 'Saving…' : 'Save Evaluation'}
                         </button>
+                        {(draft.final_decision === 'Selected' || item.final_decision === 'Selected') && (
+                            onboardingInitiated[item.email] ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', borderRadius: 9, background: 'color-mix(in srgb, #067a50 8%, transparent)', border: '1px solid color-mix(in srgb, #067a50 20%, transparent)', color: '#067a50', fontSize: 11, fontWeight: 800 }}>
+                                    <CheckCircle size={13} /> Onboarding Initiated
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    disabled={initiatingOnboarding === item.email}
+                                    onClick={() => handleInitiateOnboarding(item)}
+                                    style={{ minHeight: 40, border: '1px solid color-mix(in srgb, var(--primary) 30%, transparent)', borderRadius: 9, background: 'color-mix(in srgb, var(--primary) 8%, transparent)', color: 'var(--primary)', cursor: initiatingOnboarding === item.email ? 'wait' : 'pointer', fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: initiatingOnboarding === item.email ? 0.65 : 1, transition: 'all 150ms ease' }}
+                                >
+                                    <UserCheck size={13} /> {initiatingOnboarding === item.email ? 'Sending…' : 'Initiate Onboarding'}
+                                </button>
+                            )
+                        )}
                     </section>
                 </article>
             );
@@ -880,6 +1187,10 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                                     <option value="Waitlisted">Waitlisted</option>
                                 </select>
                             </div>
+                            <div style={{ display: 'inline-flex', gap: 2, border: '1px solid var(--border, #e6e6ef)', borderRadius: 8, padding: 2 }}>
+                                <button type="button" onClick={() => setAppView('list')} style={viewToggleStyle(appView === 'list')}><ListIcon size={14} /> List</button>
+                                <button type="button" onClick={() => setAppView('calendar')} style={viewToggleStyle(appView === 'calendar')}><CalendarDays size={14} /> Calendar</button>
+                            </div>
                             <button className="application-export-button" onClick={() => setPdfModalOpen(true)}>
                                 <Download size={16} /> Export PDF
                             </button>
@@ -887,51 +1198,147 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                     )}
                     
                     {filteredItems.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '80px 0', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                            {config.icon && React.cloneElement(config.icon, { size: 40, style: { color: 'rgba(255,255,255,0.15)', marginBottom: '12px' } })}
-                            <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.875rem', fontWeight: 600 }}>No {config.itemLabel.toLowerCase()}s found.</p>
+                        <div style={{ textAlign: 'center', padding: '80px 0', background: 'var(--surface-container-low)', borderRadius: '16px', border: '1px solid var(--outline-variant)' }}>
+                            {config.icon && React.cloneElement(config.icon, { size: 40, style: { color: 'var(--text-muted)', opacity: 0.4, marginBottom: '12px' } })}
+                            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', fontWeight: 600 }}>No {config.itemLabel.toLowerCase()}s found.</p>
                         </div>
                     ) : tab === 'form_gates' ? (
                         renderFormGateSettings()
                     ) : tab === 'offers' ? (
-                        <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                                <thead>
-                                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                                        {['Name', 'Email', 'Department', 'Role', 'Action'].map(h => (
-                                            <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: 'rgba(255,255,255,0.4)', fontWeight: 700, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{h}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredItems.map(c => (
-                                        <tr key={c.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                            <td style={{ padding: '12px 14px', color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>{c.first_name} {c.last_name}</td>
-                                            <td style={{ padding: '12px 14px', color: 'rgba(255,255,255,0.5)' }}>{c.email}</td>
-                                            <td style={{ padding: '12px 14px' }}>
-                                                <span style={{ fontSize: '0.6875rem', fontWeight: 700, background: 'rgba(255,255,255,0.06)', padding: '3px 8px', borderRadius: 6 }}>{c.department}</span>
-                                            </td>
-                                            <td style={{ padding: '12px 14px', color: 'rgba(255,255,255,0.6)' }}>{c.roles}</td>
-                                            <td style={{ padding: '12px 14px' }}>
-                                                {offerSent[c.id] ? (
-                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#10B981', fontSize: '0.8125rem', fontWeight: 700 }}>
-                                                        <CheckCircle size={14} /> Sent
-                                                    </span>
-                                                ) : (
-                                                    <button
-                                                        disabled={sendingOffer === c.id}
-                                                        onClick={() => handleSendOffer(c)}
-                                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'var(--primary)', color: '#000', border: 'none', borderRadius: 8, fontSize: '0.8125rem', fontWeight: 800, cursor: sendingOffer === c.id ? 'wait' : 'pointer', opacity: sendingOffer === c.id ? 0.7 : 1 }}
-                                                    >
-                                                        <Mail size={13} /> {sendingOffer === c.id ? 'Sending…' : 'Send Offer'}
-                                                    </button>
-                                                )}
-                                            </td>
+                        <div>
+                            {/* Sub-tabs: Pending / Sent */}
+                            <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid var(--outline-variant)' }}>
+                                {[['pending', 'Pending'], ['sent', 'Sent']].map(([key, label]) => {
+                                    const count = key === 'pending'
+                                        ? filteredItems.filter(c => !offerSent[c.email]).length
+                                        : filteredItems.filter(c => offerSent[c.email]).length;
+                                    return (
+                                        <button key={key} onClick={() => setOfferSubTab(key)} style={{ padding: '9px 20px', border: 'none', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 700, background: 'transparent', borderRadius: '8px 8px 0 0', color: offerSubTab === key ? 'var(--primary)' : 'var(--text-muted)', borderBottom: offerSubTab === key ? '2px solid var(--primary)' : '2px solid transparent' }}>
+                                            {label} <span style={{ fontSize: '0.6875rem', background: 'color-mix(in srgb, var(--primary) 10%, transparent)', color: 'var(--primary)', padding: '1px 7px', borderRadius: 10, marginLeft: 4 }}>{count}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            <div style={{ overflowX: 'auto', border: '1px solid var(--outline-variant)', borderRadius: 13, background: 'var(--surface-container-lowest)' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                                    <thead>
+                                        <tr style={{ borderBottom: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)' }}>
+                                            {(offerSubTab === 'pending'
+                                                ? ['Name', 'Email', 'Department', 'Role', 'Preview', 'Action']
+                                                : ['Name', 'Email', 'Department', 'Role', 'Preview', 'Sent On', 'Onboarding']
+                                            ).map(h => (
+                                                <th key={h} style={{ padding: '11px 16px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{h}</th>
+                                            ))}
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {filteredItems
+                                            .filter(c => offerSubTab === 'pending' ? !offerSent[c.email] : !!offerSent[c.email])
+                                            .map((c, idx, arr) => (
+                                                <tr key={c.id} style={{ borderBottom: idx < arr.length - 1 ? '1px solid var(--outline-variant)' : 'none', transition: 'background 150ms ease' }}>
+                                                    <td style={{ padding: '13px 16px', fontWeight: 700, whiteSpace: 'nowrap', fontFamily: 'Hanken Grotesk, sans-serif', color: 'var(--text-main)' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                                                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--primary-fixed)', display: 'grid', placeItems: 'center', fontSize: '0.75rem', fontWeight: 800, color: 'var(--primary)', flexShrink: 0 }}>
+                                                                {`${c.first_name?.[0] || ''}${c.last_name?.[0] || ''}`.toUpperCase()}
+                                                            </div>
+                                                            {c.first_name} {c.last_name}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '13px 16px', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>{c.email}</td>
+                                                    <td style={{ padding: '13px 16px' }}>
+                                                        <span style={{ fontSize: '0.625rem', fontWeight: 700, background: 'color-mix(in srgb, var(--primary) 8%, transparent)', color: 'var(--primary)', border: '1px solid color-mix(in srgb, var(--primary) 18%, transparent)', padding: '3px 9px', borderRadius: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{c.department}</span>
+                                                    </td>
+                                                    <td style={{ padding: '13px 16px', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>{c.roles}</td>
+
+                                                    {offerSubTab === 'pending' ? (
+                                                        <>
+                                                            {/* Preview column (Pending) */}
+                                                            <td style={{ padding: '13px 16px' }}>
+                                                                <div style={{ display: 'flex', gap: 6 }}>
+                                                                    <button
+                                                                        title="Preview Mail Template"
+                                                                        onClick={() => setPreviewModal({ open: true, type: 'mail', candidate: c })}
+                                                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', background: 'color-mix(in srgb, var(--primary) 8%, transparent)', color: 'var(--primary)', border: '1px solid color-mix(in srgb, var(--primary) 20%, transparent)', borderRadius: 7, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
+                                                                        <Eye size={12} /> Mail
+                                                                    </button>
+                                                                    <button
+                                                                        title="Preview Selection Certificate"
+                                                                        onClick={() => setPreviewModal({ open: true, type: 'cert', candidate: c })}
+                                                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', background: 'color-mix(in srgb, #8a5700 8%, transparent)', color: '#8a5700', border: '1px solid color-mix(in srgb, #8a5700 20%, transparent)', borderRadius: 7, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
+                                                                        <Award size={12} /> Cert
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                            {/* Send action column (Pending) */}
+                                                            <td style={{ padding: '13px 16px' }}>
+                                                                <button
+                                                                    disabled={sendingOffer === c.email}
+                                                                    onClick={() => handleSendOffer(c)}
+                                                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, fontSize: '0.8125rem', fontWeight: 800, cursor: sendingOffer === c.email ? 'wait' : 'pointer', opacity: sendingOffer === c.email ? 0.65 : 1, transition: 'opacity 150ms ease' }}>
+                                                                    <Send size={13} /> {sendingOffer === c.email ? 'Sending…' : 'Send Offer'}
+                                                                </button>
+                                                            </td>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            {/* Preview column (Sent) — re-preview after sending */}
+                                                            <td style={{ padding: '13px 16px' }}>
+                                                                <div style={{ display: 'flex', gap: 6 }}>
+                                                                    <button
+                                                                        title="Re-preview Mail"
+                                                                        onClick={() => setPreviewModal({ open: true, type: 'mail', candidate: c })}
+                                                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', background: 'color-mix(in srgb, var(--primary) 8%, transparent)', color: 'var(--primary)', border: '1px solid color-mix(in srgb, var(--primary) 20%, transparent)', borderRadius: 7, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
+                                                                        <Eye size={12} /> Mail
+                                                                    </button>
+                                                                    <button
+                                                                        title="Re-preview Certificate"
+                                                                        onClick={() => setPreviewModal({ open: true, type: 'cert', candidate: c })}
+                                                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', background: 'color-mix(in srgb, #8a5700 8%, transparent)', color: '#8a5700', border: '1px solid color-mix(in srgb, #8a5700 20%, transparent)', borderRadius: 7, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
+                                                                        <Award size={12} /> Cert
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                            {/* Sent date */}
+                                                            <td style={{ padding: '13px 16px' }}>
+                                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#067a50', fontSize: '0.8125rem', fontWeight: 700 }}>
+                                                                    <CheckCircle size={13} /> {offerSent[c.email]}
+                                                                </span>
+                                                            </td>
+                                                            {/* Onboarding status */}
+                                                            <td style={{ padding: '13px 16px' }}>
+                                                                {onboardingInitiated[c.email] ? (
+                                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#067a50', fontSize: '0.8125rem', fontWeight: 700 }}>
+                                                                        <UserCheck size={13} /> In Onboarding
+                                                                    </span>
+                                                                ) : (
+                                                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>—</span>
+                                                                )}
+                                                            </td>
+                                                        </>
+                                                    )}
+                                                </tr>
+                                            ))}
+                                        {filteredItems.filter(c => offerSubTab === 'pending' ? !offerSent[c.email] : !!offerSent[c.email]).length === 0 && (
+                                            <tr><td colSpan={offerSubTab === 'sent' ? 7 : 6} style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                                                {offerSubTab === 'pending' ? 'No pending offers — all offers have been sent.' : 'No offers sent yet.'}
+                                            </td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
+                    ) : (tab === 'applications' && appView === 'calendar') ? (
+                        <ScheduleCalendar
+                            events={filteredItems.filter((c) => c.interview_at).map((c) => ({
+                                id: c.id,
+                                date: c.interview_at,
+                                title: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Interview',
+                                subtitle: c.roles || c.department || '',
+                                link: c.meeting_link || '',
+                            }))}
+                            emptyLabel="No interviews scheduled yet. Set an interview date on an applicant, then it appears here."
+                        />
                     ) : (
                         <div className={`career-admin-grid ${tab === 'form_gates' ? 'is-wide' : ''} ${tab === 'applications' ? 'is-applications' : ''}`}>
                             {filteredItems.map(item => renderItemCard(item))}
@@ -1132,6 +1539,113 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                     </div>
                 </div>
             )}
+
+            {/* ── Mail Template Preview Modal ──────────────────────────────────── */}
+            {previewModal.open && previewModal.type === 'mail' && previewModal.candidate && (() => {
+                const c = previewModal.candidate;
+                const fullName = `${c.first_name} ${c.last_name}`;
+                const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+                return (
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 10001, background: 'rgba(25,28,30,0.72)', backdropFilter: 'blur(10px)', display: 'grid', placeItems: 'center', padding: 24 }}>
+                        <div style={{ background: 'var(--surface-container-lowest)', border: '1px solid var(--outline-variant)', borderRadius: 14, width: '100%', maxWidth: 600, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(15,23,42,0.3)' }}>
+                            {/* Modal top bar */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 22px', borderBottom: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', borderRadius: '14px 14px 0 0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <Eye size={15} style={{ color: 'var(--primary)' }} />
+                                    <strong style={{ fontSize: '0.9375rem', color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>Mail Template Preview</strong>
+                                </div>
+                                <button onClick={() => setPreviewModal({ open: false, type: null, candidate: null })} style={{ background: 'var(--surface-container)', border: '1px solid var(--outline-variant)', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'grid', placeItems: 'center' }}><X size={14} /></button>
+                            </div>
+
+                            {/* Email chrome */}
+                            <div style={{ overflowY: 'auto', padding: '20px 22px', flex: 1 }}>
+                                {/* Email headers */}
+                                {[
+                                    { label: 'From', value: 'careers@tiesverse.com' },
+                                    { label: 'To', value: c.email },
+                                    { label: 'Subject', value: `Offer Letter — ${c.roles || 'Tiesverse'} | Tiesverse` },
+                                    { label: 'Date', value: today },
+                                ].map(({ label, value }) => (
+                                    <div key={label} style={{ display: 'flex', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--outline-variant)', fontSize: '0.8125rem' }}>
+                                        <span style={{ width: 60, color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>{label}</span>
+                                        <span style={{ color: 'var(--text-main)' }}>{value}</span>
+                                    </div>
+                                ))}
+
+                                {/* Email body */}
+                                <div style={{ marginTop: 20, padding: 20, background: 'var(--surface-container-low)', borderRadius: 10, border: '1px solid var(--outline-variant)', fontSize: '0.875rem', color: 'var(--text-main)', lineHeight: 1.75 }}>
+                                    <p>Dear <strong>{fullName}</strong>,</p>
+                                    <br />
+                                    <p>We are delighted to extend this offer of selection to join <strong>Tiesverse</strong>. Please find the details of your offer below:</p>
+                                    <br />
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem', margin: '8px 0' }}>
+                                        <tbody>
+                                            {[['Role', c.roles || 'N/A'], ['Department', c.department || 'N/A'], ['Status', 'Selected'], ['Effective Date', today]].map(([k, v]) => (
+                                                <tr key={k} style={{ borderBottom: '1px solid var(--outline-variant)' }}>
+                                                    <td style={{ padding: '8px 12px', fontWeight: 700, color: 'var(--text-muted)', width: '40%', background: 'var(--surface-container)' }}>{k}</td>
+                                                    <td style={{ padding: '8px 12px', color: 'var(--text-main)' }}>{v}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    <br />
+                                    <p>Congratulations on your selection! Our team will be in touch shortly with the next steps for your onboarding.</p>
+                                    <br />
+                                    <p>Please find the official offer letter attached to this email as a PDF.</p>
+                                    <br />
+                                    <p>Warm regards,<br /><strong>Tiesverse HR Team</strong><br /><span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>careers@tiesverse.com</span></p>
+                                </div>
+
+                                {/* Attachment */}
+                                <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', borderRadius: 8 }}>
+                                    <FileText size={18} style={{ color: 'var(--primary)' }} />
+                                    <div>
+                                        <div style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-main)' }}>Offer-Letter.pdf</div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Generated PDF attachment</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Footer */}
+                            <div style={{ padding: '14px 22px', borderTop: '1px solid var(--outline-variant)', display: 'flex', gap: 10, background: 'var(--surface-container-low)', borderRadius: '0 0 14px 14px' }}>
+                                <button onClick={() => setPreviewModal({ open: false, type: null, candidate: null })} style={{ flex: 1, minHeight: 40, background: 'var(--surface-container)', border: '1px solid var(--outline-variant)', borderRadius: 8, color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer' }}>Close Preview</button>
+                                <button onClick={() => handleSendOffer(c)} disabled={sendingOffer === c.email} style={{ flex: 2, minHeight: 40, background: 'var(--primary)', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 800, fontSize: '0.875rem', cursor: sendingOffer === c.email ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: sendingOffer === c.email ? 0.65 : 1 }}>
+                                    <Send size={14} /> {sendingOffer === c.email ? 'Sending…' : offerSent[c.email] ? 'Resend Offer' : 'Send This Offer'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* ── Certificate Preview Modal ─────────────────────────────────────── */}
+            {previewModal.open && previewModal.type === 'cert' && previewModal.candidate && (() => {
+                const c = previewModal.candidate;
+                return (
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 10001, background: 'rgba(25,28,30,0.72)', backdropFilter: 'blur(10px)', display: 'grid', placeItems: 'center', padding: 24 }}>
+                        <div style={{ background: 'var(--surface-container-lowest)', border: '1px solid var(--outline-variant)', borderRadius: 14, width: '100%', maxWidth: 760, boxShadow: '0 32px 80px rgba(15,23,42,0.3)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 22px', borderBottom: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', borderRadius: '14px 14px 0 0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <Award size={15} style={{ color: '#8a5700' }} />
+                                    <strong style={{ fontSize: '0.9375rem', color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>Certificate of Selection — Preview</strong>
+                                </div>
+                                <button onClick={() => setPreviewModal({ open: false, type: null, candidate: null })} style={{ background: 'var(--surface-container)', border: '1px solid var(--outline-variant)', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'grid', placeItems: 'center' }}><X size={14} /></button>
+                            </div>
+                            <div style={{ padding: 24 }}>
+                                <CertCanvas candidate={c} />
+                                <p style={{ marginTop: 12, fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center' }}>This certificate is for preview only. It can be sent as part of the selection package.</p>
+                            </div>
+                            <div style={{ padding: '14px 22px', borderTop: '1px solid var(--outline-variant)', display: 'flex', gap: 10, background: 'var(--surface-container-low)', borderRadius: '0 0 14px 14px' }}>
+                                <button onClick={() => setPreviewModal({ open: false, type: null, candidate: null })} style={{ flex: 1, minHeight: 40, background: 'var(--surface-container)', border: '1px solid var(--outline-variant)', borderRadius: 8, color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer' }}>Close</button>
+                                <button onClick={() => handleSendOffer(c)} disabled={sendingOffer === c.email} style={{ flex: 2, minHeight: 40, background: 'var(--primary)', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 800, fontSize: '0.875rem', cursor: sendingOffer === c.email ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: sendingOffer === c.email ? 0.65 : 1 }}>
+                                    <Send size={14} /> {sendingOffer === c.email ? 'Sending…' : offerSent[c.email] ? 'Resend Offer Letter' : 'Send Offer Letter'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
         </div>
     );
 };

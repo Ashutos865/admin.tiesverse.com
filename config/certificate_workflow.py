@@ -362,6 +362,63 @@ def certificate_mark_emailed(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def certificate_send_emails(request):
+    """Bulk-send branded certificate notification emails (SES) for the selected
+    records, then mark them emailed. Real sending only happens when
+    CERT_EMAIL_ENABLED=True and SES creds are set; otherwise each is stubbed to
+    the console. Returns per-record results."""
+    from config.email_templates import send_template_email
+
+    turso_client.setup_tables()
+    ids = request.data.get('record_ids') or []
+    selected_ids = {str(record_id) for record_id in ids}
+    if not selected_ids:
+        return JsonResponse({'detail': 'No certificate records selected.'}, status=400)
+
+    all_records = turso_client.execute(
+        'SELECT * FROM certificate_records ORDER BY created_at DESC LIMIT 1000'
+    )
+    records = [row for row in all_records if str(row.get('id')) in selected_ids]
+
+    sent, stubbed, skipped = 0, 0, 0
+    results = []
+    now = datetime.now(timezone.utc).isoformat()
+
+    for record in records:
+        email = str(record.get('person_email') or '').strip()
+        name = str(record.get('person_name') or 'there').strip()
+        subject_title = str(record.get('subject_title') or 'Certificate').strip()
+        cert_id = str(record.get('certificate_id') or '').strip()
+        if not email:
+            skipped += 1
+            results.append({'id': record.get('id'), 'status': 'skipped', 'reason': 'no email'})
+            continue
+
+        ok = send_template_email('certificate_bulk', email, {
+            'name': name,
+            'subject_title': subject_title,
+            'certificate_id': cert_id or '—',
+        })
+        if ok:
+            sent += 1
+        else:
+            stubbed += 1
+
+        turso_client.execute(
+            """UPDATE certificate_records
+               SET email_status=:status, updated_at=:updated_at
+               WHERE id=:id""",
+            {'status': 'sent' if ok else 'stubbed', 'updated_at': now, 'id': str(record.get('id'))},
+        )
+        results.append({'id': record.get('id'), 'status': 'sent' if ok else 'stubbed', 'email': email})
+
+    return JsonResponse({
+        'sent': sent, 'stubbed': stubbed, 'skipped': skipped, 'results': results,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def certificate_records_csv(request):
     turso_client.setup_tables()
     ids = request.data.get('record_ids') or []

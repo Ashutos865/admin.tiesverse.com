@@ -87,6 +87,13 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
 
+# Allow signing in with either username or email (matches the "Username or Email"
+# login field). The default ModelBackend stays as a fallback.
+AUTHENTICATION_BACKENDS = [
+    'accounts_app.auth_backends.EmailOrUsernameBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -209,9 +216,27 @@ SES_FROM_EMAIL = os.environ.get('SES_FROM_EMAIL', 'noreply@tiesverse.com')
 SES_CAREERS_FROM_EMAIL = os.environ.get('SES_CAREERS_FROM_EMAIL', 'careers@tiesverse.com')
 OFFER_EMAIL_ENABLED = os.environ.get('OFFER_EMAIL_ENABLED', 'False').lower() == 'true'
 
+WEBSITE_URL = os.environ.get('WEBSITE_URL', 'https://tiesverse.com')
+# Base URL of THIS admin portal frontend — used to build password-reset links.
+ADMIN_PORTAL_URL = os.environ.get('ADMIN_PORTAL_URL', 'http://localhost:5173')
+ONBOARDING_EMAIL_ENABLED = os.environ.get('ONBOARDING_EMAIL_ENABLED', 'False').lower() == 'true'
+
+# Additional per-purpose email switches. All default OFF (emails are stubbed to
+# the console) until the SES sender addresses are verified in production.
+CERT_EMAIL_ENABLED = os.environ.get('CERT_EMAIL_ENABLED', 'False').lower() == 'true'
+PASSWORD_RESET_EMAIL_ENABLED = os.environ.get('PASSWORD_RESET_EMAIL_ENABLED', 'False').lower() == 'true'
+
 RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '')
 RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '')
 RAZORPAY_WEBHOOK_SECRET = os.environ.get('RAZORPAY_WEBHOOK_SECRET', '')
+
+# ── Google Calendar (interview scheduling — OAuth 2.0 user credentials) ──
+# We use OAuth (not a service-account key) because Workspace "secure by default"
+# blocks SA key creation. Get the refresh token once with get_google_refresh_token.py.
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
+GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
+GOOGLE_OAUTH_REFRESH_TOKEN = os.environ.get('GOOGLE_OAUTH_REFRESH_TOKEN', '')
+GOOGLE_CAL_TIMEZONE = os.environ.get('GOOGLE_CAL_TIMEZONE', 'Asia/Kolkata')
 
 # Keep implicit primary keys aligned with the existing migrations.
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

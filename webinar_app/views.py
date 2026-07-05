@@ -11,8 +11,11 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny, DjangoModelPermissions, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import WebinarEvent, RegistrationForm, CalendarEvent
-from .serializers import WebinarEventSerializer, RegistrationFormSerializer, CalendarEventSerializer
+from .models import WebinarEvent, RegistrationForm, CalendarEvent, EventFormQuestion
+from .serializers import (
+    WebinarEventSerializer, RegistrationFormSerializer,
+    CalendarEventSerializer, EventFormQuestionSerializer,
+)
 from . import turso_client
 from . import razorpay_client
 from .ses_email import send_registration_confirmation
@@ -351,25 +354,36 @@ def register_for_event(request):
             turso_client.setup_tables()
             turso_client.execute(
                 """INSERT INTO registrations
-                   (event_id, event_title, event_type, event_date, name, email, phone, city, registered_at)
-                   VALUES (:event_id, :event_title, :event_type, :event_date, :name, :email, :phone, :city, :registered_at)""",
+                   (event_id, event_title, event_type, event_date, name, email, phone,
+                    role, organization, country, city, source, expectations, speaker_question, registered_at)
+                   VALUES (:event_id, :event_title, :event_type, :event_date, :name, :email, :phone,
+                           :role, :organization, :country, :city, :source, :expectations, :speaker_question, :registered_at)""",
                 {
-                    'event_id':     str(data.get('event_id') or ''),
-                    'event_title':  event_title,
-                    'event_type':   event_type,
-                    'event_date':   event_date,
-                    'name':         name,
-                    'email':        email,
-                    'phone':        str(data.get('phone') or ''),
-                    'city':         str(data.get('city') or ''),
-                    'registered_at': now,
+                    'event_id':        str(data.get('event_id') or ''),
+                    'event_title':     event_title,
+                    'event_type':      event_type,
+                    'event_date':      event_date,
+                    'name':            name,
+                    'email':           email,
+                    'phone':           str(data.get('phone') or ''),
+                    'role':            str(data.get('role') or ''),
+                    'organization':    str(data.get('organization') or ''),
+                    'country':         str(data.get('country') or ''),
+                    'city':            str(data.get('city') or ''),
+                    'source':          str(data.get('source') or ''),
+                    'expectations':    str(data.get('expectations') or ''),
+                    'speaker_question':str(data.get('speaker_question') or ''),
+                    'registered_at':   now,
                 },
             )
         except turso_client.TursoError as exc:
             logger.error('Turso registration insert failed: %s', exc)
             return Response({'error': 'Registration could not be saved. Please try again.'}, status=500)
 
-        email_sent = send_registration_confirmation(email, name, event_title, event_type, event_date)
+        # FREE webinars: every registrant gets the Meet link now. PAID webinars:
+        # the link is only sent after payment (see verify_payment), so skip here.
+        meeting_link = _deliver_meeting_link(data.get('event_id'), event_title, email, free_only=True)
+        email_sent = send_registration_confirmation(email, name, event_title, event_type, event_date, meeting_link=meeting_link)
 
         if email_sent:
             try:
@@ -383,7 +397,8 @@ def register_for_event(request):
                 pass
     else:
         logger.warning('Turso not configured — registration from %s not persisted', email)
-        email_sent = send_registration_confirmation(email, name, event_title, event_type, event_date)
+        meeting_link = _deliver_meeting_link(data.get('event_id'), event_title, email, free_only=True)
+        email_sent = send_registration_confirmation(email, name, event_title, event_type, event_date, meeting_link=meeting_link)
 
     return Response({
         'status': 'registered',
@@ -507,8 +522,11 @@ def create_payment_order(request):
             logger.error('Turso coupon registration insert failed: %s', exc)
             return Response({'error': 'Registration could not be saved.'}, status=503)
 
+        # 100%-off coupon on a paid webinar → confirmed attendee, so send the link.
+        meeting_link = _deliver_meeting_link(data.get('event_id'), event_title, email)
         email_sent = send_registration_confirmation(
             email, name, event_title, event_type, str(data.get('event_date') or ''),
+            meeting_link=meeting_link,
         )
         return Response({
             'status': 'registered',
@@ -616,11 +634,23 @@ def verify_payment(request):
 
     email_sent = False
     if row:
+        # Paid registrant → add them as a guest on the webinar's Meet + send the link.
+        meeting_link = ''
+        try:
+            from config import google_calendar
+            ev = _find_event_registration(event_key=row.get('event_id') or row.get('event_title'))
+            if ev:
+                meeting_link = ev.meeting_link or ''
+                if ev.calendar_event_id and row.get('email'):
+                    google_calendar.add_guest(ev.calendar_event_id, row.get('email'))
+        except Exception:  # noqa: BLE001
+            pass
         email_sent = send_registration_confirmation(
             to_email=row.get('email', ''),
             name=row.get('name', 'Guest'),
             event_title=row.get('event_title', ''),
             event_type=row.get('event_type', 'event'),
+            meeting_link=meeting_link,
         )
         if email_sent and turso_client.is_configured():
             try:
@@ -693,4 +723,699 @@ def razorpay_webhook(request):
         except turso_client.TursoError:
             pass
 
-    return HttpResponse('ok')
+
+# ─── Form Questions ───────────────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def form_questions(request):
+    """List or create form questions for an event/webinar.
+    GET is public (website reads form schema). POST requires a logged-in admin.
+    """
+    event_key  = request.query_params.get('event_key', '').strip()
+    event_type = request.query_params.get('event_type', '').strip()
+
+    if request.method == 'GET':
+        qs = EventFormQuestion.objects.filter(event_key=event_key, event_type=event_type).order_by('order')
+        return Response(EventFormQuestionSerializer(qs, many=True).data)
+
+    # POST — admin only
+    if not request.user or not request.user.is_authenticated:
+        return Response({'error': 'Authentication required.'}, status=status.HTTP_403_FORBIDDEN)
+
+    # POST — create; prefer body values, fall back to query params
+    body_key  = str(request.data.get('event_key') or '').strip()
+    body_type = str(request.data.get('event_type') or '').strip()
+    data = {
+        **request.data,
+        'event_key':  body_key  or event_key,
+        'event_type': body_type or event_type,
+    }
+    serializer = EventFormQuestionSerializer(data=data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def form_question_detail(request, pk):
+    """Retrieve, update or delete a single form question."""
+    try:
+        question = EventFormQuestion.objects.get(pk=pk)
+    except EventFormQuestion.DoesNotExist:
+        return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(EventFormQuestionSerializer(question).data)
+
+    if request.method == 'PATCH':
+        serializer = EventFormQuestionSerializer(question, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    # DELETE
+    question.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reorder_form_questions(request):
+    """Bulk-update `order` field. Body: { items: [{id, order}, …] }"""
+    items = request.data.get('items', [])
+    updated = []
+    for item in items:
+        try:
+            q = EventFormQuestion.objects.get(pk=item['id'])
+            q.order = item['order']
+            q.save(update_fields=['order'])
+            updated.append(q.id)
+        except (EventFormQuestion.DoesNotExist, KeyError):
+            pass
+    return Response({'updated': updated})
+
+
+# ─── Public events listing (website) ─────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_public_events(request):
+    """
+    Public endpoint — no JWT required.
+    Returns all EventRegistration rows so the website can list them dynamically.
+    """
+    from tiesverse_app.models import EventRegistration
+    status_filter = request.query_params.get('status', '')
+    try:
+        qs = EventRegistration.objects.using('turso_db').all()
+        if status_filter in ('upcoming', 'past'):
+            qs = qs.filter(status=status_filter)
+        data = [
+            {
+                'kind':           e.kind or 'webinar',
+                'title':          e.title or '',
+                'description':    e.description or '',
+                'date':           e.date or '',
+                'time_tz':        e.time_tz or '',
+                'host':           e.host or '',
+                'host_image_url': e.host_image_url or '',
+                'price':          int(e.price or 0),
+                'cover_url':      e.cover_url or '',
+                'status':         e.status or 'upcoming',
+                'slug':           slugify(e.title or ''),
+            }
+            for e in qs
+        ]
+        return Response(data)
+    except Exception as exc:
+        logger.warning('list_public_events failed: %s', exc)
+        return Response([])
+
+
+# ─── Attendee Tracking (Turso) ────────────────────────────────────────────────
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def mark_attended(request):
+    """
+    Toggle the `attended` flag on Turso registration rows.
+    Body: { ids: [int, …], attended: true|false }
+    """
+    ids      = request.data.get('ids', [])
+    attended = bool(request.data.get('attended', True))
+
+    if not ids:
+        return Response({'error': 'No ids provided.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not turso_client.is_configured():
+        return Response({'error': 'Turso not configured.'}, status=503)
+
+    try:
+        turso_client.setup_tables()
+    except turso_client.TursoError:
+        pass
+
+    placeholders = ', '.join([':id' + str(i) for i in range(len(ids))])
+    params = {f'id{i}': id_val for i, id_val in enumerate(ids)}
+    params['attended'] = 1 if attended else 0
+
+    try:
+        turso_client.execute(
+            f"UPDATE registrations SET attended=:attended WHERE id IN ({placeholders})",
+            params,
+        )
+    except turso_client.TursoError as exc:
+        logger.error('mark_attended update failed: %s', exc)
+        return Response({'error': str(exc)}, status=503)
+    return Response({'updated': len(ids), 'attended': attended})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_registrations_extended(request):
+    """
+    Same as list_registrations but includes the `attended` column.
+    GET /api/webinar/registrations-full/
+    Optional query: ?event_key=... to filter by event
+    """
+    if not turso_client.is_configured():
+        return Response({'rows': [], 'count': 0})
+    try:
+        turso_client.setup_tables()
+    except turso_client.TursoError as exc:
+        logger.error('setup_tables failed in list_registrations_extended: %s', exc)
+        return Response({'rows': [], 'count': 0, 'error': str(exc)}, status=503)
+
+    event_key = request.query_params.get('event_key', '').strip()
+    try:
+        if event_key:
+            rows = turso_client.execute(
+                "SELECT * FROM registrations WHERE event_id=:ek ORDER BY registered_at DESC LIMIT 1000",
+                {'ek': event_key},
+            )
+        else:
+            rows = turso_client.execute(
+                "SELECT * FROM registrations ORDER BY registered_at DESC LIMIT 1000"
+            )
+        return Response({'rows': rows, 'count': len(rows)})
+    except turso_client.TursoError as exc:
+        logger.error('list_registrations_extended query failed: %s', exc)
+        return Response({'rows': [], 'count': 0, 'error': str(exc)}, status=503)
+
+
+# ─── Event Certificate Link ───────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def event_certificate_link(request):
+    """
+    GET  ?event_key=...&event_type=event|webinar  → current cert assignment
+    POST { event_key, event_type, template_id, template_name }  → save assignment
+    """
+    from tiesverse_app.models import EventRegistration, Event
+
+    event_key  = request.query_params.get('event_key') or request.data.get('event_key', '')
+    event_type = request.query_params.get('event_type') or request.data.get('event_type', 'webinar')
+    event_key  = str(event_key).strip()
+    event_type = str(event_type).strip().lower()
+
+    def _get_obj():
+        # The frontend keys events by their slugified title (e.g. "test"), not the
+        # numeric PK — so only try an id lookup when the key is actually numeric,
+        # then fall back to an exact title match, then a slug match.
+        Model = Event if event_type == 'event' else EventRegistration
+        ek = str(event_key).strip()
+        if ek.isdigit():
+            obj = Model.objects.filter(id=int(ek)).first()
+            if obj:
+                return obj
+        obj = Model.objects.filter(title__iexact=ek).first()
+        if obj:
+            return obj
+        for e in Model.objects.all():
+            if slugify(e.title) == ek:
+                return e
+        return None
+
+    if request.method == 'GET':
+        obj = _get_obj()
+        if not obj:
+            return Response({'template_id': '', 'template_name': ''})
+        return Response({
+            'template_id':   getattr(obj, 'certificate_template_id', ''),
+            'template_name': getattr(obj, 'certificate_template_name', ''),
+        })
+
+    # POST — save assignment
+    template_id   = str(request.data.get('template_id', '')).strip()
+    template_name = str(request.data.get('template_name', '')).strip()
+    obj = _get_obj()
+    if not obj:
+        return Response({'error': 'Event/webinar not found.'}, status=404)
+
+    obj.certificate_template_id   = template_id
+    obj.certificate_template_name = template_name
+    obj.save(update_fields=['certificate_template_id', 'certificate_template_name'])
+    return Response({'saved': True, 'template_id': template_id, 'template_name': template_name})
+
+
+# ─── Per-webinar mail automation (broadcast) + send analytics ─────────────────
+
+def _load_event_registrants(event_key, audience='all'):
+    """Return this webinar's registrants from Turso, filtered by audience.
+    audience: 'all' | 'attended' | 'not_attended'."""
+    if not turso_client.is_configured():
+        return []
+    try:
+        turso_client.setup_tables()
+    except turso_client.TursoError:
+        pass
+    rows = turso_client.execute(
+        "SELECT * FROM registrations WHERE event_id=:ek ORDER BY registered_at DESC LIMIT 2000",
+        {'ek': str(event_key)},
+    )
+    if audience == 'attended':
+        rows = [r for r in rows if int(r.get('attended') or 0) == 1]
+    elif audience == 'not_attended':
+        rows = [r for r in rows if int(r.get('attended') or 0) != 1]
+    return rows
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def webinar_broadcast(request):
+    """
+    Bulk-email a webinar's registrants using an admin email template.
+    Body: {
+      event_key, event_type, event_title,
+      template_key,                 # e.g. webinar_reminder | webinar_followup | any key
+      subject (optional override),
+      audience: 'all' | 'attended' | 'not_attended',
+      extra_context: { join_link, recording_link, time, ... },   # merged into tokens
+      test_email (optional)         # if set, send ONE test to this address only
+    }
+    Records one EmailSendLog per recipient + one aggregate EmailCampaign.
+    """
+    from accounts_app.models import EmailSendLog, EmailCampaign
+    from config.email_templates import get_template, render_tokens, resolve_from
+    from config.email_utils import send_email
+
+    data = request.data or {}
+    event_key   = str(data.get('event_key') or '').strip()
+    event_type  = str(data.get('event_type') or 'webinar').strip()
+    event_title = str(data.get('event_title') or '').strip()
+    template_key = str(data.get('template_key') or '').strip()
+    audience    = str(data.get('audience') or 'all').strip()
+    subject_override = str(data.get('subject') or '').strip()
+    extra = data.get('extra_context') or {}
+    test_email  = str(data.get('test_email') or '').strip().lower()
+
+    # Certificate attachment options
+    cert_template_id = str(data.get('certificate_template_id') or '').strip()
+    include_certificate = bool(data.get('include_certificate')) and bool(cert_template_id)
+    include_id = bool(data.get('include_id'))
+    cert_fields = data.get('certificate_fields') or {}    # {var: {source, value}} explicit mapping
+    cert_name_var = cert_id_var = None
+    if include_certificate and not cert_fields:
+        try:
+            cert_name_var, cert_id_var = _cert_template_vars(cert_template_id)
+        except Exception:  # noqa: BLE001
+            return Response({'error': 'Could not read the certificate template — check it still exists.'}, status=502)
+
+    if not template_key:
+        return Response({'error': 'template_key is required.'}, status=400)
+    tpl = get_template(template_key)
+    if tpl is None:
+        return Response({'error': f'Unknown template: {template_key}'}, status=400)
+
+    actor = (request.user.get_full_name() or request.user.get_username() or '')[:200]
+
+    def _context_for(name, row=None):
+        ctx = {
+            'name': name or 'there',
+            'topic': event_title,
+            'event_title': event_title,
+            'event_type': event_type,
+        }
+        for k, v in (extra or {}).items():
+            ctx[str(k)] = v
+        # per-recipient columns (from an uploaded/typed list) become tokens too
+        for k, v in (row or {}).items():
+            if k not in ('email', 'name') and v not in (None, ''):
+                ctx[str(k)] = v
+        return ctx
+
+    def _send_one(to_email, name, row=None, attachments=None):
+        ctx = _context_for(name, row)
+        subject = render_tokens(subject_override or tpl.subject, ctx)
+        body = render_tokens(tpl.body_html, ctx)
+        ok = send_email(to_email, subject, body, from_email=resolve_from(tpl), enabled=True, attachments=attachments)
+        return ok, subject
+
+    def _cert_attachment(name, row=None):
+        """Generate this recipient's certificate PDF; returns attachments list or None."""
+        if not include_certificate:
+            return None, ''
+        cert_id = _make_cert_id(event_title) if include_id else ''
+        try:
+            gen_data = _build_cert_data(cert_fields, row, name, cert_id, cert_name_var, cert_id_var)
+            pdf = _generate_certificate_pdf(cert_template_id, gen_data)
+            fname = f"certificate-{(name or 'participant').replace(' ', '_')[:40]}.pdf"
+            return [(fname, pdf, 'pdf')], cert_id
+        except Exception:  # noqa: BLE001
+            return None, ''
+
+    # ---- test send: one email, not logged as a campaign ----
+    if test_email:
+        att, _cid = _cert_attachment('Preview Name')
+        ok, subject = _send_one(test_email, 'Preview', attachments=att)
+        return Response({'test': True, 'sent': bool(ok), 'stubbed': not ok, 'to': test_email, 'subject': subject})
+
+    if not event_key:
+        return Response({'error': 'event_key is required.'}, status=400)
+
+    # Recipient source: an explicit list (CSV upload / manual entry) OR the
+    # webinar's own registrants filtered by audience.
+    custom = data.get('recipients')
+    if isinstance(custom, list) and custom:
+        send_list = []
+        for r in custom:
+            if not isinstance(r, dict):
+                continue
+            em = str(r.get('email') or '').strip().lower()
+            if not em:
+                continue
+            send_list.append({'email': em, 'name': str(r.get('name') or '').strip(), 'row': r})
+        list_source = 'list'
+    else:
+        try:
+            registrants = _load_event_registrants(event_key, audience)
+        except turso_client.TursoError as exc:
+            return Response({'error': f'Could not load registrants: {exc}'}, status=503)
+        send_list = [
+            {'email': str(r.get('email') or '').strip().lower(),
+             'name': str(r.get('name') or '').strip(), 'row': r}   # keep full data for tokens + certs
+            for r in registrants
+        ]
+        list_source = 'registrants'
+
+    sent = stubbed = skipped = 0
+    seen = set()
+    results = []
+    for item in send_list:
+        email = item['email']
+        name = item['name']
+        if not email or email in seen:
+            skipped += 1
+            continue
+        seen.add(email)
+        attachments, cert_id = _cert_attachment(name, item.get('row'))
+        ok, subject = _send_one(email, name, item.get('row'), attachments=attachments)
+        status_str = 'sent' if ok else 'stubbed'
+        if ok:
+            sent += 1
+        else:
+            stubbed += 1
+        EmailSendLog.objects.create(
+            recipient_email=email, recipient_name=name,
+            template_key=template_key, template_name=tpl.name, subject=subject[:300],
+            context='webinar_broadcast', event_key=event_key, event_type=event_type,
+            status=status_str, certificate_id=(cert_id if attachments else ''), sent_by=actor,
+        )
+        results.append({'email': email, 'name': name, 'status': status_str, 'certificate_id': cert_id if attachments else ''})
+
+    EmailCampaign.objects.create(
+        name=f'{tpl.name} · {event_title} ({list_source})'[:200],
+        template_key=template_key, template_name=tpl.name,
+        subject=(subject_override or tpl.subject)[:300],
+        recipient_count=len(seen), sent_count=sent, failed_count=0, skipped_count=skipped,
+        created_by=actor,
+    )
+    return Response({
+        'total': len(seen), 'sent': sent, 'stubbed': stubbed, 'skipped': skipped,
+        'source': list_source, 'results': results,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def webinar_send_history(request):
+    """
+    GET ?event_key=...  -> per-recipient send counts + recent log for a webinar.
+    Returns { summary, recipients:[...], log:[...] }.
+    """
+    from accounts_app.models import EmailSendLog
+
+    event_key = str(request.query_params.get('event_key') or '').strip()
+    if not event_key:
+        return Response({'summary': {}, 'recipients': [], 'log': []})
+
+    logs = list(
+        EmailSendLog.objects.filter(event_key=event_key)
+        .values('recipient_email', 'recipient_name', 'template_name', 'template_key',
+                'subject', 'status', 'certificate_id', 'sent_by', 'sent_at')
+    )
+
+    # Certificates issued for this event (one row per cert PDF actually attached).
+    certificates = [
+        {
+            'email': r['recipient_email'], 'name': r['recipient_name'],
+            'certificate_id': r['certificate_id'],
+            'sent_at': r['sent_at'].isoformat() if r['sent_at'] else None,
+        }
+        for r in sorted(logs, key=lambda x: x['sent_at'] or '', reverse=True)
+        if r.get('certificate_id')
+    ]
+
+    by_email = {}
+    by_template = {}
+    for row in logs:
+        em = row['recipient_email']
+        rec = by_email.setdefault(em, {
+            'email': em, 'name': row['recipient_name'], 'count': 0,
+            'last_sent': None, 'templates': set(),
+        })
+        rec['count'] += 1
+        rec['templates'].add(row['template_name'] or row['template_key'])
+        ts = row['sent_at']
+        if rec['last_sent'] is None or (ts and ts > rec['last_sent']):
+            rec['last_sent'] = ts
+            if row['recipient_name']:
+                rec['name'] = row['recipient_name']
+        tname = row['template_name'] or row['template_key'] or '—'
+        by_template[tname] = by_template.get(tname, 0) + 1
+
+    recipients = sorted(
+        (
+            {
+                'email': r['email'], 'name': r['name'], 'count': r['count'],
+                'last_sent': r['last_sent'].isoformat() if r['last_sent'] else None,
+                'templates': sorted(r['templates']),
+            }
+            for r in by_email.values()
+        ),
+        key=lambda x: x['count'], reverse=True,
+    )
+    log = [
+        {
+            'email': row['recipient_email'], 'name': row['recipient_name'],
+            'template': row['template_name'] or row['template_key'],
+            'subject': row['subject'], 'status': row['status'],
+            'sent_by': row['sent_by'],
+            'sent_at': row['sent_at'].isoformat() if row['sent_at'] else None,
+        }
+        for row in sorted(logs, key=lambda x: x['sent_at'] or '', reverse=True)[:200]
+    ]
+    return Response({
+        'summary': {
+            'total_sends': len(logs),
+            'unique_recipients': len(by_email),
+            'by_template': by_template,
+            'certificates_sent': len(certificates),
+        },
+        'recipients': recipients,
+        'certificates': certificates,
+        'log': log,
+    })
+
+
+# ─── Webinar meeting (one Google Meet per event) ─────────────────────────────
+
+def _find_event_registration(event_key=None, event_pk=None):
+    from tiesverse_app.models import EventRegistration
+    if event_pk:
+        obj = EventRegistration.objects.filter(id=event_pk).first()
+        if obj:
+            return obj
+    ek = str(event_key or '').strip()
+    if not ek:
+        return None
+    if ek.isdigit():
+        obj = EventRegistration.objects.filter(id=int(ek)).first()
+        if obj:
+            return obj
+    obj = EventRegistration.objects.filter(title__iexact=ek).first()
+    if obj:
+        return obj
+    for e in EventRegistration.objects.all():
+        if slugify(e.title) == ek:
+            return e
+    return None
+
+
+def _deliver_meeting_link(event_id, event_title, email, free_only=False):
+    """Return the event's Meet link and add the person as a guest. When
+    free_only=True, only do so for FREE events (price 0) — used on the public
+    registration path so paid webinars withhold the link until payment."""
+    try:
+        from config import google_calendar
+        ev = _find_event_registration(event_key=str(event_id or '') or event_title)
+        if not ev or not ev.meeting_link:
+            return ''
+        if free_only and int(ev.price or 0) != 0:
+            return ''
+        if ev.calendar_event_id and email:
+            google_calendar.add_guest(ev.calendar_event_id, email)
+        return ev.meeting_link
+    except Exception:  # noqa: BLE001
+        return ''
+
+
+# ─── Certificate PDF generation (server-side, via the hosted generator) ───────
+
+def _cert_template_vars(template_id):
+    """Fetch the certificate template's variables and pick the name + id fields.
+    Returns (name_var, id_var). Raises on failure."""
+    import json
+    import urllib.request
+    from django.conf import settings as _s
+    base = _s.CERTIFICATE_GENERATOR_API_URL.rstrip('/')
+    req = urllib.request.Request(f"{base}/api/templates/{template_id}", headers={'Accept': 'application/json'})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        data = json.loads(r.read().decode())
+    names = [str(v.get('name', '')) for v in (data.get('variables') or [])]
+    name_var = next((n for n in names if 'name' in n.lower()), 'name')
+    id_var = next((n for n in names if 'id' in n.lower() and 'email' not in n.lower()), None)
+    return name_var, id_var
+
+
+def _generate_certificate_pdf(template_id, data):
+    """Generate one certificate PDF from a {variable: value} dict. Returns bytes."""
+    import json
+    import urllib.request
+    from django.conf import settings as _s
+    base = _s.CERTIFICATE_GENERATOR_API_URL.rstrip('/')
+    req = urllib.request.Request(
+        f"{base}/api/templates/{template_id}/generate",
+        data=json.dumps(data or {}).encode(),
+        headers={'Content-Type': 'application/json', 'Accept': 'application/pdf'},
+        method='POST',
+    )
+    with urllib.request.urlopen(req, timeout=90) as r:
+        return r.read()
+
+
+def _build_cert_data(fields, row, name, cert_id, auto_name_var=None, auto_id_var=None):
+    """Build the {variable: value} dict for a recipient. `fields` is an explicit
+    mapping {var: {source, value}} where source is a registrant column key
+    ('name', 'organization', 'role', …), 'id' (verification id), 'custom', or
+    'blank'. Falls back to the auto-detected name/id vars when no mapping."""
+    lookup = dict(row or {})
+    lookup['name'] = name or lookup.get('name') or 'Participant'
+    if fields:
+        out = {}
+        for var, spec in (fields or {}).items():
+            src = (spec or {}).get('source')
+            if src == 'id':
+                out[var] = cert_id
+            elif src == 'custom':
+                out[var] = str((spec or {}).get('value') or '')
+            elif src in ('blank', None, ''):
+                continue
+            else:  # a registrant column
+                out[var] = str(lookup.get(src, '') or '')
+        return out
+    out = {(auto_name_var or 'name'): lookup['name']}
+    if auto_id_var and cert_id:
+        out[auto_id_var] = cert_id
+    return out
+
+
+def _make_cert_id(event_title):
+    import uuid
+    prefix = (slugify(event_title)[:6] or 'WEB').upper()
+    return f"TIES-{prefix}-{uuid.uuid4().hex[:6].upper()}"
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def webinar_meeting_guests(request):
+    """List the meeting's current guests (from Google Calendar) + guest-visibility.
+    GET ?event_key=|event_pk="""
+    from config import google_calendar
+    obj = _find_event_registration(request.query_params.get('event_key'), request.query_params.get('event_pk'))
+    if obj is None:
+        return Response({'error': 'Webinar not found.'}, status=404)
+    if not obj.calendar_event_id:
+        return Response({'attendees': [], 'guests_can_see_other_guests': obj.meeting_guests_see_each_other,
+                         'configured': google_calendar.is_configured(), 'has_meeting': False})
+    live = google_calendar.get_event_guests(obj.calendar_event_id)
+    if live is None:
+        return Response({'attendees': [], 'guests_can_see_other_guests': obj.meeting_guests_see_each_other,
+                         'configured': google_calendar.is_configured(), 'has_meeting': True})
+    live['configured'] = True
+    live['has_meeting'] = True
+    return Response(live)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_webinar_meeting(request):
+    """Create/refresh the single Google Meet for a webinar and store it on the event.
+    Body: { event_key|event_pk, start (ISO 'YYYY-MM-DDTHH:MM'), duration_min,
+            hosts:[email], join_access, guests_see_each_other, moderation, auto_record }."""
+    from config import google_calendar
+
+    obj = _find_event_registration(request.data.get('event_key'), request.data.get('event_pk'))
+    if obj is None:
+        return Response({'error': 'Webinar not found.'}, status=404)
+
+    start = str(request.data.get('start') or '').strip()
+    if not start:
+        return Response({'error': 'Pick a meeting date and time.'}, status=400)
+    if not google_calendar.is_configured():
+        return Response({'error': 'Google Calendar is not configured on the server yet.'}, status=400)
+
+    duration = int(request.data.get('duration_min') or obj.meeting_duration_min or 60)
+    hosts = request.data.get('hosts') or obj.meeting_hosts or []
+    guests_see = bool(request.data.get('guests_see_each_other', obj.meeting_guests_see_each_other))
+    join_access = request.data.get('join_access', obj.meeting_join_access)
+    moderation = bool(request.data.get('moderation', obj.meeting_moderation))
+    auto_record = bool(request.data.get('auto_record', obj.meeting_auto_record))
+
+    # Phase C: try a configured Meet space (host controls). Falls back to a plain
+    # Calendar Meet link if the Meet API isn't enabled / the scope isn't granted.
+    meet_uri = None
+    controls_applied = False
+    space = google_calendar.create_meet_space(
+        access_type=google_calendar._join_access_to_meet(join_access),
+        moderation=moderation, auto_record=auto_record,
+    )
+    if space and space.get('uri'):
+        meet_uri = space['uri']
+        controls_applied = True
+
+    try:
+        res = google_calendar.create_event(
+            summary=f"{obj.title} — TiesVerse {obj.kind.title()}",
+            description=obj.description or '',
+            start_iso=start, duration_min=duration,
+            attendees=hosts,  # only hosts invited now; paid registrants added on payment
+            guests_can_see_other_guests=guests_see,
+            request_id_prefix='ties-web', meet_uri=meet_uri,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return Response({'error': f'Could not create the meeting: {exc}'}, status=502)
+
+    obj.meeting_link = res['meet_link']
+    obj.calendar_event_id = res['event_id']
+    obj.meeting_duration_min = duration
+    obj.meeting_hosts = hosts
+    obj.meeting_join_access = join_access
+    obj.meeting_guests_see_each_other = guests_see
+    obj.meeting_moderation = moderation
+    obj.meeting_auto_record = auto_record
+    from django.utils.dateparse import parse_datetime
+    dt = parse_datetime(start)
+    if dt is not None:
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone.get_current_timezone())
+        obj.meeting_start = dt
+    obj.save()
+    return Response({
+        'meeting_link': obj.meeting_link, 'event_id': obj.calendar_event_id,
+        'start': start, 'host_controls_applied': controls_applied,
+    })

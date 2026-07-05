@@ -17,7 +17,9 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
-from accounts_app.views import CustomTokenObtainPairView, SettingViewSet
+from accounts_app.views import (
+    CustomTokenObtainPairView, SettingViewSet, PublicFeaturedView, PublicEmailTemplateView,
+)
 from tiesverse_app.media_views import MediaUploadView, CloudinaryImageListView
 from config.certificate_proxy import certificate_generator_proxy
 from config.certificate_workflow import (
@@ -26,6 +28,7 @@ from config.certificate_workflow import (
     certificate_mark_emailed,
     certificate_records,
     certificate_records_csv,
+    certificate_send_emails,
     certificate_sources,
 )
 from rest_framework.routers import DefaultRouter
@@ -35,6 +38,8 @@ router.register(r'settings', SettingViewSet, basename='setting')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/public/featured/', PublicFeaturedView.as_view(), name='public-featured'),
+    path('api/public/email-template/<str:key>/', PublicEmailTemplateView.as_view(), name='public-email-template'),
     path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/accounts/', include('accounts_app.urls')),
@@ -50,5 +55,6 @@ urlpatterns = [
     path('api/certificates/records/', certificate_records, name='certificate_records'),
     path('api/certificates/records/csv/', certificate_records_csv, name='certificate_records_csv'),
     path('api/certificates/records/mark-emailed/', certificate_mark_emailed, name='certificate_mark_emailed'),
+    path('api/certificates/records/send-emails/', certificate_send_emails, name='certificate_send_emails'),
     path('api/', include(router.urls)),
 ]

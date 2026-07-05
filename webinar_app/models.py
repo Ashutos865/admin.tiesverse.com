@@ -1,5 +1,35 @@
 from django.db import models
 
+
+class EventFormQuestion(models.Model):
+    FIELD_TYPES = [
+        ('text',     'Short Text'),
+        ('textarea', 'Long Text'),
+        ('email',    'Email'),
+        ('phone',    'Phone'),
+        ('select',   'Dropdown'),
+        ('radio',    'Radio Buttons'),
+        ('checkbox', 'Checkboxes'),
+    ]
+    event_key   = models.CharField(max_length=255)         # slugified title or id
+    event_type  = models.CharField(max_length=20)          # 'event' | 'webinar'
+    event_title = models.CharField(max_length=255, blank=True)
+    label       = models.CharField(max_length=255)
+    field_type  = models.CharField(max_length=20, choices=FIELD_TYPES, default='text')
+    placeholder = models.CharField(max_length=255, blank=True)
+    options     = models.TextField(blank=True)             # comma-separated for select/radio/checkbox
+    required    = models.BooleanField(default=True)
+    order       = models.PositiveIntegerField(default=0)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'event_form_questions'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f'[{self.event_key}] {self.label}'
+
+
 class WebinarEvent(models.Model):
     title = models.CharField(max_length=255)
     speaker = models.CharField(max_length=255)

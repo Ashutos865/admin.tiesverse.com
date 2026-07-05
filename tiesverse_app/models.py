@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils.text import slugify as _slugify
 
 
 # ── Article (stored as 'departments' table in migration) ──────────────────────
@@ -18,27 +19,40 @@ class Department(models.Model):
     cover_url = models.CharField(max_length=500)
     featured = models.BooleanField(default=False)
     published = models.BooleanField(default=True)
+
+    # ── The actual article content + attribution (what readers read) ──
+    body = models.TextField(blank=True, help_text='Article body (HTML)')
+    author = models.CharField(max_length=200, blank=True)
+    author_role = models.CharField(max_length=200, blank=True)
+    tags = models.JSONField(default=list, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'departments'
+        ordering = ['-created_at']
 
     def __str__(self):
         return self.title
 
     def to_supabase_dict(self):
         return {
-            'slug':      self.slug,
-            'title':     self.title,
-            'dek':       self.dek,
-            'cat':       self.cat,
-            'topic':     self.topic,
-            'kind':      self.kind,
-            'date':      self.date,
-            'read_time': self.read_time,
-            'cover_url': self.cover_url,
-            'featured':  self.featured,
-            'published': self.published,
+            'slug':        self.slug,
+            'title':       self.title,
+            'dek':         self.dek,
+            'cat':         self.cat,
+            'topic':       self.topic,
+            'kind':        self.kind,
+            'date':        self.date,
+            'read_time':   self.read_time,
+            'cover_url':   self.cover_url,
+            'featured':    self.featured,
+            'published':   self.published,
+            'body':        self.body,
+            'author':      self.author,
+            'author_role': self.author_role,
+            'tags':        self.tags,
         }
 
 
@@ -68,6 +82,8 @@ class Event(models.Model):
     past = models.BooleanField(default=False)
     cover_url = models.URLField(blank=True)
     register_url = models.URLField(blank=True)
+    certificate_template_id   = models.CharField(max_length=255, blank=True)
+    certificate_template_name = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -179,10 +195,35 @@ class EventRegistration(models.Model):
         choices=[('upcoming', 'Upcoming'), ('past', 'Past')],
         default='upcoming',
     )
+    # Certificate distribution — assigned from Certificate Portal
+    certificate_template_id   = models.CharField(max_length=255, blank=True)
+    certificate_template_name = models.CharField(max_length=255, blank=True)
+
+    # Meeting (Google Meet via Calendar) — one link per event; only paid registrants receive it
+    meeting_link = models.CharField(max_length=500, blank=True)
+    calendar_event_id = models.CharField(max_length=255, blank=True)
+    meeting_start = models.DateTimeField(null=True, blank=True)
+    meeting_duration_min = models.PositiveIntegerField(default=60)
+    # Meeting host controls (applied via the Meet API in Phase C)
+    meeting_join_access = models.CharField(
+        max_length=12, default='invited',
+        choices=[('open', 'Anyone with link'), ('org', 'Same org'), ('invited', 'Invited only')],
+    )
+    meeting_guests_see_each_other = models.BooleanField(default=False)
+    meeting_moderation = models.BooleanField(default=True)         # host-only present/chat
+    meeting_auto_record = models.BooleanField(default=False)
+    meeting_hosts = models.JSONField(default=list, blank=True)     # host emails (get invite + moderation)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'event_registrations'
+
+    def save(self, *args, **kwargs):
+        if self.title:
+            kind_path = 'webinar' if self.kind == 'webinar' else 'workshop'
+            self.register_url = f'https://tiesverse.com/{kind_path}/{_slugify(self.title)}'
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.title

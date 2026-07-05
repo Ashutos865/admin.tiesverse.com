@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+﻿import React, { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import {
@@ -6,9 +6,11 @@ import {
     getTeamMembers, createTeamMember, updateTeamMember, deleteTeamMember,
     getEventSpeakers, createEventSpeaker, updateEventSpeaker, deleteEventSpeaker,
     getEventRegistrations, createEventRegistration, updateEventRegistration, deleteEventRegistration,
-    getSettings, updateSetting, uploadImage, listCloudinaryImages
+    getSettings, updateSetting, uploadImage, listCloudinaryImages,
+    getOnboardingList,
 } from '../../apiClient';
 import { Plus, Edit2, Trash2, X, Sparkles, BookOpen, Users, FileText, BarChart3, CalendarDays } from 'lucide-react';
+import ArticleBody from './ArticleBody';
 import ImageUploadField from '../../components/ImageUploadField';
 import { resolveImg } from '../../utils/img';
 import './ArticlesReports.css';
@@ -53,6 +55,21 @@ const firstValidationError = (res) => {
     return `${key}: ${Array.isArray(v) ? v[0] : v}`;
 };
 
+// ===== TEAM MEMBER HELPERS =====
+const parseMeta = (raw) => {
+    if (!raw) return {};
+    try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return {}; }
+};
+
+const AVATAR_COLORS = [
+    '#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#14b8a6','#f97316',
+];
+const avatarColor = (name = '') => {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
+    return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+};
+
 // ===== TAB CONFIGURATION =====
 // NOTE: field sets below mirror the Django models exactly (tiesverse_app.models).
 // Department -> Supabase 'articles', EventSpeaker -> 'guests',
@@ -64,7 +81,7 @@ const TAB_CONFIG = {
         imageField: 'cover_url', defaultForm: { kind: 'Article', featured: false, published: true },
     },
     team_members: {
-        title: 'Team Members', subtitle: 'Manage the team directory and profiles.', icon: <Users size={20} />, itemLabel: 'Member',
+        title: 'Team Members', subtitle: 'Verified members from the Career Portal onboarding process.', icon: <Users size={20} />, itemLabel: 'Member',
         fetchFn: getTeamMembers, createFn: createTeamMember, updateFn: updateTeamMember, deleteFn: deleteTeamMember,
         imageField: 'photo_url', defaultForm: { is_founder: false, display_order: 0 },
     },
@@ -121,8 +138,13 @@ const Admin = ({ tab = 'articles' }) => {
                 sData.forEach(s => { settingsMap[s.key] = Number(s.value); });
                 setSiteSettings(prev => ({ ...prev, ...settingsMap }));
             }
-            const data = await config.fetchFn();
-            if (data && !data.error) setItems(data);
+            if (tab === 'team_members') {
+                const data = await getOnboardingList();
+                if (data && !data.error) setItems(data.filter(m => m.status === 'verified'));
+            } else {
+                const data = await config.fetchFn();
+                if (data && !data.error) setItems(data);
+            }
         } catch (err) { console.error('Fetch error:', err); }
         setLoading(false);
     };
@@ -253,6 +275,10 @@ const Admin = ({ tab = 'articles' }) => {
                 <FormField label="Slug *" name="slug" value={formData.slug} onChange={handleInputChange} placeholder="india-semiconductor-push (unique)" required />
                 <div><FieldLabel>Dek / Summary</FieldLabel><textarea name="dek" value={formData.dek || ''} onChange={handleInputChange} style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} placeholder="One-line summary shown under the title." /></div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <FormField label="Author" name="author" value={formData.author} onChange={handleInputChange} placeholder="e.g. Ties Research" />
+                    <FormField label="Author role" name="author_role" value={formData.author_role} onChange={handleInputChange} placeholder="e.g. Research desk" />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <FormField label="Category (cat)" name="cat" value={formData.cat} onChange={handleInputChange} placeholder="e.g. Geopolitics" />
                     <FormField label="Topic" name="topic" value={formData.topic} onChange={handleInputChange} placeholder="e.g. Trade" />
                 </div>
@@ -270,6 +296,14 @@ const Admin = ({ tab = 'articles' }) => {
                 </div>
                 <FormField label="Date" name="date" value={formData.date} onChange={handleInputChange} placeholder="e.g. Jun 24, 2026" />
                 <ImageUploadField label="Cover Image URL *" name="cover_url" value={formData.cover_url} onChange={handleInputChange} placeholder="https://…" required onFile={handleImageFile} onBrowse={openLibrary} uploading={uploadingImage} />
+                <div>
+                    <FieldLabel>Tags</FieldLabel>
+                    <input value={(formData.tags || []).join(', ')} onChange={e => handleInputChange({ target: { name: 'tags', value: e.target.value.split(',').map(t => t.trim()).filter(Boolean) } })} style={inputStyle} placeholder="comma, separated, tags" />
+                </div>
+                <div>
+                    <FieldLabel>Article body</FieldLabel>
+                    <ArticleBody value={formData.body} onChange={(v) => handleInputChange({ target: { name: 'body', value: v } })} />
+                </div>
                 <div style={{ display: 'flex', gap: '24px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem' }}>
                         <input type="checkbox" name="featured" checked={!!formData.featured} onChange={e => handleInputChange({ target: { name: 'featured', value: e.target.checked } })} /> Featured
@@ -350,6 +384,113 @@ const Admin = ({ tab = 'articles' }) => {
         );
 
         return null;
+    };
+
+    // ===== TEAM MEMBERS: READ-ONLY ROW =====
+    const typeChipStyle = (type) => {
+        const t = (type || '').toLowerCase();
+        if (t === 'intern') return {
+            bg: 'color-mix(in srgb, var(--primary) 12%, transparent)',
+            color: 'var(--primary)',
+            border: 'color-mix(in srgb, var(--primary) 25%, transparent)',
+        };
+        if (t === 'full-time' || t === 'fulltime') return {
+            bg: 'rgba(59,130,246,0.12)',
+            color: '#60a5fa',
+            border: 'rgba(59,130,246,0.25)',
+        };
+        if (t === 'part-time' || t === 'parttime') return {
+            bg: 'rgba(245,158,11,0.12)',
+            color: '#fbbf24',
+            border: 'rgba(245,158,11,0.25)',
+        };
+        return {
+            bg: 'rgba(20,184,166,0.12)',
+            color: '#2dd4bf',
+            border: 'rgba(20,184,166,0.25)',
+        };
+    };
+
+    const renderTeamMemberRow = (member) => {
+        const meta = parseMeta(member.hr_notes);
+        const initials = (member.candidate_name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+        const depts = Array.isArray(member.assigned_departments) ? member.assigned_departments : [];
+        const joinDate = meta.joining_date
+            ? new Date(meta.joining_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+            : null;
+        const memberType = meta.type || null;
+        const chip = memberType ? typeChipStyle(memberType) : null;
+        return (
+            <div key={member.id} style={{
+                display: 'flex', alignItems: 'center', gap: '16px',
+                padding: '12px 18px', borderRadius: '10px',
+                background: 'var(--surface-container-low)',
+                border: '1px solid var(--outline-variant)',
+                transition: 'border-color 0.18s, background 0.18s',
+            }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-container)'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--primary) 35%, transparent)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface-container-low)'; e.currentTarget.style.borderColor = 'var(--outline-variant)'; }}
+            >
+                {/* Avatar */}
+                <div style={{
+                    width: '38px', height: '38px', borderRadius: '50%', flexShrink: 0,
+                    background: 'var(--primary-fixed)',
+                    border: '1.5px solid color-mix(in srgb, var(--primary) 30%, transparent)',
+                    display: 'grid', placeItems: 'center',
+                    color: 'var(--primary)', fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.04em',
+                }}>
+                    {initials}
+                </div>
+
+                {/* Name + role */}
+                <div style={{ flex: '0 0 200px', minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {member.candidate_name}
+                    </p>
+                    <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {member.role_offered || 'Role not assigned'}
+                    </p>
+                </div>
+
+                {/* Type chip */}
+                {chip && (
+                    <span style={{
+                        flexShrink: 0, fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.09em',
+                        padding: '2px 9px', borderRadius: '20px', textTransform: 'uppercase',
+                        background: chip.bg, color: chip.color, border: `1px solid ${chip.border}`,
+                    }}>
+                        {memberType}
+                    </span>
+                )}
+
+                {/* Departments */}
+                <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap', gap: '5px', minWidth: 0 }}>
+                    {depts.length > 0 ? depts.map(d => (
+                        <span key={d} style={{
+                            fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.06em',
+                            padding: '2px 8px', borderRadius: '5px',
+                            background: 'var(--secondary-container)',
+                            color: 'var(--on-secondary-container)',
+                            border: '1px solid var(--outline-variant)',
+                        }}>{d}</span>
+                    )) : (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic', opacity: 0.6 }}>No department</span>
+                    )}
+                </div>
+
+                {/* Email */}
+                <p style={{ flexShrink: 0, margin: 0, fontSize: '0.7rem', color: 'var(--text-muted)', maxWidth: '190px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {member.candidate_email}
+                </p>
+
+                {/* Join date */}
+                {joinDate && (
+                    <p style={{ flexShrink: 0, margin: 0, fontSize: '0.7rem', color: 'var(--text-muted)', opacity: 0.7, whiteSpace: 'nowrap' }}>
+                        {joinDate}
+                    </p>
+                )}
+            </div>
+        );
     };
 
     // ===== RENDER ITEM CARD =====
@@ -640,9 +781,15 @@ const Admin = ({ tab = 'articles' }) => {
                         ? 'Manage newsroom content, research articles, and editorial reports across the portal.'
                         : config.subtitle}</p>
                 </div>
-                <button className="content-create-button" onClick={openCreateModal}>
-                    <Plus size={18} /> Add New {config.itemLabel}
-                </button>
+                {tab === 'team_members' ? (
+                    <button className="content-create-button" onClick={() => navigate('/hr/team')}>
+                        <Users size={18} /> Manage in HR Portal
+                    </button>
+                ) : (
+                    <button className="content-create-button" onClick={openCreateModal}>
+                        <Plus size={18} /> Add New {config.itemLabel}
+                    </button>
+                )}
             </div>
 
             {/* Toast */}
@@ -672,7 +819,17 @@ const Admin = ({ tab = 'articles' }) => {
                 <div className="content-empty-state">
                     {config.icon && React.cloneElement(config.icon, { size: 40 })}
                     <p>No {config.itemLabel.toLowerCase()}s yet</p>
-                    <span>Click “Add New {config.itemLabel}” to get started.</span>
+                    {tab === 'team_members'
+                        ? <span>Verify onboarding submissions in the Career Portal to populate this list.</span>
+                        : <span>Click "Add New {config.itemLabel}" to get started.</span>
+                    }
+                </div>
+            ) : tab === 'team_members' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <p style={{ margin: '0 0 12px', fontSize: '0.75rem', color: 'var(--text-muted)', opacity: 0.75 }}>
+                        {filteredItems.length} verified member{filteredItems.length !== 1 ? 's' : ''} · Read-only view — manage in Career Portal → Team Directory
+                    </p>
+                    {filteredItems.map(m => renderTeamMemberRow(m))}
                 </div>
             ) : (
                 <div className="content-card-grid">
