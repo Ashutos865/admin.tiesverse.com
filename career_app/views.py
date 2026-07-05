@@ -117,6 +117,13 @@ def _provision_member_account(sub, created_by_user):
     group_name = GROUP_NAME_MAP.get(sub.portal_role or 'intern', 'Members')
     group, _ = Group.objects.get_or_create(name=group_name)
     user.groups.add(group)
+    # Auto-grant the role's default permissions (attendance/leave/offboarding/team
+    # view etc.) so a new member of this role works without manual permission setup.
+    try:
+        from .role_permissions import sync_group_permissions
+        sync_group_permissions()
+    except Exception:  # noqa: BLE001 — never block provisioning on this
+        pass
 
     DocumentAuditLog.objects.create(
         submission=sub, doc_type='offer_letter', action='issued',

@@ -809,7 +809,12 @@ def list_public_events(request):
     Returns all EventRegistration rows so the website can list them dynamically.
     """
     from tiesverse_app.models import EventRegistration
+    from django.core.cache import cache
     status_filter = request.query_params.get('status', '')
+    cache_key = f'public_events:{status_filter or "all"}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response(cached)
     try:
         qs = EventRegistration.objects.using('turso_db').all()
         if status_filter in ('upcoming', 'past'):
@@ -830,6 +835,7 @@ def list_public_events(request):
             }
             for e in qs
         ]
+        cache.set(cache_key, data, 60)   # 60s — new events appear within a minute
         return Response(data)
     except Exception as exc:
         logger.warning('list_public_events failed: %s', exc)

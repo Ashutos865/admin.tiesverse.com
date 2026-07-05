@@ -433,14 +433,21 @@ class PublicEmailTemplateView(views.APIView):
     def get(self, request, key):
         if key not in self.ALLOWED:
             return response.Response({'error': 'Not available'}, status=404)
+        from django.core.cache import cache
+        cache_key = f'public_email_tpl:{key}'
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return response.Response(cached)
         from config.email_templates import get_template
         tpl = get_template(key)
         if tpl is None:
             return response.Response({'error': 'Unknown template'}, status=404)
-        return response.Response({
+        payload = {
             'key': tpl.key, 'subject': tpl.subject, 'body_html': tpl.body_html,
             'from_name': tpl.from_name, 'from_email': tpl.from_email,
-        })
+        }
+        cache.set(cache_key, payload, 300)   # 5 min; template edits are infrequent
+        return response.Response(payload)
 
 
 class SESSendersView(views.APIView):
@@ -486,6 +493,10 @@ class PublicFeaturedView(views.APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
+        from django.core.cache import cache
+        cached = cache.get('public_featured')
+        if cached is not None:
+            return response.Response(cached)
         out = {'spotlight': [], 'insights': [], 'engagements': []}
         for item in FeaturedContent.objects.filter(is_active=True):
             out.setdefault(item.section, []).append({
@@ -493,6 +504,7 @@ class PublicFeaturedView(views.APIView):
                 'image_url': item.image_url, 'link_url': item.link_url,
                 'cta_label': item.cta_label, 'date_label': item.date_label,
             })
+        cache.set('public_featured', out, 60)
         return response.Response(out)
 
 
