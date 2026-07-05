@@ -75,7 +75,7 @@ const makeDefaultQuestions = (eKey, eType) => [
 ];
 
 const previewUrl = (kind, title) =>
-  `https://tiesverse.com/${kind === 'webinar' ? 'webinar' : 'workshop'}/${toSlug(title)}`;
+  `https://tiesverse.com/webinars/${toSlug(title)}`;
 const EMPTY_Q = { label: '', field_type: 'text', placeholder: '', options: '', required: true };
 const EMPTY_SPEAKER = { name: '', role: '', org: '', photo_url: '', quote: '', featured: false };
 const FIELD_TYPES = [

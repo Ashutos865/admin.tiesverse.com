@@ -3,7 +3,7 @@
 Each send point maps to one `EmailTemplate` row. Admins edit friendly, structured
 content (`content_json`) in the visual editor; `body_html` is regenerated from it
 by `render_content()` on every save. `send_template_email()` is the single sender
-every call site now uses — it fills {{tokens}} and applies the template's subject,
+every call site now uses - it fills {{tokens}} and applies the template's subject,
 sender, enabled flag, and attachment rule.
 
 content_json shape:
@@ -110,7 +110,7 @@ def render_content(content):
 </td></tr>
 <tr><td style="padding:32px;">{inner}</td></tr>
 <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #eef0f3;">
-<p style="margin:0;font-size:12px;color:#9ca3af;">&copy; Tiesverse. This is an automated message — please do not reply.</p>
+<p style="margin:0;font-size:12px;color:#9ca3af;">&copy; Tiesverse. This is an automated message - please do not reply.</p>
 </td></tr>
 </table>
 </td></tr>
@@ -157,9 +157,9 @@ _ENABLED_SEED = {
 
 _OFFBOARDING_TEMPLATES = {
     'offboarding_approved': {
-        'name': 'Offboarding — Approved',
+        'name': 'Offboarding - Approved',
         'description': 'Sent when HR approves an offboarding request and sets the last working day.',
-        'subject': 'Your offboarding is confirmed — Tiesverse',
+        'subject': 'Your offboarding is confirmed - Tiesverse',
         'from_name': 'Tiesverse HR',
         'from_email': '',
         'allow_attachment': False,
@@ -177,7 +177,7 @@ _OFFBOARDING_TEMPLATES = {
         },
     },
     'offboarding_revoked': {
-        'name': 'Offboarding — Access ended',
+        'name': 'Offboarding - Access ended',
         'description': 'Sent when a member’s portal access is revoked at the end of offboarding.',
         'subject': 'Your Tiesverse portal access has ended',
         'from_name': 'Tiesverse HR',
@@ -217,7 +217,7 @@ EMAIL_TEMPLATES = {
     'onboarding_invite': {
         'name': 'Onboarding Invite',
         'description': 'Sent to a new candidate to collect their documents.',
-        'subject': 'Complete Your Onboarding — Tiesverse',
+        'subject': 'Complete Your Onboarding - Tiesverse',
         'from_name': 'Tiesverse HR',
         'from_email': '',
         'allow_attachment': False,
@@ -226,7 +226,7 @@ EMAIL_TEMPLATES = {
             'heading': 'Complete your onboarding',
             'body': 'Dear {{name}},\n\nCongratulations on being selected for {{role}} at Tiesverse! Please upload your documents (Aadhaar, College ID, Photo, Emergency Contact) using your secure link below.',
             'table': [],
-            'closing': 'This link is unique to you — please do not share it.',
+            'closing': 'This link is unique to you - please do not share it.',
             'button': {'label': 'Upload Documents', 'url': '{{upload_link}}'},
             'signature': 'Warm regards,\nTiesverse HR Team',
         },
@@ -255,7 +255,7 @@ EMAIL_TEMPLATES = {
     'certificate_issue': {
         'name': 'Certificate Issued (individual)',
         'description': 'Sent when HR issues an internship certificate / LOR / NOC to a member.',
-        'subject': 'Your {{document}} — Tiesverse',
+        'subject': 'Your {{document}} - Tiesverse',
         'from_name': 'Tiesverse',
         'from_email': '',
         'allow_attachment': True,
@@ -275,7 +275,7 @@ EMAIL_TEMPLATES = {
     'certificate_bulk': {
         'name': 'Certificate Delivery (bulk)',
         'description': 'Sent when certificates are emailed in bulk from the Certificate Generator.',
-        'subject': 'Your {{subject_title}} Certificate — Tiesverse',
+        'subject': 'Your {{subject_title}} Certificate - Tiesverse',
         'from_name': 'Tiesverse',
         'from_email': '',
         'allow_attachment': True,
@@ -295,7 +295,7 @@ EMAIL_TEMPLATES = {
     'career_application': {
         'name': 'Career Application Received',
         'description': "Sent to a candidate after they submit an internship application on the careers site.",
-        'subject': 'We received your application — Tiesverse',
+        'subject': 'We received your application - Tiesverse',
         'from_name': 'Tiesverse Careers',
         'from_email': '',
         'allow_attachment': False,
@@ -310,7 +310,7 @@ EMAIL_TEMPLATES = {
         },
     },
     'webinar_confirmation': {
-        'name': 'Webinar — Registration Confirmation',
+        'name': 'Webinar - Registration Confirmation',
         'description': 'Global default confirmation sent when someone registers for a webinar/event. Each webinar can override the subject/body when broadcasting.',
         'subject': "You're registered: {{topic}}",
         'from_name': 'Tiesverse',
@@ -327,11 +327,11 @@ EMAIL_TEMPLATES = {
             ],
             'closing': 'Add it to your calendar so you don’t miss it. Questions? Just reply to this email.',
             'button': {'label': 'Join link', 'url': '{{join_link}}'},
-            'signature': '— The Tiesverse Team',
+            'signature': '- The Tiesverse Team',
         },
     },
     'webinar_reminder': {
-        'name': 'Webinar — Reminder',
+        'name': 'Webinar - Reminder',
         'description': 'Reminder you can broadcast to a webinar’s registrants before it starts.',
         'subject': 'Reminder: {{topic}} is coming up',
         'from_name': 'Tiesverse',
@@ -348,11 +348,11 @@ EMAIL_TEMPLATES = {
             ],
             'closing': 'See you there!',
             'button': {'label': 'Join now', 'url': '{{join_link}}'},
-            'signature': '— The Tiesverse Team',
+            'signature': '- The Tiesverse Team',
         },
     },
     'webinar_followup': {
-        'name': 'Webinar — Follow-up / Thank you',
+        'name': 'Webinar - Follow-up / Thank you',
         'description': 'Thank-you + recording/next-steps you can broadcast after a webinar.',
         'subject': 'Thanks for joining {{topic}}',
         'from_name': 'Tiesverse',
@@ -365,13 +365,13 @@ EMAIL_TEMPLATES = {
             'table': [],
             'closing': "We'd love to see you at our next session. Keep an eye on your inbox!",
             'button': {'label': 'Watch the recording', 'url': '{{recording_link}}'},
-            'signature': '— The Tiesverse Team',
+            'signature': '- The Tiesverse Team',
         },
     },
     'offer_letter': {
         'name': 'Offer Letter',
         'description': 'Sent to a candidate with their offer details and offer letter PDF attached.',
-        'subject': 'Offer Letter — {{role}} | Tiesverse',
+        'subject': 'Offer Letter - {{role}} | Tiesverse',
         'from_name': 'Tiesverse Careers',
         'from_email': '',
         'allow_attachment': True,
