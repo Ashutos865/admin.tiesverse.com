@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getSignups, approveSignup, rejectSignup } from '../../apiClient';
+import { getSignups, approveSignup, rejectSignup, getHRDepartments } from '../../apiClient';
 
 const ROLES = [
   ['intern', 'Intern'], ['member', 'Member'], ['team_lead', 'Team Lead'],
@@ -14,12 +14,17 @@ export default function SignupApprovals() {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState({}); // id -> {role, dept}
   const [busy, setBusy] = useState(null);
+  const [depts, setDepts] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await getSignups().catch(() => ({ signups: [] }));
+    const [res, dres] = await Promise.all([
+      getSignups().catch(() => ({ signups: [] })),
+      getHRDepartments().catch(() => []),
+    ]);
     setSignups(res?.signups || []);
     setSignupUrl(res?.signup_url || '');
+    setDepts((Array.isArray(dres) ? dres : []).map(d => d.name).filter(Boolean));
     setLoading(false);
   }, []);
 
@@ -29,13 +34,18 @@ export default function SignupApprovals() {
   useEffect(() => { load(); }, [load]);
 
   const setField = (id, k, v) => setDraft(d => ({ ...d, [id]: { ...(d[id] || {}), [k]: v } }));
+  const addDept = (id, name) => setDraft(d => {
+    const cur = d[id]?.depts || [];
+    return cur.includes(name) ? d : { ...d, [id]: { ...(d[id] || {}), depts: [...cur, name] } };
+  });
+  const removeDept = (id, name) => setDraft(d => ({ ...d, [id]: { ...(d[id] || {}), depts: (d[id]?.depts || []).filter(x => x !== name) } }));
 
   const approve = async (s) => {
     const d = draft[s.id] || {};
     setBusy(s.id);
     const res = await approveSignup(s.id, {
       portal_role: d.role || 'intern',
-      assigned_departments: d.dept || '',
+      assigned_departments: d.depts || [],
     }).catch(() => ({ error: 'Failed' }));
     setBusy(null);
     if (res?.status === 'approved') load();
@@ -96,7 +106,17 @@ export default function SignupApprovals() {
                       </select>
                     </label>
                     <label style={S.lbl}>Department(s)
-                      <input style={S.input} placeholder="e.g. Content, Tech" value={d.dept || ''} onChange={e => setField(s.id, 'dept', e.target.value)} />
+                      <select style={S.input} value="" onChange={e => { if (e.target.value) addDept(s.id, e.target.value); }}>
+                        <option value="">+ Add department</option>
+                        {depts.filter(dn => !(d.depts || []).includes(dn)).map(dn => <option key={dn} value={dn}>{dn}</option>)}
+                      </select>
+                      {(d.depts || []).length > 0 && (
+                        <div style={S.chips}>
+                          {d.depts.map(dn => (
+                            <span key={dn} style={S.chip}>{dn}<button style={S.chipX} onClick={() => removeDept(s.id, dn)}>×</button></span>
+                          ))}
+                        </div>
+                      )}
                     </label>
                   </div>
                   <div style={S.actions}>
@@ -138,6 +158,9 @@ const S = {
   assign: { display: 'flex', gap: 10 },
   lbl: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, fontWeight: 600, color: 'var(--text-muted,#6b7280)', flex: 1 },
   input: { padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border,#e5e7eb)', fontSize: 13 },
+  chips: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  chip: { display: 'inline-flex', alignItems: 'center', gap: 4, background: '#FE7A0018', color: '#c2410c', borderRadius: 20, padding: '3px 6px 3px 10px', fontSize: 12, fontWeight: 600 },
+  chipX: { border: 'none', background: 'transparent', color: '#c2410c', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 2px' },
   actions: { display: 'flex', flexDirection: 'column', gap: 8, minWidth: 180 },
   approve: { padding: '10px 14px', borderRadius: 8, border: 'none', background: '#FE7A00', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 },
   reject: { padding: '8px 14px', borderRadius: 8, border: '1px solid #fca5a5', background: 'transparent', color: '#dc2626', fontWeight: 600, cursor: 'pointer', fontSize: 13 },
