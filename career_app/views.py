@@ -1767,7 +1767,11 @@ class SignupListView(APIView):
             'id': s.id, 'name': s.name, 'email': s.email, 'photo_url': s.photo_url,
             'status': s.status, 'created_at': s.created_at,
         } for s in qs]
-        return Response({'signups': data})
+        from django.conf import settings as dj
+        base = getattr(dj, 'ADMIN_PORTAL_URL', 'https://admin.tiesverse.com').rstrip('/')
+        h = getattr(dj, 'SIGNUP_LINK_HASH', '')
+        signup_url = f'{base}/signup/{h}' if h else ''
+        return Response({'signups': data, 'signup_url': signup_url})
 
 
 class ApproveSignupView(APIView):

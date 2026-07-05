@@ -9,6 +9,8 @@ const STATUS_LABEL = { otp_pending: 'Awaiting email OTP', verified: 'Ready to ap
 
 export default function SignupApprovals() {
   const [signups, setSignups] = useState([]);
+  const [signupUrl, setSignupUrl] = useState('');
+  const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState({}); // id -> {role, dept}
   const [busy, setBusy] = useState(null);
@@ -17,8 +19,13 @@ export default function SignupApprovals() {
     setLoading(true);
     const res = await getSignups().catch(() => ({ signups: [] }));
     setSignups(res?.signups || []);
+    setSignupUrl(res?.signup_url || '');
     setLoading(false);
   }, []);
+
+  const copyUrl = () => {
+    navigator.clipboard?.writeText(signupUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  };
   useEffect(() => { load(); }, [load]);
 
   const setField = (id, k, v) => setDraft(d => ({ ...d, [id]: { ...(d[id] || {}), [k]: v } }));
@@ -52,6 +59,16 @@ export default function SignupApprovals() {
         </div>
         <button style={S.refresh} onClick={load}>↻ Refresh</button>
       </div>
+
+      {signupUrl && (
+        <div style={S.linkBar}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={S.linkLbl}>Shared signup link — send this to interns &amp; members</div>
+            <div style={S.linkUrl}>{signupUrl}</div>
+          </div>
+          <button style={S.copyBtn} onClick={copyUrl}>{copied ? 'Copied ✓' : 'Copy link'}</button>
+        </div>
+      )}
 
       {loading ? <div style={S.muted}>Loading…</div>
         : signups.length === 0 ? <div style={S.empty}>No pending signups.</div>
@@ -104,6 +121,10 @@ const S = {
   title: { fontSize: 24, fontWeight: 800, margin: 0, color: 'var(--text,#111827)' },
   sub: { color: 'var(--text-muted,#6b7280)', fontSize: 14, marginTop: 4, maxWidth: 620 },
   refresh: { padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border,#e5e7eb)', background: 'transparent', cursor: 'pointer', flex: 'none' },
+  linkBar: { display: 'flex', alignItems: 'center', gap: 14, background: '#FE7A0012', border: '1px solid #FE7A0033', borderRadius: 12, padding: '14px 18px', marginBottom: 18 },
+  linkLbl: { fontSize: 12, fontWeight: 700, color: '#c2410c', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 },
+  linkUrl: { fontSize: 14, color: 'var(--text,#111827)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  copyBtn: { padding: '9px 16px', borderRadius: 8, border: 'none', background: '#FE7A00', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13, flex: 'none' },
   grid: { display: 'flex', flexDirection: 'column', gap: 14 },
   card: { background: 'var(--card,#fff)', border: '1px solid var(--border,#e5e7eb)', borderRadius: 12, padding: 18, display: 'grid', gridTemplateColumns: '1.4fr 1.4fr auto', gap: 18, alignItems: 'center' },
   person: { display: 'flex', gap: 12, alignItems: 'center' },
