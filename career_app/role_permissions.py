@@ -40,8 +40,11 @@ GROUP_PERMISSIONS = {
     'Interns':    [],          # self-service only
     'Members':    [],          # self-service only
     'Team Leads': VIEW_HR,     # view their team (scoped), no approve
-    'Advisory':   VIEW_HR,     # org-wide view (scoped 'all'), no approve
-    'HR':         HR_FULL,
+    'Advisory':   HR_FULL,     # FULL access, org-wide (scope 'all'); advisory-only
+                               # oversight (task review, weekly updates, revenue) is
+                               # additionally gated to the 'advisory' role in views
+    'HR':         HR_FULL,     # HR panel + career + cert/mail; org-wide view, but
+                               # NOT the advisory-only oversight/revenue views
     'Admins':     HR_FULL,     # superuser is set separately if needed
 }
 

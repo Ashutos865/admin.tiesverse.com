@@ -19,4 +19,12 @@ class Command(BaseCommand):
         summary = sync_group_permissions(report=self.stdout.write)
         for group, n in summary.items():
             self.stdout.write(f"  {group}: {n} permission(s)")
+
+        # HR is also a department (so HR staff show up under the department
+        # structure with everyone else). Idempotent.
+        from career_app.models import HRDepartment
+        _, created = HRDepartment.objects.get_or_create(
+            name='HR', defaults={'description': 'Human Resources', 'is_active': True})
+        self.stdout.write(f"  HR department: {'created' if created else 'exists'}")
+
         self.stdout.write(self.style.SUCCESS("Role permissions synced."))
