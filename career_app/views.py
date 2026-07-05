@@ -13,16 +13,19 @@ from rest_framework.views import APIView
 from .models import (
     Position, Enrollment, OfferLetter, HRDepartment, OnboardingSubmission,
     MemberAccount, DocumentAuditLog, AttendanceRecord, LeaveRequest, Asset, Task,
+    OffboardingRequest,
 )
 from .serializers import (
     PositionSerializer, EnrollmentSerializer, OfferLetterSerializer,
     HRDepartmentSerializer, OnboardingSubmissionSerializer,
     MemberAccountSerializer, DocumentAuditLogSerializer,
     AttendanceRecordSerializer, LeaveRequestSerializer,
-    AssetSerializer, TaskSerializer,
+    AssetSerializer, TaskSerializer, OffboardingRequestSerializer,
 )
 from . import cloudflare_proxy
 from . import access
+from . import offboarding as offboarding_lib
+import datetime
 from .providers import CloudflareD1Provider, R2Storage, ProviderError
 
 
@@ -72,6 +75,65 @@ def _send_credentials_email(email, name, username, password, portal_role):
     })
 
 
+GROUP_NAME_MAP = {
+    'intern': 'Interns', 'member': 'Members', 'team_lead': 'Team Leads',
+    'advisory': 'Advisory', 'hr': 'HR', 'admin': 'Admins',
+}
+
+
+def _ensure_hr_departments(names):
+    """Make sure every department a member is assigned to exists as an HRDepartment,
+    so the Team Directory and HR Departments never disagree (no orphan departments)."""
+    for raw in (names or []):
+        name = (raw or '').strip()
+        if name and not HRDepartment.objects.filter(name__iexact=name).exists():
+            HRDepartment.objects.create(name=name)
+
+
+def _provision_member_account(sub, created_by_user):
+    """Create a portal login (User + MemberAccount) for a member if one doesn't
+    already exist. Shared by the verify-onboarding and manual-add flows so both
+    produce a working login. Returns the temp password, or None if skipped."""
+    if not sub.candidate_email or hasattr(sub, 'account'):
+        return None
+
+    username = sub.candidate_email
+    if User.objects.filter(username=username).exists():
+        username = f"{sub.candidate_email.split('@')[0]}_{sub.id}"
+
+    temp_password = _generate_password()
+    name_parts = (sub.candidate_name or '').split()
+    user = User.objects.create_user(
+        username=username, email=sub.candidate_email, password=temp_password,
+        first_name=name_parts[0] if name_parts else '',
+        last_name=' '.join(name_parts[1:]),
+    )
+    user.is_staff = False
+    user.is_active = True
+    user.save()
+
+    MemberAccount.objects.create(submission=sub, user=user, created_by=created_by_user)
+
+    group_name = GROUP_NAME_MAP.get(sub.portal_role or 'intern', 'Members')
+    group, _ = Group.objects.get_or_create(name=group_name)
+    user.groups.add(group)
+
+    DocumentAuditLog.objects.create(
+        submission=sub, doc_type='offer_letter', action='issued',
+        performed_by_name=_actor_name(created_by_user), performed_by_user=created_by_user,
+        note=f"Portal account created. Username: {username}",
+    )
+    try:
+        _send_credentials_email(
+            sub.candidate_email, sub.candidate_name, username, temp_password,
+            sub.portal_role or 'intern',
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[CREDENTIALS EMAIL] Error: {exc}")
+
+    return temp_password
+
+
 class PositionViewSet(viewsets.ModelViewSet):
     queryset = Position.objects.all()
     serializer_class = PositionSerializer
@@ -108,6 +170,60 @@ class EnrollmentViewSet(viewsets.ViewSet):
         if ok:
             return Response({'status': 'updated'})
         return Response({'error': 'Update failed'}, status=503)
+
+    @action(detail=True, methods=['post'])
+    def schedule_interview(self, request, pk=None):
+        """Create a Google Calendar event + Meet link for a candidate's interview,
+        email the invite, and save the details. Works without Google configured
+        (saves the date, skips the Meet link)."""
+        from config import google_calendar
+
+        candidates = cloudflare_proxy.get_candidates()
+        if candidates is None:
+            return Response({'error': 'Cloudflare D1 unreachable'}, status=503)
+        cand = next((c for c in candidates if str(c.get('id')) == str(pk)), None)
+        if not cand:
+            return Response({'error': 'Candidate not found'}, status=404)
+
+        interview_at = str(request.data.get('interview_at') or '').strip()  # 'YYYY-MM-DDTHH:MM'
+        if not interview_at:
+            return Response({'error': 'Pick an interview date and time.'}, status=400)
+        interviewer_email = str(request.data.get('interviewer_email') or '').strip()
+        interviewer = str(request.data.get('interviewer') or cand.get('interviewer') or '').strip()
+        duration = int(request.data.get('duration_min') or 30)
+        status_label = str(request.data.get('interview_status') or 'Interview Scheduled').strip()
+
+        cand_name = f"{cand.get('first_name', '')} {cand.get('last_name', '')}".strip()
+        cand_email = str(cand.get('email') or '').strip()
+        role = cand.get('roles') or cand.get('department') or ''
+
+        meet_link, event_id, note = '', '', ''
+        if google_calendar.is_configured():
+            try:
+                res = google_calendar.create_interview_event(
+                    summary=f"TiesVerse Interview — {cand_name or cand_email} ({role})",
+                    description=f"Interview for {role}.\nCandidate: {cand_name} <{cand_email}>",
+                    start_iso=interview_at,
+                    duration_min=duration,
+                    attendees=[cand_email, interviewer_email],
+                )
+                meet_link, event_id = res['meet_link'], res['event_id']
+            except Exception as exc:  # noqa: BLE001
+                return Response({'error': f'Could not create the calendar event: {exc}'}, status=502)
+        else:
+            note = 'Google Calendar is not configured, so no Meet link or invite was sent — the date was saved.'
+
+        ok = cloudflare_proxy.set_interview(
+            row_id=pk, interview_at=interview_at, meeting_link=meet_link,
+            calendar_event_id=event_id, interviewer_email=interviewer_email,
+            interview_status=status_label, interviewer=interviewer,
+        )
+        if not ok:
+            return Response({'error': 'Created the event but could not update the candidate record.'}, status=503)
+        return Response({
+            'status': 'scheduled', 'meet_link': meet_link, 'event_id': event_id,
+            'interview_at': interview_at, 'note': note,
+        })
 
 
 class OfferLetterViewSet(viewsets.ModelViewSet):
@@ -253,62 +369,14 @@ class OnboardingVerifyView(APIView):
 
         sub.save()
 
-        # ── Create portal User account on first verification ──────────────
-        temp_password = None
-        if creating_account and sub.candidate_email:
-            if not hasattr(sub, 'account'):
-                username = sub.candidate_email
-                # Ensure unique username
-                if User.objects.filter(username=username).exists():
-                    username = f"{sub.candidate_email.split('@')[0]}_{sub.id}"
+        # Keep HR Departments in sync with whatever this member is assigned to.
+        _ensure_hr_departments(sub.assigned_departments)
 
-                temp_password = _generate_password()
-                name_parts = (sub.candidate_name or '').split()
-                user = User.objects.create_user(
-                    username=username,
-                    email=sub.candidate_email,
-                    password=temp_password,
-                    first_name=name_parts[0] if name_parts else '',
-                    last_name=' '.join(name_parts[1:]),
-                )
-                user.is_staff = False
-                user.is_active = True
-                user.save()
+        # Create the portal login on first verification.
+        temp_password = _provision_member_account(sub, request.user) if creating_account else None
 
-                MemberAccount.objects.create(
-                    submission=sub, user=user, created_by=request.user,
-                )
-
-                # Assign Django group based on portal_role
-                role = sub.portal_role or 'intern'
-                group_name_map = {
-                    'intern': 'Interns', 'member': 'Members',
-                    'team_lead': 'Team Leads', 'advisory': 'Advisory',
-                    'hr': 'HR', 'admin': 'Admins',
-                }
-                group_name = group_name_map.get(role, 'Members')
-                group, _ = Group.objects.get_or_create(name=group_name)
-                user.groups.add(group)
-
-                # Log to DocumentAuditLog for account creation
-                DocumentAuditLog.objects.create(
-                    submission=sub,
-                    doc_type='offer_letter',
-                    action='issued',
-                    performed_by_name=_actor_name(request.user),
-                    performed_by_user=request.user,
-                    note=f"Portal account created. Username: {username}",
-                )
-
-                try:
-                    _send_credentials_email(
-                        sub.candidate_email, sub.candidate_name,
-                        username, temp_password, sub.portal_role or 'intern',
-                    )
-                except Exception as exc:
-                    print(f"[CREDENTIALS EMAIL] Error: {exc}")
-
-        resp_data = OnboardingSubmissionSerializer(sub).data
+        source = OnboardingSubmission.objects.get(pk=sub.pk) if temp_password else sub
+        resp_data = OnboardingSubmissionSerializer(source).data
         if temp_password:
             resp_data['_temp_password'] = temp_password
             resp_data['_account_created'] = True
@@ -339,7 +407,17 @@ class ManualAddMemberView(APIView):
             verified_by=_actor_name(request.user),
             verified_at=timezone.now(),
         )
-        return Response(OnboardingSubmissionSerializer(sub).data, status=201)
+
+        # Same as verify-onboarding: register departments + create a portal login.
+        _ensure_hr_departments(sub.assigned_departments)
+        temp_password = _provision_member_account(sub, request.user)
+
+        source = OnboardingSubmission.objects.get(pk=sub.pk) if temp_password else sub
+        resp_data = OnboardingSubmissionSerializer(source).data
+        if temp_password:
+            resp_data['_temp_password'] = temp_password
+            resp_data['_account_created'] = True
+        return Response(resp_data, status=201)
 
 
 class OnboardingDocView(APIView):
@@ -421,11 +499,17 @@ class CertificateIssueView(APIView):
             note=request.data.get('note', ''),
         )
 
-        # Notify the member when a certificate is issued (stubbed unless enabled).
+        # Email the member when a certificate is issued. `send_email` (default
+        # true for an explicit "Mark Issued") force-sends even if the template
+        # toggle is off, so issuing always delivers.
+        cert_email = 'not_sent'
         if action_type == 'issue' and sub.candidate_email:
-            self._email_member(sub, cert_key, actor)
+            send = request.data.get('send_email', True)
+            cert_email = self._email_member(sub, cert_key, actor, force=send)
 
-        return Response(OnboardingSubmissionSerializer(sub).data)
+        resp = OnboardingSubmissionSerializer(sub).data
+        resp['_cert_email'] = cert_email          # 'sent' | 'stubbed' | 'no_email' | 'not_sent'
+        return Response(resp)
 
     CERT_LABELS = {
         'internship_cert': 'Internship Certificate',
@@ -433,20 +517,85 @@ class CertificateIssueView(APIView):
         'noc': 'No Objection Certificate',
     }
 
-    def _email_member(self, sub, cert_key, actor):
+    def _email_member(self, sub, cert_key, actor, force=True):
         from django.conf import settings as dj_settings
         from config.email_templates import send_template_email
 
+        if not sub.candidate_email:
+            return 'no_email'
         label = self.CERT_LABELS.get(cert_key, 'Certificate')
         try:
-            send_template_email('certificate_issue', sub.candidate_email, {
+            ok = send_template_email('certificate_issue', sub.candidate_email, {
                 'name': sub.candidate_name or 'there',
                 'document': label,
                 'issued_by': actor,
                 'portal_url': f"{getattr(dj_settings, 'ADMIN_PORTAL_URL', '').rstrip('/')}/login",
-            })
+            }, force=force)
+            return 'sent' if ok else 'stubbed'
         except Exception as exc:  # noqa: BLE001
             print(f"[CERT EMAIL] Error: {exc}")
+            return 'stubbed'
+
+
+class SendCertificateEmailView(APIView):
+    """Send a certificate/letter to a member using a CHOSEN template, with an
+    optional PDF attachment. Gives HR full control over which template + PDF."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        import base64
+        from django.conf import settings as dj_settings
+        from config.email_templates import get_template, render_tokens, resolve_from
+        from config.email_utils import send_email
+
+        try:
+            sub = OnboardingSubmission.objects.get(pk=pk)
+        except OnboardingSubmission.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+        if not sub.candidate_email:
+            return Response({'error': 'This member has no email address on file.'}, status=400)
+
+        template_key = request.data.get('template_key') or 'certificate_issue'
+        cert_key = request.data.get('cert_key') or ''
+        label = CertificateIssueView.CERT_LABELS.get(cert_key, 'Certificate')
+        tpl = get_template(template_key)
+        if tpl is None:
+            return Response({'error': 'Unknown template.'}, status=400)
+
+        ctx = {
+            'name': sub.candidate_name or 'there',
+            'document': label,
+            'issued_by': _actor_name(request.user),
+            'portal_url': f"{getattr(dj_settings, 'ADMIN_PORTAL_URL', '').rstrip('/')}/login",
+            'subject_title': label,
+            'certificate_id': '',
+            'role': sub.role_offered or '',
+            'department': ', '.join(sub.assigned_departments or []),
+        }
+        attachments = None
+        pdf_base64 = request.data.get('pdf_base64') or ''
+        if pdf_base64:
+            try:
+                fname = request.data.get('filename') or f'{label}.pdf'
+                attachments = [(fname, base64.b64decode(pdf_base64), 'pdf')]
+            except Exception:  # noqa: BLE001
+                attachments = None
+
+        subject = render_tokens(tpl.subject, ctx)
+        body = render_tokens(tpl.body_html, ctx)
+        ok = send_email(
+            sub.candidate_email, subject, body,
+            from_email=resolve_from(tpl), attachments=attachments, enabled=True,
+        )
+        # Log the send for the paper trail.
+        DocumentAuditLog.objects.create(
+            submission=sub, doc_type=cert_key or 'offer_letter',
+            action=DocumentAuditLog.ACTION_ISSUED,
+            performed_by_name=_actor_name(request.user), performed_by_user=request.user,
+            note=f"{label} emailed via template '{tpl.name}'"
+                 + (' with PDF' if attachments else ''),
+        )
+        return Response({'sent': bool(ok), 'to': sub.candidate_email, 'template': tpl.name})
 
 
 class DocumentAuditLogListView(APIView):
@@ -481,6 +630,107 @@ class MeView(APIView):
             'member': OnboardingSubmissionSerializer(member).data if member else None,
             'led_departments': sorted(access.led_department_names(member)) if member else [],
         })
+
+
+# ── Master Directory (unified people search) ──────────────────────────────────
+
+class DirectorySearchView(APIView):
+    """One searchable master sheet across the whole system. Search a name or email
+    and get a 360° view: member/employee details, webinar registrations, and
+    certificates — aggregated per person by email. Org-wide roles only."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        scope, _ = access.get_access_scope(request.user)
+        if scope != 'all':
+            return Response({'error': 'Not allowed.'}, status=403)
+
+        q = (request.query_params.get('q') or '').strip().lower()
+        people = {}
+
+        def bucket(email, name):
+            email = (email or '').strip()
+            key = email.lower() or f'name:{(name or "").strip().lower()}'
+            if not key or key == 'name:':
+                key = f'row:{len(people)}'
+            if key not in people:
+                people[key] = {
+                    'email': email, 'name': name or '', 'is_member': False, 'member': None,
+                    'registrations': 0, 'registered_events': [],
+                    'certificates': 0, 'certificate_list': [], 'attendance_days': 0,
+                }
+            return people[key]
+
+        def matches(name, email):
+            return (not q) or q in f"{name or ''} {email or ''}".lower()
+
+        # 1) Members / employees
+        for s in OnboardingSubmission.objects.all():
+            if not matches(s.candidate_name, s.candidate_email):
+                continue
+            b = bucket(s.candidate_email, s.candidate_name)
+            b['is_member'] = True
+            b['name'] = b['name'] or s.candidate_name
+            certs = {
+                'internship_cert': bool(s.cert_internship_issued_at),
+                'lor': bool(s.cert_lor_issued_at),
+                'noc': bool(s.cert_noc_issued_at),
+            }
+            b['member'] = {
+                'id': s.id, 'role': s.role_offered, 'portal_role': s.portal_role,
+                'employment_type': s.employment_type, 'status': s.status,
+                'departments': s.assigned_departments or [],
+                'joined': (s.joining_date.isoformat() if s.joining_date
+                           else (s.verified_at.isoformat() if s.verified_at else None)),
+                'has_account': hasattr(s, 'account'), 'certs': certs,
+            }
+            b['attendance_days'] = s.attendance_records.filter(
+                status=AttendanceRecord.STATUS_PRESENT).count()
+            for title, val in [('Internship Certificate', s.cert_internship_issued_at),
+                               ('Letter of Recommendation', s.cert_lor_issued_at),
+                               ('No Objection Certificate', s.cert_noc_issued_at)]:
+                if val:
+                    b['certificates'] += 1
+                    b['certificate_list'].append({'title': title, 'status': 'issued', 'id': ''})
+
+        # 2) Webinar registrations + 3) certificate records (remote Turso)
+        try:
+            from webinar_app import turso_client
+            if turso_client.is_configured():
+                turso_client.setup_tables()
+                for r in turso_client.execute(
+                        'SELECT name,email,event_title FROM registrations ORDER BY registered_at DESC LIMIT 3000'):
+                    if not matches(r.get('name'), r.get('email')):
+                        continue
+                    b = bucket(r.get('email'), r.get('name'))
+                    b['name'] = b['name'] or str(r.get('name') or '')
+                    b['registrations'] += 1
+                    if r.get('event_title'):
+                        b['registered_events'].append(str(r.get('event_title')))
+                try:
+                    for r in turso_client.execute(
+                            'SELECT person_name,person_email,subject_title,certificate_id,email_status '
+                            'FROM certificate_records ORDER BY created_at DESC LIMIT 3000'):
+                        if not matches(r.get('person_name'), r.get('person_email')):
+                            continue
+                        b = bucket(r.get('person_email'), r.get('person_name'))
+                        b['name'] = b['name'] or str(r.get('person_name') or '')
+                        b['certificates'] += 1
+                        b['certificate_list'].append({
+                            'title': str(r.get('subject_title') or 'Certificate'),
+                            'id': str(r.get('certificate_id') or ''),
+                            'status': str(r.get('email_status') or ''),
+                        })
+                except Exception:  # noqa: BLE001 — certificate_records may not exist yet
+                    pass
+        except Exception as exc:  # noqa: BLE001 — Turso optional
+            print(f"[DIRECTORY] Turso lookup skipped: {exc}")
+
+        results = sorted(
+            people.values(),
+            key=lambda p: (not p['is_member'], -(p['registrations'] + p['certificates']), (p['name'] or '').lower()),
+        )
+        return Response({'count': len(results), 'results': results[:300]})
 
 
 # ── Attendance ────────────────────────────────────────────────────────────────
@@ -732,6 +982,178 @@ class LeaveReviewView(APIView):
         leave.review_note = request.data.get('note', '')
         leave.save()
         return Response(LeaveRequestSerializer(leave).data)
+
+
+# ── Offboarding ───────────────────────────────────────────────────────────────
+
+def _is_offboarding_hr(user):
+    return user.is_superuser or user.has_perm('career_app.can_review_offboarding')
+
+
+def _open_assets_for(member):
+    return Asset.objects.filter(assigned_to=member, returned_at__isnull=True)
+
+
+def _open_tasks_for(member):
+    return Task.objects.filter(assigned_to=member).exclude(
+        status__in=[Task.STATUS_DONE, Task.STATUS_CANCELLED])
+
+
+def _notify_offboarding(off, key):
+    """Fire an offboarding email (flag-gated in the template registry). Never raises."""
+    try:
+        from config.email_templates import send_template_email
+        send_template_email(key, off.member.candidate_email, {
+            'name': off.member.candidate_name,
+            'last_working_day': str(off.last_working_day or ''),
+            'notice_days': str(off.notice_period_days or ''),
+        })
+    except Exception:  # noqa: BLE001
+        pass
+
+
+class OffboardingListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        qs = OffboardingRequest.objects.select_related('member')
+        member_id = request.query_params.get('member')
+        st = request.query_params.get('status')
+        if member_id:
+            qs = qs.filter(member_id=member_id)
+        if st:
+            qs = qs.filter(status=st)
+        qs = access.scope_member_queryset(qs, request.user)
+        return Response(OffboardingRequestSerializer(qs, many=True).data)
+
+    def post(self, request):
+        data = request.data.copy()
+        scope, me = access.get_access_scope(request.user)
+        if scope == 'self':
+            if me is None:
+                return Response({'error': 'No member profile linked to your account.'}, status=403)
+            data['member'] = me.id
+        member_id = data.get('member')
+        if member_id and OffboardingRequest.objects.filter(
+                member_id=member_id, status__in=['pending', 'approved']).exists():
+            return Response({'error': 'There is already an active offboarding request for this member.'}, status=400)
+        ser = OffboardingRequestSerializer(data=data)
+        if ser.is_valid():
+            ser.save(status='pending')
+            return Response(ser.data, status=201)
+        return Response(ser.errors, status=400)
+
+
+class OffboardingDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            off = OffboardingRequest.objects.get(pk=pk)
+        except OffboardingRequest.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+        data = OffboardingRequestSerializer(off).data
+        data['assets_to_return'] = AssetSerializer(_open_assets_for(off.member), many=True).data
+        data['tasks_to_handover'] = TaskSerializer(_open_tasks_for(off.member), many=True).data
+        return Response(data)
+
+    def patch(self, request, pk):
+        try:
+            off = OffboardingRequest.objects.get(pk=pk)
+        except OffboardingRequest.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+        scope, me = access.get_access_scope(request.user)
+        if scope == 'self':
+            if me is None or off.member_id != me.id:
+                return Response({'error': 'You can only edit your own request.'}, status=403)
+            if off.status != 'pending':
+                return Response({'error': 'This request can no longer be edited.'}, status=400)
+        ser = OffboardingRequestSerializer(off, data=request.data, partial=True)
+        if ser.is_valid():
+            ser.save()
+            return Response(ser.data)
+        return Response(ser.errors, status=400)
+
+
+class OffboardingReviewView(APIView):
+    """HR-only: approve (with notice period), reject, or cancel. Team leads can
+    view offboarding requests but cannot review them (no can_review_offboarding perm)."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        if not _is_offboarding_hr(request.user):
+            return Response({'error': 'Only HR can review offboarding requests.'}, status=403)
+        try:
+            off = OffboardingRequest.objects.get(pk=pk)
+        except OffboardingRequest.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+
+        decision = request.data.get('decision')
+        if decision not in ('approved', 'rejected', 'cancelled'):
+            return Response({'error': 'decision must be approved, rejected, or cancelled'}, status=400)
+
+        off.status = decision
+        off.reviewed_by_name = _actor_name(request.user)
+        off.reviewed_by_user = request.user
+        off.reviewed_at = timezone.now()
+        off.review_note = request.data.get('note', '')
+
+        if decision == 'approved':
+            today = timezone.now().date()
+            lwd = request.data.get('last_working_day')
+            days = request.data.get('notice_period_days')
+            if lwd:
+                off.last_working_day = lwd
+                try:
+                    d = datetime.date.fromisoformat(str(lwd))
+                    off.notice_period_days = (d - today).days
+                except (TypeError, ValueError):
+                    pass
+            else:
+                try:
+                    days = int(days)
+                except (TypeError, ValueError):
+                    days = 30
+                off.notice_period_days = max(0, days)
+                off.last_working_day = today + datetime.timedelta(days=off.notice_period_days)
+        off.save()
+
+        if decision == 'approved':
+            _notify_offboarding(off, 'offboarding_approved')
+        return Response(OffboardingRequestSerializer(off).data)
+
+
+class OffboardingRevokeView(APIView):
+    """HR-only: immediately revoke portal access (the member's record is kept)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        if not _is_offboarding_hr(request.user):
+            return Response({'error': 'Only HR can revoke access.'}, status=403)
+        try:
+            off = OffboardingRequest.objects.get(pk=pk)
+        except OffboardingRequest.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+        if off.status not in ('approved', 'completed'):
+            return Response({'error': 'Approve the request before revoking access.'}, status=400)
+        offboarding_lib.revoke_member_access(off, actor_name=_actor_name(request.user))
+        _notify_offboarding(off, 'offboarding_revoked')
+        return Response(OffboardingRequestSerializer(off).data)
+
+
+class OffboardingReactivateView(APIView):
+    """HR-only: undo an offboarding — restore login + verified status (rehire)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        if not _is_offboarding_hr(request.user):
+            return Response({'error': 'Only HR can reactivate a member.'}, status=403)
+        try:
+            off = OffboardingRequest.objects.get(pk=pk)
+        except OffboardingRequest.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+        offboarding_lib.reactivate_member(off.member, actor_name=_actor_name(request.user))
+        return Response({'reactivated': True, 'member': off.member_id})
 
 
 # ── Asset Management ──────────────────────────────────────────────────────────

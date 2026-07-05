@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
     getAttendanceList, checkIn, checkOut,
     getLeaveList, createLeaveRequest,
+    getOffboardingList, createOffboardingRequest, getOffboardingDetail,
     getTasks, updateTask,
     getAssets,
 } from '../../apiClient';
@@ -11,6 +12,7 @@ import { useMe } from '../../context/MeContext';
 const TABS = [
     { key: 'attendance', label: 'Attendance', path: '/me/attendance' },
     { key: 'leave', label: 'Leave', path: '/me/leave' },
+    { key: 'offboarding', label: 'Offboarding', path: '/me/offboarding' },
     { key: 'tasks', label: 'Tasks', path: '/me/tasks' },
     { key: 'assets', label: 'Assets', path: '/me/assets' },
     { key: 'profile', label: 'Profile', path: '/me/profile' },
@@ -86,6 +88,7 @@ export default function MyWork({ tab = 'attendance' }) {
 
             {tab === 'attendance' && <AttendancePanel memberId={memberId} showToast={showToast} />}
             {tab === 'leave' && <LeavePanel showToast={showToast} />}
+            {tab === 'offboarding' && <OffboardingPanel showToast={showToast} />}
             {tab === 'tasks' && <TasksPanel showToast={showToast} />}
             {tab === 'assets' && <AssetsPanel />}
             {tab === 'profile' && <ProfilePanel member={member} />}
@@ -269,6 +272,143 @@ function LeavePanel({ showToast }) {
         </div>
     );
 }
+
+// ── Offboarding ──
+const OFFBOARD_TYPES = [
+    ['resignation', 'Resignation'],
+    ['end_of_internship', 'End of internship'],
+    ['other', 'Other'],
+];
+const OFF_STATUS = {
+    pending: { bg: 'var(--secondary-container)', color: 'var(--on-secondary-container)' },
+    approved: { bg: '#fef3c7', color: '#92400e' },
+    rejected: { bg: '#fee2e2', color: '#991b1b' },
+    cancelled: { bg: '#f3f4f6', color: '#6b7280' },
+    completed: { bg: '#e0e7ff', color: '#3730a3' },
+};
+
+function OffboardingPanel({ showToast }) {
+    const [records, setRecords] = useState([]);
+    const [detail, setDetail] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [showForm, setShowForm] = useState(false);
+    const [form, setForm] = useState({ offboard_type: 'resignation', reason: '', desired_last_day: '' });
+
+    const load = useCallback(async () => {
+        setLoading(true);
+        const recs = await getOffboardingList();
+        const list = Array.isArray(recs) ? recs : [];
+        setRecords(list);
+        const active = list.find(r => r.status === 'approved') || null;
+        if (active) {
+            const d = await getOffboardingDetail(active.id);
+            setDetail(d && !d.error ? d : null);
+        } else setDetail(null);
+        setLoading(false);
+    }, []);
+    useEffect(() => { load(); }, [load]);
+
+    const hasActive = records.some(r => r.status === 'pending' || r.status === 'approved');
+
+    const submit = async () => {
+        setSaving(true);
+        const payload = { offboard_type: form.offboard_type, reason: form.reason };
+        if (form.desired_last_day) payload.desired_last_day = form.desired_last_day;
+        const res = await createOffboardingRequest(payload);   // backend forces member = me
+        setSaving(false);
+        if (res?.id) {
+            showToast('Offboarding request submitted');
+            setShowForm(false);
+            setForm({ offboard_type: 'resignation', reason: '', desired_last_day: '' });
+            load();
+        } else showToast(res?.error || 'Failed', true);
+    };
+
+    return (
+        <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <SectionTitle>Offboarding</SectionTitle>
+                <button onClick={() => setShowForm(true)} disabled={hasActive}
+                    style={{ ...primaryBtn, opacity: hasActive ? 0.5 : 1, cursor: hasActive ? 'not-allowed' : 'pointer' }}>
+                    + Request offboarding
+                </button>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
+                Requesting offboarding notifies HR (and your team lead). HR sets your notice period; your portal access
+                ends after your last working day. Your records stay with the organisation.
+            </p>
+
+            {detail && (
+                <div style={{ border: '1px solid var(--outline-variant)', borderRadius: 12, padding: 16, marginBottom: 18, background: 'var(--surface-container-low, #f8f8fb)' }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>You’re serving notice</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
+                        Last working day: <strong style={{ color: 'var(--text-main)' }}>{fmtDate(detail.last_working_day)}</strong>
+                        {detail.notice_period_days != null ? ` · ${detail.notice_period_days}-day notice` : ''}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <div>
+                            <div style={checklistHead}>Assets to return ({(detail.assets_to_return || []).length})</div>
+                            {(detail.assets_to_return || []).length === 0 ? <Muted>Nothing assigned.</Muted>
+                                : (detail.assets_to_return || []).map(a => (
+                                    <div key={a.id} style={{ fontSize: 13, padding: '4px 0' }}>• {a.name}{a.serial_number ? ` (${a.serial_number})` : ''}</div>
+                                ))}
+                        </div>
+                        <div>
+                            <div style={checklistHead}>Tasks to hand over ({(detail.tasks_to_handover || []).length})</div>
+                            {(detail.tasks_to_handover || []).length === 0 ? <Muted>No open tasks.</Muted>
+                                : (detail.tasks_to_handover || []).map(t => (
+                                    <div key={t.id} style={{ fontSize: 13, padding: '4px 0' }}>• {t.title} <span style={{ color: 'var(--text-muted)' }}>({(t.status || '').replace('_', ' ')})</span></div>
+                                ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {loading ? <Muted>Loading…</Muted> : records.length === 0 ? <Muted>No offboarding requests.</Muted> : (
+                <TableWrap>
+                    <thead><tr>{['Type', 'Reason', 'Requested day', 'Status', 'Last working day', 'Reviewed by'].map(h => <Th key={h}>{h}</Th>)}</tr></thead>
+                    <tbody>
+                        {records.map(r => {
+                            const st = OFF_STATUS[r.status] || OFF_STATUS.pending;
+                            return (
+                                <tr key={r.id} style={rowBorder}>
+                                    <Td style={{ textTransform: 'capitalize' }}>{(r.offboard_type || '').replace(/_/g, ' ')}</Td>
+                                    <Td title={r.reason} style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.reason || '—'}</Td>
+                                    <Td>{fmtDate(r.desired_last_day)}</Td>
+                                    <Td><span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: st.bg, color: st.color }}>{r.status}</span></Td>
+                                    <Td>{fmtDate(r.last_working_day)}</Td>
+                                    <Td>{r.reviewed_by_name || '—'}</Td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </TableWrap>
+            )}
+
+            {showForm && (
+                <Modal title="Request offboarding" onClose={() => setShowForm(false)}>
+                    <div style={{ display: 'grid', gap: 12 }}>
+                        <div>
+                            <label style={label}>Type</label>
+                            <select value={form.offboard_type} onChange={e => setForm(f => ({ ...f, offboard_type: e.target.value }))} style={{ ...input, width: '100%' }}>
+                                {OFFBOARD_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                            </select>
+                        </div>
+                        <div><label style={label}>Desired last working day (optional)</label><input type="date" value={form.desired_last_day} onChange={e => setForm(f => ({ ...f, desired_last_day: e.target.value }))} style={{ ...input, width: '100%' }} /></div>
+                        <div><label style={label}>Reason</label><textarea value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} rows={3} placeholder="Let HR know why you're moving on." style={{ ...input, width: '100%', resize: 'vertical' }} /></div>
+                    </div>
+                    <ModalActions>
+                        <button onClick={() => setShowForm(false)} style={ghostBtn}>Cancel</button>
+                        <button onClick={submit} disabled={saving} style={primaryBtn}>{saving ? 'Saving…' : 'Submit request'}</button>
+                    </ModalActions>
+                </Modal>
+            )}
+        </div>
+    );
+}
+
+const checklistHead = { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 };
 
 // ── Tasks ──
 function TasksPanel({ showToast }) {

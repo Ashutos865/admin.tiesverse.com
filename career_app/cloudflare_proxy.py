@@ -60,16 +60,48 @@ def _query(sql, params=None):
 def get_candidates():
     try:
         _ensure_certificate_columns()
+        _ensure_interview_columns()
         return _query(
             """SELECT id, timestamp, department, roles, first_name, last_name, email,
                       phone, city, linkedin, portfolio, why_join, answers, resume_name,
                       interview_status, interviewer, rating, final_decision,
-                      offer_certificate_id, created_at
+                      offer_certificate_id,
+                      interview_at, meeting_link, calendar_event_id, interviewer_email,
+                      created_at
                FROM candidates ORDER BY id ASC"""
         )
     except D1Error as exc:
         logger.error('get_candidates failed: %s', exc)
         return None  # None signals DB error vs empty list
+
+
+def _ensure_interview_columns():
+    for col in ('interview_at TEXT', 'meeting_link TEXT',
+                'calendar_event_id TEXT', 'interviewer_email TEXT'):
+        try:
+            _query(f"ALTER TABLE candidates ADD COLUMN {col}")
+        except D1Error:
+            pass
+
+
+def set_interview(row_id, interview_at, meeting_link, calendar_event_id,
+                  interviewer_email, interview_status, interviewer=''):
+    """Persist interview scheduling details on a candidate row."""
+    try:
+        _ensure_interview_columns()
+        _query(
+            """UPDATE candidates
+               SET interview_at=?, meeting_link=?, calendar_event_id=?, interviewer_email=?,
+                   interview_status=?, interviewer=?, updated_at=?
+               WHERE id=?""",
+            [interview_at, meeting_link, calendar_event_id, interviewer_email,
+             interview_status, interviewer,
+             __import__('datetime').datetime.utcnow().isoformat(), int(row_id)],
+        )
+        return True
+    except D1Error as exc:
+        logger.error('set_interview %s failed: %s', row_id, exc)
+        return False
 
 
 def update_candidate(row_id, interview_status, interviewer, rating, final_decision):

@@ -3,11 +3,18 @@ import { AuthContext } from '../../context/AuthContext';
 import {
     getPositions, createPosition, updatePosition, deletePosition,
     getOfferLetters, createOfferLetter, updateOfferLetter, deleteOfferLetter,
-    getCandidates, updateCandidateStatus, getFormGates, updateFormGates,
-    downloadFile, sendOffer, initiateOnboarding
+    getCandidates, updateCandidateStatus, scheduleInterview, getFormGates, updateFormGates,
+    getOnboardingList, downloadFile, sendOffer, initiateOnboarding
 } from '../../apiClient';
-import { Plus, Edit2, Trash2, X, Sparkles, Briefcase, FileText, Mail, ToggleRight, CheckCircle, ExternalLink, Search, Download, Eye, UserCheck, Award, Send } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Sparkles, Briefcase, FileText, Mail, ToggleRight, CheckCircle, ExternalLink, Search, Download, Eye, UserCheck, Award, Send, CalendarDays, List as ListIcon } from 'lucide-react';
+import ScheduleCalendar from '../../components/ScheduleCalendar.jsx';
 import jsPDF from 'jspdf';
+
+const viewToggleStyle = (active) => ({
+    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: 'none',
+    borderRadius: 6, background: active ? 'var(--primary)' : 'transparent',
+    color: active ? '#fff' : 'var(--text-main)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+});
 import autoTable from 'jspdf-autotable';
 import './CareerPositions.css';
 import './ApplicationTracker.css';
@@ -322,6 +329,19 @@ const CareerAdmin = ({ tab = 'positions' }) => {
     const [detailsTab, setDetailsTab] = useState('summary');
     const [applicationDrafts, setApplicationDrafts] = useState({});
     const [savingApplication, setSavingApplication] = useState(null);
+    const [schedulingId, setSchedulingId] = useState(null);
+    const [hrList, setHrList] = useState([]);   // interviewer options (verified HR/lead members)
+    const [appView, setAppView] = useState('list');   // 'list' | 'calendar' (applications tab)
+
+    useEffect(() => {
+        getOnboardingList().then((list) => {
+            const arr = Array.isArray(list) ? list : [];
+            const verified = arr.filter((m) => m.status === 'verified' && m.candidate_email);
+            const roled = verified.filter((m) => ['hr', 'admin', 'advisory', 'team_lead'].includes(m.portal_role));
+            const use = roled.length ? roled : verified;
+            setHrList(use.map((m) => ({ name: m.candidate_name, email: m.candidate_email, role: m.portal_role || '' })));
+        }).catch(() => {});
+    }, []);
     const [gateDraft, setGateDraft] = useState({});
     const [savingGates, setSavingGates] = useState(false);
 
@@ -713,14 +733,18 @@ const CareerAdmin = ({ tab = 'positions' }) => {
 
     const getApplicationId = (application) => application.id ?? application.row_index;
 
+    const draftDefaults = (application) => ({
+        interview_status: application.interview_status || 'Pending Setup',
+        interviewer: application.interviewer || '',
+        interviewer_email: application.interviewer_email || '',
+        interview_at: application.interview_at ? String(application.interview_at).slice(0, 16) : '',
+        rating: Number(application.rating || 0),
+        final_decision: application.final_decision || 'Under Review',
+    });
+
     const getApplicationDraft = (application) => {
         const id = getApplicationId(application);
-        return applicationDrafts[id] || {
-            interview_status: application.interview_status || 'Pending Setup',
-            interviewer: application.interviewer || '',
-            rating: Number(application.rating || 0),
-            final_decision: application.final_decision || 'Under Review',
-        };
+        return applicationDrafts[id] || draftDefaults(application);
     };
 
     const updateApplicationDraft = (application, field, value) => {
@@ -728,14 +752,40 @@ const CareerAdmin = ({ tab = 'positions' }) => {
         setApplicationDrafts((current) => ({
             ...current,
             [id]: {
-                interview_status: application.interview_status || 'Pending Setup',
-                interviewer: application.interviewer || '',
-                rating: Number(application.rating || 0),
-                final_decision: application.final_decision || 'Under Review',
+                ...draftDefaults(application),
                 ...(current[id] || {}),
                 [field]: value,
             },
         }));
+    };
+
+    const handleScheduleInterview = async (application) => {
+        const id = getApplicationId(application);
+        const draft = getApplicationDraft(application);
+        if (!draft.interview_at) { showNotice('Pick an interview date and time first.', 'error'); return; }
+        setSchedulingId(id);
+        try {
+            const res = await scheduleInterview(id, {
+                interview_at: draft.interview_at,
+                interviewer: draft.interviewer || '',
+                interviewer_email: draft.interviewer_email || '',
+                duration_min: 30,
+                interview_status: 'Interview Scheduled',
+            });
+            if (res?.status !== 'scheduled') throw new Error(res?.error || 'Could not schedule');
+            setItems((current) => current.map((it) => (
+                String(getApplicationId(it)) === String(id)
+                    ? { ...it, interview_status: 'Interview Scheduled', interview_at: res.interview_at, meeting_link: res.meet_link, interviewer: draft.interviewer, interviewer_email: draft.interviewer_email }
+                    : it
+            )));
+            showNotice(res.meet_link
+                ? 'Interview scheduled — Google Meet link created and invites emailed.'
+                : (res.note || 'Interview date saved (Google Calendar not configured, so no Meet link/invite).'));
+        } catch (error) {
+            showNotice(`Could not schedule: ${error?.message || 'Unknown error'}`, 'error');
+        } finally {
+            setSchedulingId(null);
+        }
     };
 
     const resetFormGates = () => {
@@ -930,8 +980,44 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                         </label>
                         <label>
                             <span>Interviewer</span>
-                            <input value={draft.interviewer} onChange={(event) => updateApplicationDraft(item, 'interviewer', event.target.value)} placeholder="Assign interviewer" />
+                            <select
+                                value={hrList.some((h) => h.email === draft.interviewer_email) ? draft.interviewer_email : (draft.interviewer ? '__current__' : '')}
+                                onChange={(event) => {
+                                    const val = event.target.value;
+                                    if (val === '__current__') return;
+                                    const m = hrList.find((h) => h.email === val);
+                                    updateApplicationDraft(item, 'interviewer_email', val);
+                                    updateApplicationDraft(item, 'interviewer', m ? m.name : '');
+                                }}
+                            >
+                                <option value="">Select interviewer…</option>
+                                {draft.interviewer && !hrList.some((h) => h.email === draft.interviewer_email) && (
+                                    <option value="__current__">{draft.interviewer} (current)</option>
+                                )}
+                                {hrList.map((h) => (
+                                    <option key={h.email} value={h.email}>{h.name}{h.role ? ` · ${h.role.replace('_', ' ')}` : ''}</option>
+                                ))}
+                            </select>
                         </label>
+                        {(draft.interview_status === 'Scheduled' || draft.interview_status === 'Interview Scheduled') && (
+                            <div style={{ display: 'grid', gap: 8, marginTop: 4, paddingTop: 12, borderTop: '1px dashed color-mix(in srgb, var(--text-main) 15%, transparent)' }}>
+                                <label>
+                                    <span>Interview date &amp; time</span>
+                                    <input type="datetime-local" value={draft.interview_at || ''} onChange={(event) => updateApplicationDraft(item, 'interview_at', event.target.value)} />
+                                </label>
+                                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                    Invite goes to the candidate{draft.interviewer_email ? ` and ${draft.interviewer_email}` : ' — pick an interviewer above to invite them too'}.
+                                </div>
+                                <button type="button" className="application-save-button" disabled={schedulingId === id} onClick={() => handleScheduleInterview(item)}>
+                                    <Send size={13} /> {schedulingId === id ? 'Scheduling…' : 'Create Meet & send invites'}
+                                </button>
+                                {item.meeting_link && (
+                                    <a href={item.meeting_link} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>
+                                        Google Meet ↗{item.interview_at ? ` · ${new Date(item.interview_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}
+                                    </a>
+                                )}
+                            </div>
+                        )}
                         <fieldset>
                             <legend>Rating</legend>
                             <div className="application-stars">
@@ -1101,6 +1187,10 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                                     <option value="Waitlisted">Waitlisted</option>
                                 </select>
                             </div>
+                            <div style={{ display: 'inline-flex', gap: 2, border: '1px solid var(--border, #e6e6ef)', borderRadius: 8, padding: 2 }}>
+                                <button type="button" onClick={() => setAppView('list')} style={viewToggleStyle(appView === 'list')}><ListIcon size={14} /> List</button>
+                                <button type="button" onClick={() => setAppView('calendar')} style={viewToggleStyle(appView === 'calendar')}><CalendarDays size={14} /> Calendar</button>
+                            </div>
                             <button className="application-export-button" onClick={() => setPdfModalOpen(true)}>
                                 <Download size={16} /> Export PDF
                             </button>
@@ -1238,6 +1328,17 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                                 </table>
                             </div>
                         </div>
+                    ) : (tab === 'applications' && appView === 'calendar') ? (
+                        <ScheduleCalendar
+                            events={filteredItems.filter((c) => c.interview_at).map((c) => ({
+                                id: c.id,
+                                date: c.interview_at,
+                                title: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Interview',
+                                subtitle: c.roles || c.department || '',
+                                link: c.meeting_link || '',
+                            }))}
+                            emptyLabel="No interviews scheduled yet. Set an interview date on an applicant, then it appears here."
+                        />
                     ) : (
                         <div className={`career-admin-grid ${tab === 'form_gates' ? 'is-wide' : ''} ${tab === 'applications' ? 'is-applications' : ''}`}>
                             {filteredItems.map(item => renderItemCard(item))}

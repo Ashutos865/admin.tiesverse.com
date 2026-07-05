@@ -147,6 +147,52 @@ _ENABLED_SEED = {
     'certificate_issue': 'CERT_EMAIL_ENABLED',
     'certificate_bulk': 'CERT_EMAIL_ENABLED',
     'offer_letter': 'OFFER_EMAIL_ENABLED',
+    'webinar_confirmation': 'WEBINAR_EMAIL_ENABLED',
+    'webinar_reminder': 'WEBINAR_EMAIL_ENABLED',
+    'webinar_followup': 'WEBINAR_EMAIL_ENABLED',
+    'offboarding_approved': 'OFFBOARDING_EMAIL_ENABLED',
+    'offboarding_revoked': 'OFFBOARDING_EMAIL_ENABLED',
+}
+
+
+_OFFBOARDING_TEMPLATES = {
+    'offboarding_approved': {
+        'name': 'Offboarding — Approved',
+        'description': 'Sent when HR approves an offboarding request and sets the last working day.',
+        'subject': 'Your offboarding is confirmed — Tiesverse',
+        'from_name': 'Tiesverse HR',
+        'from_email': '',
+        'allow_attachment': False,
+        'variables': ['name', 'last_working_day', 'notice_days'],
+        'content': {
+            'heading': 'Your offboarding is confirmed',
+            'body': 'Dear {{name}},\n\nYour request to offboard has been approved by HR. Please find your notice details below.',
+            'table': [
+                {'label': 'Last working day', 'value': '{{last_working_day}}'},
+                {'label': 'Notice period', 'value': '{{notice_days}} days'},
+            ],
+            'closing': 'Before your last day, please return any assigned assets and hand over your open tasks. Your portal access will end after your last working day; your records stay with us.',
+            'button': {'label': '', 'url': ''},
+            'signature': 'Warm regards,\nTiesverse HR Team',
+        },
+    },
+    'offboarding_revoked': {
+        'name': 'Offboarding — Access ended',
+        'description': 'Sent when a member’s portal access is revoked at the end of offboarding.',
+        'subject': 'Your Tiesverse portal access has ended',
+        'from_name': 'Tiesverse HR',
+        'from_email': '',
+        'allow_attachment': False,
+        'variables': ['name', 'last_working_day'],
+        'content': {
+            'heading': 'Thank you for your time at Tiesverse',
+            'body': 'Dear {{name}},\n\nYour offboarding is now complete and your portal access has ended as of {{last_working_day}}. We’re grateful for everything you contributed.',
+            'table': [],
+            'closing': 'If you need a certificate or reference letter, or if this was in error, please reach out to HR.',
+            'button': {'label': '', 'url': ''},
+            'signature': 'Warm regards,\nTiesverse HR Team',
+        },
+    },
 }
 
 
@@ -246,6 +292,82 @@ EMAIL_TEMPLATES = {
             'signature': '',
         },
     },
+    'career_application': {
+        'name': 'Career Application Received',
+        'description': "Sent to a candidate after they submit an internship application on the careers site.",
+        'subject': 'We received your application — Tiesverse',
+        'from_name': 'Tiesverse Careers',
+        'from_email': '',
+        'allow_attachment': False,
+        'variables': ['name', 'role', 'careers_url'],
+        'content': {
+            'heading': 'Application received',
+            'body': "Hi {{name}},\n\nThanks for applying to Tiesverse for the {{role}} internship. We've received your application and our team will review it shortly.\n\nThis is a 3-month, unpaid internship focused on learning and portfolio building.",
+            'table': [],
+            'closing': "If you're shortlisted, we'll reach out by email with the next steps. Keep an eye on your inbox (and spam).",
+            'button': {'label': 'Visit Tiesverse', 'url': '{{careers_url}}'},
+            'signature': 'Warm regards,\nTiesverse Careers Team\ncareers@tiesverse.com',
+        },
+    },
+    'webinar_confirmation': {
+        'name': 'Webinar — Registration Confirmation',
+        'description': 'Global default confirmation sent when someone registers for a webinar/event. Each webinar can override the subject/body when broadcasting.',
+        'subject': "You're registered: {{topic}}",
+        'from_name': 'Tiesverse',
+        'from_email': '',
+        'allow_attachment': False,
+        'variables': ['name', 'topic', 'date', 'time', 'join_link'],
+        'content': {
+            'heading': "You're registered!",
+            'body': "Hi {{name}},\n\nYour spot for {{topic}} is confirmed. We'll send the joining link and any details before it starts.",
+            'table': [
+                {'label': 'Session', 'value': '{{topic}}'},
+                {'label': 'Date', 'value': '{{date}}'},
+                {'label': 'Time', 'value': '{{time}}'},
+            ],
+            'closing': 'Add it to your calendar so you don’t miss it. Questions? Just reply to this email.',
+            'button': {'label': 'Join link', 'url': '{{join_link}}'},
+            'signature': '— The Tiesverse Team',
+        },
+    },
+    'webinar_reminder': {
+        'name': 'Webinar — Reminder',
+        'description': 'Reminder you can broadcast to a webinar’s registrants before it starts.',
+        'subject': 'Reminder: {{topic}} is coming up',
+        'from_name': 'Tiesverse',
+        'from_email': '',
+        'allow_attachment': False,
+        'variables': ['name', 'topic', 'date', 'time', 'join_link'],
+        'content': {
+            'heading': "It's almost time",
+            'body': 'Hi {{name}},\n\nJust a reminder that {{topic}} is happening soon. Here are the details:',
+            'table': [
+                {'label': 'Session', 'value': '{{topic}}'},
+                {'label': 'Date', 'value': '{{date}}'},
+                {'label': 'Time', 'value': '{{time}}'},
+            ],
+            'closing': 'See you there!',
+            'button': {'label': 'Join now', 'url': '{{join_link}}'},
+            'signature': '— The Tiesverse Team',
+        },
+    },
+    'webinar_followup': {
+        'name': 'Webinar — Follow-up / Thank you',
+        'description': 'Thank-you + recording/next-steps you can broadcast after a webinar.',
+        'subject': 'Thanks for joining {{topic}}',
+        'from_name': 'Tiesverse',
+        'from_email': '',
+        'allow_attachment': False,
+        'variables': ['name', 'topic', 'recording_link'],
+        'content': {
+            'heading': 'Thanks for joining!',
+            'body': 'Hi {{name}},\n\nThank you for attending {{topic}}. We hope you found it valuable. If you missed anything, the recording is below.',
+            'table': [],
+            'closing': "We'd love to see you at our next session. Keep an eye on your inbox!",
+            'button': {'label': 'Watch the recording', 'url': '{{recording_link}}'},
+            'signature': '— The Tiesverse Team',
+        },
+    },
     'offer_letter': {
         'name': 'Offer Letter',
         'description': 'Sent to a candidate with their offer details and offer letter PDF attached.',
@@ -269,6 +391,9 @@ EMAIL_TEMPLATES = {
         },
     },
 }
+
+
+EMAIL_TEMPLATES.update(_OFFBOARDING_TEMPLATES)
 
 
 def _row_defaults(key, reg):
@@ -333,8 +458,10 @@ def resolve_from(tpl):
     return from_email
 
 
-def send_template_email(key, to, context=None, attachments=None):
-    """Render and send one template. Returns True if actually sent via SES."""
+def send_template_email(key, to, context=None, attachments=None, force=False):
+    """Render and send one template. Returns True if actually sent via SES.
+    `force=True` sends even if the template is disabled (for explicit actions
+    like issuing a certificate or a campaign)."""
     from config.email_utils import send_email
     context = context or {}
     tpl = get_template(key)
@@ -348,5 +475,5 @@ def send_template_email(key, to, context=None, attachments=None):
         to, subject, body,
         from_email=resolve_from(tpl),
         attachments=atts,
-        enabled=tpl.is_enabled,
+        enabled=True if force else tpl.is_enabled,
     )

@@ -9,6 +9,8 @@ from .views import (
     mark_attended, list_registrations_extended,
     event_certificate_link,
     list_public_events,
+    webinar_broadcast, webinar_send_history,
+    generate_webinar_meeting, webinar_meeting_guests,
 )
 
 router = DefaultRouter()
@@ -42,6 +44,14 @@ urlpatterns = [
 
     # Certificate link
     path('event-certificate/', event_certificate_link, name='webinar-event-certificate'),
+
+    # Per-webinar mail automation + send analytics
+    path('broadcast/', webinar_broadcast, name='webinar-broadcast'),
+    path('send-history/', webinar_send_history, name='webinar-send-history'),
+
+    # Meeting (one Google Meet per event)
+    path('generate-meeting/', generate_webinar_meeting, name='webinar-generate-meeting'),
+    path('meeting-guests/', webinar_meeting_guests, name='webinar-meeting-guests'),
 
     path('', include(router.urls)),
 ]

@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import (
     Position, Enrollment, OfferLetter, HRDepartment, OnboardingSubmission,
     MemberAccount, DocumentAuditLog, AttendanceRecord, LeaveRequest, Asset, Task,
+    OffboardingRequest,
 )
 
 
@@ -101,6 +102,22 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         if obj.from_date and obj.to_date:
             return (obj.to_date - obj.from_date).days + 1
         return 0
+
+
+class OffboardingRequestSerializer(serializers.ModelSerializer):
+    member_name = serializers.CharField(source='member.candidate_name', read_only=True)
+    member_email = serializers.CharField(source='member.candidate_email', read_only=True)
+    member_dept = serializers.JSONField(source='member.assigned_departments', read_only=True)
+    member_role = serializers.CharField(source='member.portal_role', read_only=True)
+    member_status = serializers.CharField(source='member.status', read_only=True)
+
+    class Meta:
+        model = OffboardingRequest
+        fields = '__all__'
+        read_only_fields = [
+            'applied_at', 'reviewed_at', 'reviewed_by_name', 'reviewed_by_user',
+            'last_working_day', 'revoked_at', 'revoked_by_name',
+        ]
 
 
 class AssetSerializer(serializers.ModelSerializer):

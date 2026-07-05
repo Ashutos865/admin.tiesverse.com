@@ -80,11 +80,13 @@ class OnboardingSubmission(models.Model):
     STATUS_SUBMITTED = 'submitted'
     STATUS_VERIFIED = 'verified'
     STATUS_REJECTED = 'rejected'
+    STATUS_OFFBOARDED = 'offboarded'
     STATUS_CHOICES = [
         (STATUS_PENDING, 'Pending'),
         (STATUS_SUBMITTED, 'Submitted'),
         (STATUS_VERIFIED, 'Verified'),
         (STATUS_REJECTED, 'Rejected'),
+        (STATUS_OFFBOARDED, 'Offboarded'),
     ]
 
     # Candidate reference
@@ -157,10 +159,10 @@ class MemberAccount(models.Model):
         OnboardingSubmission, on_delete=models.CASCADE, related_name='account',
     )
     user = models.OneToOneField(
-        User, on_delete=models.CASCADE, related_name='member_account',
+        User, on_delete=models.CASCADE, related_name='member_account', db_constraint=False,
     )
     created_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, related_name='accounts_created',
+        User, on_delete=models.SET_NULL, null=True, related_name='accounts_created', db_constraint=False,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
@@ -199,7 +201,7 @@ class DocumentAuditLog(models.Model):
     action = models.CharField(max_length=10, choices=ACTION_CHOICES)
     performed_by_name = models.CharField(max_length=255)
     performed_by_user = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True,
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
     )
     performed_at = models.DateTimeField(auto_now_add=True)
     note = models.TextField(blank=True)
@@ -257,7 +259,7 @@ class AttendanceRecord(models.Model):
     )
     approved_by_name = models.CharField(max_length=255, blank=True)
     approved_by_user = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True,
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
     )
     approved_at = models.DateTimeField(null=True, blank=True)
     approval_note = models.TextField(blank=True)
@@ -312,7 +314,7 @@ class LeaveRequest(models.Model):
 
     reviewed_by_name = models.CharField(max_length=255, blank=True)
     reviewed_by_user = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True,
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
     review_note = models.TextField(blank=True)
@@ -328,6 +330,70 @@ class LeaveRequest(models.Model):
 
     def __str__(self):
         return f"{self.member.candidate_name} — {self.leave_type} ({self.from_date} to {self.to_date})"
+
+
+# ── Offboarding ───────────────────────────────────────────────────────────────
+
+class OffboardingRequest(models.Model):
+    TYPE_RESIGNATION = 'resignation'
+    TYPE_END_INTERNSHIP = 'end_of_internship'
+    TYPE_TERMINATION = 'termination'
+    TYPE_OTHER = 'other'
+    TYPE_CHOICES = [
+        (TYPE_RESIGNATION, 'Resignation'),
+        (TYPE_END_INTERNSHIP, 'End of internship'),
+        (TYPE_TERMINATION, 'Termination'),
+        (TYPE_OTHER, 'Other'),
+    ]
+
+    STATUS_PENDING = 'pending'       # member applied, awaiting HR
+    STATUS_APPROVED = 'approved'     # HR approved + set notice; serving notice
+    STATUS_REJECTED = 'rejected'
+    STATUS_CANCELLED = 'cancelled'
+    STATUS_COMPLETED = 'completed'   # last working day passed, access revoked
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_APPROVED, 'Approved'),
+        (STATUS_REJECTED, 'Rejected'),
+        (STATUS_CANCELLED, 'Cancelled'),
+        (STATUS_COMPLETED, 'Completed'),
+    ]
+
+    member = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.CASCADE, related_name='offboarding_requests',
+    )
+    offboard_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_RESIGNATION)
+    reason = models.TextField(blank=True)
+    desired_last_day = models.DateField(null=True, blank=True)   # member's requested date
+
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING)
+
+    # HR review + notice period
+    notice_period_days = models.IntegerField(null=True, blank=True)
+    last_working_day = models.DateField(null=True, blank=True)   # set on approval
+    reviewed_by_name = models.CharField(max_length=255, blank=True)
+    reviewed_by_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
+        related_name='offboardings_reviewed',
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_note = models.TextField(blank=True)
+
+    # Access revocation
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by_name = models.CharField(max_length=255, blank=True)
+
+    applied_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'offboarding_requests'
+        ordering = ['-applied_at']
+        permissions = [
+            ('can_review_offboarding', 'Can approve, reject or revoke offboarding (HR only)'),
+        ]
+
+    def __str__(self):
+        return f"{self.member.candidate_name} — offboarding ({self.status})"
 
 
 # ── Asset Management ──────────────────────────────────────────────────────────
@@ -388,7 +454,7 @@ class Asset(models.Model):
     assigned_at = models.DateTimeField(null=True, blank=True)
     assigned_by_name = models.CharField(max_length=255, blank=True)
     assigned_by_user = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True,
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
     )
     returned_at = models.DateTimeField(null=True, blank=True)
 
@@ -436,7 +502,7 @@ class Task(models.Model):
         null=True, blank=True, related_name='tasks_assigned',
     )
     assigned_by_admin = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True,
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
         related_name='tasks_created',
     )
 

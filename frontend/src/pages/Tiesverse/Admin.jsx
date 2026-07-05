@@ -10,6 +10,7 @@ import {
     getOnboardingList,
 } from '../../apiClient';
 import { Plus, Edit2, Trash2, X, Sparkles, BookOpen, Users, FileText, BarChart3, CalendarDays } from 'lucide-react';
+import ArticleBody from './ArticleBody';
 import ImageUploadField from '../../components/ImageUploadField';
 import { resolveImg } from '../../utils/img';
 import './ArticlesReports.css';
@@ -274,6 +275,10 @@ const Admin = ({ tab = 'articles' }) => {
                 <FormField label="Slug *" name="slug" value={formData.slug} onChange={handleInputChange} placeholder="india-semiconductor-push (unique)" required />
                 <div><FieldLabel>Dek / Summary</FieldLabel><textarea name="dek" value={formData.dek || ''} onChange={handleInputChange} style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} placeholder="One-line summary shown under the title." /></div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <FormField label="Author" name="author" value={formData.author} onChange={handleInputChange} placeholder="e.g. Ties Research" />
+                    <FormField label="Author role" name="author_role" value={formData.author_role} onChange={handleInputChange} placeholder="e.g. Research desk" />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <FormField label="Category (cat)" name="cat" value={formData.cat} onChange={handleInputChange} placeholder="e.g. Geopolitics" />
                     <FormField label="Topic" name="topic" value={formData.topic} onChange={handleInputChange} placeholder="e.g. Trade" />
                 </div>
@@ -291,6 +296,14 @@ const Admin = ({ tab = 'articles' }) => {
                 </div>
                 <FormField label="Date" name="date" value={formData.date} onChange={handleInputChange} placeholder="e.g. Jun 24, 2026" />
                 <ImageUploadField label="Cover Image URL *" name="cover_url" value={formData.cover_url} onChange={handleInputChange} placeholder="https://…" required onFile={handleImageFile} onBrowse={openLibrary} uploading={uploadingImage} />
+                <div>
+                    <FieldLabel>Tags</FieldLabel>
+                    <input value={(formData.tags || []).join(', ')} onChange={e => handleInputChange({ target: { name: 'tags', value: e.target.value.split(',').map(t => t.trim()).filter(Boolean) } })} style={inputStyle} placeholder="comma, separated, tags" />
+                </div>
+                <div>
+                    <FieldLabel>Article body</FieldLabel>
+                    <ArticleBody value={formData.body} onChange={(v) => handleInputChange({ target: { name: 'body', value: v } })} />
+                </div>
                 <div style={{ display: 'flex', gap: '24px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem' }}>
                         <input type="checkbox" name="featured" checked={!!formData.featured} onChange={e => handleInputChange({ target: { name: 'featured', value: e.target.checked } })} /> Featured

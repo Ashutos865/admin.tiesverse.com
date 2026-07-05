@@ -4,16 +4,20 @@ from .views import (
     UserViewSet, PermissionViewSet, UserProfileView,
     DelegatablePermissionsView, TeamMembersForDelegationView, DelegatePermissionsView,
     PasswordResetRequestView, PasswordResetConfirmView, EmailTemplateViewSet,
+    EmailCampaignViewSet, SESSendersView, FeaturedContentViewSet, PublicFeaturedView,
 )
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'permissions', PermissionViewSet, basename='permission')
 router.register(r'email-templates', EmailTemplateViewSet, basename='email-template')
+router.register(r'email-campaigns', EmailCampaignViewSet, basename='email-campaign')
+router.register(r'featured', FeaturedContentViewSet, basename='featured')
 
 urlpatterns = [
     path('profile/', UserProfileView.as_view(), name='user-profile'),
     # Password reset (public, no auth)
+    path('ses-senders/', SESSendersView.as_view(), name='ses-senders'),
     path('password-reset/', PasswordResetRequestView.as_view(), name='password-reset'),
     path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
     # Delegation endpoints (team leads + superusers)

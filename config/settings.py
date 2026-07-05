@@ -230,5 +230,13 @@ RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '')
 RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '')
 RAZORPAY_WEBHOOK_SECRET = os.environ.get('RAZORPAY_WEBHOOK_SECRET', '')
 
+# ── Google Calendar (interview scheduling — OAuth 2.0 user credentials) ──
+# We use OAuth (not a service-account key) because Workspace "secure by default"
+# blocks SA key creation. Get the refresh token once with get_google_refresh_token.py.
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
+GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
+GOOGLE_OAUTH_REFRESH_TOKEN = os.environ.get('GOOGLE_OAUTH_REFRESH_TOKEN', '')
+GOOGLE_CAL_TIMEZONE = os.environ.get('GOOGLE_CAL_TIMEZONE', 'Asia/Kolkata')
+
 # Keep implicit primary keys aligned with the existing migrations.
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

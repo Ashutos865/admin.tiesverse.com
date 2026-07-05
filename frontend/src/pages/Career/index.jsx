@@ -3,9 +3,15 @@ import { jsPDF } from 'jspdf';
 import { Plus, Edit2, Trash2, ToggleLeft, ToggleRight, ChevronRight } from 'lucide-react';
 import {
   getPositions, createPosition, updatePosition, deletePosition,
-  getCandidates, updateCandidateStatus, sendOffer,
+  getCandidates, updateCandidateStatus, scheduleInterview, sendOffer,
   getFormGates, updateFormGates,
 } from '../../apiClient';
+
+const fmtDateTime = (s) => {
+  if (!s) return '';
+  const d = new Date(s);
+  return isNaN(d) ? s : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+};
 
 // ── Position Tracker ─────────────────────────────────────────────────────────
 
@@ -161,6 +167,45 @@ export function ApplicationTracker() {
     });
   };
 
+  // ── Interview scheduling ──
+  const [sched, setSched] = useState(null);          // candidate being scheduled
+  const [schedForm, setSchedForm] = useState({ interview_at: '', interviewer: '', interviewer_email: '', duration_min: 30 });
+  const [schedBusy, setSchedBusy] = useState(false);
+  const [schedMsg, setSchedMsg] = useState('');
+  const [schedResult, setSchedResult] = useState(null);
+
+  const openSched = (c) => {
+    setSchedForm({
+      interview_at: c.interview_at ? String(c.interview_at).slice(0, 16) : '',
+      interviewer: c.interviewer || '',
+      interviewer_email: c.interviewer_email || '',
+      duration_min: 30,
+    });
+    setSchedMsg(''); setSchedResult(null); setSched(c);
+  };
+
+  const saveSchedule = async () => {
+    if (!schedForm.interview_at) { setSchedMsg('Pick a date and time.'); return; }
+    setSchedBusy(true); setSchedMsg('');
+    const res = await scheduleInterview(sched.id, {
+      interview_at: schedForm.interview_at,
+      interviewer: schedForm.interviewer,
+      interviewer_email: schedForm.interviewer_email,
+      duration_min: Number(schedForm.duration_min) || 30,
+      interview_status: 'Interview Scheduled',
+    });
+    setSchedBusy(false);
+    if (res?.status === 'scheduled') {
+      setCandidates((prev) => prev.map((x) => (x.id === sched.id ? {
+        ...x, interview_status: 'Interview Scheduled', interview_at: res.interview_at,
+        meeting_link: res.meet_link, interviewer: schedForm.interviewer, interviewer_email: schedForm.interviewer_email,
+      } : x)));
+      setSchedResult({ meet_link: res.meet_link, note: res.note });
+    } else {
+      setSchedMsg(res?.error || 'Could not schedule the interview.');
+    }
+  };
+
   return (
     <div>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -180,11 +225,11 @@ export function ApplicationTracker() {
           <div className="table-container">
             <table>
               <thead>
-                <tr><th>Applicant</th><th>Department</th><th>Role</th><th>City</th><th>Decision</th></tr>
+                <tr><th>Applicant</th><th>Department</th><th>Role</th><th>City</th><th>Interview</th><th>Decision</th></tr>
               </thead>
               <tbody>
                 {shown.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No applicants.</td></tr>
+                  <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No applicants.</td></tr>
                 )}
                 {shown.map((c) => (
                   <tr key={c.id}>
@@ -192,6 +237,19 @@ export function ApplicationTracker() {
                     <td>{c.department || '—'}</td>
                     <td>{c.roles || '—'}</td>
                     <td>{c.city || '—'}</td>
+                    <td>
+                      {c.interview_at ? (
+                        <div style={{ fontSize: '12px' }}>
+                          <div style={{ fontWeight: 600 }}>{fmtDateTime(c.interview_at)}</div>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2 }}>
+                            {c.meeting_link && <a href={c.meeting_link} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', fontWeight: 600 }}>Meet ↗</a>}
+                            <button onClick={() => openSched(c)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline', padding: 0 }}>Reschedule</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button onClick={() => openSched(c)} style={{ padding: '0.25rem 0.6rem', border: '1px solid var(--border)', borderRadius: '6px', background: 'transparent', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>+ Schedule</button>
+                      )}
+                    </td>
                     <td>
                       <select value={c.final_decision || 'Under Review'} onChange={(e) => setDecision(c, e.target.value)}
                         style={{ padding: '0.25rem 0.5rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px', fontWeight: 600, color: DECISION_COLORS[c.final_decision] || '#9CA3AF' }}>
@@ -205,6 +263,51 @@ export function ApplicationTracker() {
           </div>
         )}
       </div>
+
+      {sched && (
+        <div onClick={() => setSched(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'grid', placeItems: 'center', zIndex: 9999, padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--surface, #fff)', borderRadius: 14, padding: 24, width: 'min(460px, 100%)', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 17 }}>Schedule interview</h3>
+            <p style={{ margin: '0 0 16px', color: 'var(--text-muted)', fontSize: 13 }}>{fullName(sched)} · {sched.roles || sched.department}</p>
+
+            {schedResult ? (
+              <div>
+                {schedResult.meet_link ? (
+                  <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+                    <div style={{ fontWeight: 700, color: '#065f46', marginBottom: 6 }}>✓ Interview scheduled — invites sent</div>
+                    <a href={schedResult.meet_link} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', fontWeight: 600, wordBreak: 'break-all' }}>{schedResult.meet_link}</a>
+                  </div>
+                ) : (
+                  <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: 14, marginBottom: 16, fontSize: 13, color: '#92400e' }}>
+                    {schedResult.note || 'Saved. No Meet link was created.'}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setSched(null)} style={olPrimary}>Done</button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                {schedMsg && <p style={{ color: '#b91c1c', fontSize: 13, margin: '0 0 10px' }}>{schedMsg}</p>}
+                <label style={olLabel}>Date &amp; time *</label>
+                <input type="datetime-local" style={olField} value={schedForm.interview_at} onChange={(e) => setSchedForm((f) => ({ ...f, interview_at: e.target.value }))} />
+                <label style={olLabel}>Duration</label>
+                <select style={olField} value={schedForm.duration_min} onChange={(e) => setSchedForm((f) => ({ ...f, duration_min: e.target.value }))}>
+                  {[30, 45, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}
+                </select>
+                <label style={olLabel}>Interviewer name</label>
+                <input style={olField} value={schedForm.interviewer} onChange={(e) => setSchedForm((f) => ({ ...f, interviewer: e.target.value }))} placeholder="Who will interview" />
+                <label style={olLabel}>Interviewer email (gets the invite)</label>
+                <input style={olField} value={schedForm.interviewer_email} onChange={(e) => setSchedForm((f) => ({ ...f, interviewer_email: e.target.value }))} placeholder="interviewer@tiesverse.com" />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+                  <button onClick={() => setSched(null)} style={olGhost}>Cancel</button>
+                  <button onClick={saveSchedule} disabled={schedBusy} style={olPrimary}>{schedBusy ? 'Scheduling…' : 'Create Meet & send invites'}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

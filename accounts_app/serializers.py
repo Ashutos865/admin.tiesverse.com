@@ -2,7 +2,7 @@ from django.contrib.auth.models import User, Permission
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Setting, UserProfile, EmailTemplate
+from .models import Setting, UserProfile, EmailTemplate, EmailCampaign, FeaturedContent
 
 
 class PermissionSerializer(serializers.ModelSerializer):
@@ -38,6 +38,20 @@ class EmailTemplateSerializer(serializers.ModelSerializer):
         )
         # body_html is derived unless html_mode; key/is_custom are managed by the view.
         read_only_fields = ('id', 'key', 'is_custom', 'updated_at', 'updated_by')
+
+
+class EmailCampaignSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmailCampaign
+        fields = '__all__'
+        read_only_fields = ('id', 'created_at')
+
+
+class FeaturedContentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeaturedContent
+        fields = '__all__'
+        read_only_fields = ('id', 'created_at', 'updated_at')
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -142,6 +156,23 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             token['permissions'] = list(direct | group)
 
         return token
+
+    def validate(self, attrs):
+        # Authenticates + runs the stock is_active check, then enforces offboarding:
+        # if this member's last working day has arrived, revoke access and block login.
+        data = super().validate(attrs)
+        from rest_framework_simplejwt.exceptions import AuthenticationFailed
+        try:
+            from career_app.offboarding import enforce_offboarding_on_login
+            revoked = enforce_offboarding_on_login(self.user)
+        except AuthenticationFailed:
+            raise
+        except Exception:  # noqa: BLE001 — never let enforcement crash login for others
+            revoked = False
+        if revoked:
+            raise AuthenticationFailed('Your portal access has ended. Please contact HR.', 'offboarded')
+        return data
+
 
 class SettingSerializer(serializers.ModelSerializer):
     class Meta:

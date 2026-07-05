@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { getOnboardingList, getHRDepartments, verifyOnboarding, addTeamMember, getOnboardingDocUrl, API_URL } from '../../apiClient';
+import { getOnboardingList, getHRDepartments, verifyOnboarding, addTeamMember, issueCertificate, sendCertificateEmail, getEmailTemplates, fetchDocBlobUrl, viewDoc } from '../../apiClient';
+import { previewTemplate } from '../../lib/emailPreview';
 import {
     Users, Plus, Search, Edit2, X, CheckCircle, Building2,
     Mail, Calendar, Briefcase, Phone, FileText, RefreshCw,
@@ -58,13 +59,10 @@ function PhotoAvatar({ member, size = 44, textSize = '0.9375rem' }) {
     useEffect(() => {
         mounted.current = true;
         if (!member.has_photo) return;
-        const token = localStorage.getItem('tv_access');
-        fetch(`${API_URL}/api/career/onboarding/${member.id}/doc/photo/`, {
-            headers: { Authorization: `Bearer ${token}` },
-        })
-            .then(r => r.ok ? r.blob() : null)
-            .then(blob => { if (mounted.current && blob) setImgUrl(URL.createObjectURL(blob)); })
-            .catch(() => {});
+        // Uses the real in-memory JWT (not a stale localStorage key) so the
+        // authenticated photo endpoint returns the image instead of 401.
+        fetchDocBlobUrl(`/api/career/onboarding/${member.id}/doc/photo/`)
+            .then(url => { if (mounted.current && url) setImgUrl(url); });
         return () => { mounted.current = false; };
     }, [member.id, member.has_photo]);
 
@@ -198,8 +196,15 @@ function MemberRow({ member, onClick, isLast }) {
 
 function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
     const meta = parseMeta(member.hr_notes);
-    const [certs, setCerts] = useState(meta.certs || {});
+    // Prefer the structured cert fields; fall back to legacy hr_notes meta.
+    const [certs, setCerts] = useState(() => ({
+        internship_cert: member.cert_internship_issued_at || meta.certs?.internship_cert || null,
+        lor: member.cert_lor_issued_at || meta.certs?.lor || null,
+        noc: member.cert_noc_issued_at || meta.certs?.noc || null,
+    }));
     const [certSaving, setCertSaving] = useState(null);
+    const [certMsg, setCertMsg] = useState(null);
+    const [sendModal, setSendModal] = useState(null);   // { cert } to email
 
     // Check localStorage for offer status
     const offerSentMap = (() => {
@@ -210,14 +215,21 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
     const joinDate = fmtDate(meta.joining_date || member.verified_at);
 
     const toggleCert = async (key) => {
-        const newValue = certs[key] ? null : new Date().toISOString();
-        const newCerts = { ...certs, [key]: newValue };
+        const isIssuing = !certs[key];
         setCertSaving(key);
-        const newMeta = { ...meta, certs: newCerts };
-        const res = await verifyOnboarding(member.id, { hr_notes: serializeMeta(newMeta) });
+        setCertMsg(null);
+        // Marks the certificate (structured field + audit log). Emailing is a
+        // separate, explicit step via the "Send" button so HR can choose the
+        // template and attach a PDF.
+        const res = await issueCertificate(member.id, {
+            cert_key: key, action: isIssuing ? 'issue' : 'revoke', send_email: false,
+        });
         if (res?.id) {
-            setCerts(newCerts);
+            setCerts(c => ({ ...c, [key]: isIssuing ? new Date().toISOString() : null }));
             onUpdated(res);
+        } else {
+            setCertMsg(res?.error || 'Could not update certificate');
+            setTimeout(() => setCertMsg(null), 4000);
         }
         setCertSaving(null);
     };
@@ -317,11 +329,10 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
                                         <span style={{ fontSize: '0.75rem', fontWeight: 700, color: uploaded ? 'var(--text-main)' : 'var(--text-muted)' }}>{label}</span>
                                     </div>
                                     {uploaded ? (
-                                        <a href={getOnboardingDocUrl(member.id, key)} target="_blank" rel="noopener noreferrer"
-                                            onClick={e => e.stopPropagation()}
-                                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.6875rem', fontWeight: 700, color: 'var(--primary)', textDecoration: 'none' }}>
+                                        <button onClick={(e) => { e.stopPropagation(); viewDoc(`/api/career/onboarding/${member.id}/doc/${key}/`); }}
+                                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.6875rem', fontWeight: 700, color: 'var(--primary)', textDecoration: 'none', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                                             <ExternalLink size={10} /> View
-                                        </a>
+                                        </button>
                                     ) : (
                                         <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>Not uploaded</span>
                                     )}
@@ -352,23 +363,41 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
                                                 {issued ? `Issued on ${issuedDate}` : 'Not yet issued'}
                                             </div>
                                         </div>
-                                        <button
-                                            onClick={() => toggleCert(cert.key)}
-                                            disabled={isSaving}
-                                            style={{
-                                                flexShrink: 0, padding: '6px 14px', borderRadius: 7, fontSize: '0.75rem', fontWeight: 700, cursor: isSaving ? 'wait' : 'pointer',
-                                                border: issued ? '1px solid color-mix(in srgb, #ba1a1a 25%, transparent)' : '1px solid color-mix(in srgb, #067a50 25%, transparent)',
-                                                background: issued ? 'color-mix(in srgb, #ba1a1a 6%, transparent)' : 'color-mix(in srgb, #067a50 8%, transparent)',
-                                                color: issued ? '#ba1a1a' : '#067a50',
-                                                opacity: isSaving ? 0.6 : 1,
-                                            }}
-                                        >
-                                            {isSaving ? '…' : issued ? 'Revoke' : 'Mark Issued'}
-                                        </button>
+                                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                                            <button
+                                                onClick={() => setSendModal({ cert })}
+                                                title="Email this certificate"
+                                                style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
+                                                    border: '1px solid color-mix(in srgb, var(--primary) 30%, transparent)', background: 'color-mix(in srgb, var(--primary) 8%, transparent)', color: 'var(--primary)',
+                                                }}
+                                            >
+                                                <Mail size={13} /> Send
+                                            </button>
+                                            <button
+                                                onClick={() => toggleCert(cert.key)}
+                                                disabled={isSaving}
+                                                style={{
+                                                    padding: '6px 14px', borderRadius: 7, fontSize: '0.75rem', fontWeight: 700, cursor: isSaving ? 'wait' : 'pointer',
+                                                    border: issued ? '1px solid color-mix(in srgb, #ba1a1a 25%, transparent)' : '1px solid color-mix(in srgb, #067a50 25%, transparent)',
+                                                    background: issued ? 'color-mix(in srgb, #ba1a1a 6%, transparent)' : 'color-mix(in srgb, #067a50 8%, transparent)',
+                                                    color: issued ? '#ba1a1a' : '#067a50',
+                                                    opacity: isSaving ? 0.6 : 1,
+                                                }}
+                                            >
+                                                {isSaving ? '…' : issued ? 'Revoke' : 'Mark Issued'}
+                                            </button>
+                                        </div>
                                     </div>
                                 );
                             })}
                         </div>
+                        {certMsg && (
+                            <div style={{ marginTop: 10, fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary)', background: 'color-mix(in srgb, var(--primary) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--primary) 20%, transparent)', borderRadius: 8, padding: '8px 12px' }}>
+                                {certMsg}
+                            </div>
+                        )}
+                        {sendModal && <SendCertModal member={member} cert={sendModal.cert} onClose={() => setSendModal(null)} />}
                     </ProfileSection>
 
                     {/* Emergency Contact */}
@@ -494,10 +523,121 @@ function EditModal({ member, departments, onClose, onSaved }) {
 
 // ── Add Member Modal ───────────────────────────────────────────────────────────
 
+function SendCertModal({ member, cert, onClose }) {
+    const [templates, setTemplates] = useState([]);
+    const [templateId, setTemplateId] = useState('');
+    const [pdfBase64, setPdfBase64] = useState('');
+    const [pdfName, setPdfName] = useState('');
+    const [sending, setSending] = useState(false);
+    const [result, setResult] = useState(null);
+
+    useEffect(() => {
+        (async () => {
+            const list = await getEmailTemplates();
+            const arr = Array.isArray(list) ? list : [];
+            setTemplates(arr);
+            const def = arr.find(t => t.key === 'certificate_issue') || arr[0];
+            if (def) setTemplateId(def.id);
+        })();
+    }, []);
+
+    const selected = templates.find(t => t.id === templateId);
+    const ctx = {
+        name: member.candidate_name || 'there',
+        document: cert.label, issued_by: 'HR Team',
+        portal_url: `${window.location.origin}/login`,
+        subject_title: cert.label, role: member.role_offered || '',
+        department: (member.assigned_departments || []).join(', '),
+    };
+
+    const onPdf = (file) => {
+        const reader = new FileReader();
+        reader.onload = () => { setPdfBase64(String(reader.result).split(',')[1] || ''); setPdfName(file.name); };
+        reader.readAsDataURL(file);
+    };
+
+    const send = async () => {
+        if (!selected) return;
+        setSending(true); setResult(null);
+        const res = await sendCertificateEmail(member.id, {
+            template_key: selected.key, cert_key: cert.key,
+            pdf_base64: pdfBase64 || '', filename: pdfName || `${cert.label}.pdf`,
+        });
+        setSending(false);
+        if (res?.sent) setResult({ ok: true, msg: `Sent to ${res.to}${pdfBase64 ? ' with PDF' : ''}` });
+        else if (res && 'sent' in res) setResult({ ok: false, msg: 'Not sent — check the address or SES sender.' });
+        else setResult({ ok: false, msg: res?.error || 'Send failed.' });
+    };
+
+    return (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10200, background: 'rgba(15,20,25,0.72)', backdropFilter: 'blur(10px)', display: 'grid', placeItems: 'center', padding: 24 }}>
+            <div style={{ background: 'var(--surface-container-lowest)', border: '1px solid var(--outline-variant)', borderRadius: 16, width: '100%', maxWidth: 620, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 32px 80px rgba(0,0,0,0.22)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 22px', borderBottom: '1px solid var(--outline-variant)' }}>
+                    <div>
+                        <strong style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>Send {cert.label}</strong>
+                        <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>To {member.candidate_name} · {member.candidate_email || 'no email'}</p>
+                    </div>
+                    <button onClick={onClose} style={{ background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'grid', placeItems: 'center' }}><X size={14} /></button>
+                </div>
+                <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div>
+                        <Lbl>Email template</Lbl>
+                        <select value={templateId} onChange={e => setTemplateId(Number(e.target.value))} style={{ ...F, cursor: 'pointer' }}>
+                            {templates.map(t => <option key={t.id} value={t.id}>{t.name}{t.is_custom ? ' (custom)' : ''}</option>)}
+                        </select>
+                    </div>
+
+                    <div>
+                        <Lbl>PDF attachment (optional)</Lbl>
+                        {pdfName ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', color: 'var(--text-main)' }}>
+                                <FileText size={15} style={{ color: 'var(--primary)' }} /> {pdfName}
+                                <button onClick={() => { setPdfBase64(''); setPdfName(''); }} style={{ background: 'none', border: 'none', color: '#ba1a1a', cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem' }}>Remove</button>
+                            </div>
+                        ) : (
+                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, border: '1px solid var(--outline-variant)', cursor: 'pointer', fontSize: '0.8125rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                <FileText size={14} /> Attach a PDF
+                                <input type="file" accept="application/pdf,.pdf" hidden onChange={e => e.target.files[0] && onPdf(e.target.files[0])} />
+                            </label>
+                        )}
+                    </div>
+
+                    <div>
+                        <Lbl>Preview</Lbl>
+                        <div style={{ border: '1px solid var(--outline-variant)', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+                            <iframe title="cert-preview" srcDoc={selected ? previewTemplate(selected, ctx) : ''} style={{ width: '100%', height: 320, border: 'none', background: '#fff' }} sandbox="" />
+                        </div>
+                    </div>
+
+                    {result && (
+                        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: result.ok ? '#067a50' : '#ba1a1a', background: result.ok ? 'color-mix(in srgb, #067a50 8%, transparent)' : 'color-mix(in srgb, #ba1a1a 8%, transparent)', border: `1px solid ${result.ok ? 'color-mix(in srgb, #067a50 22%, transparent)' : 'color-mix(in srgb, #ba1a1a 22%, transparent)'}`, borderRadius: 8, padding: '9px 12px' }}>{result.msg}</div>
+                    )}
+                </div>
+                <div style={{ display: 'flex', gap: 10, padding: '0 22px 20px' }}>
+                    <button onClick={onClose} style={{ flex: 1, minHeight: 42, background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', borderRadius: 9, color: 'var(--text-muted)', fontWeight: 700, cursor: 'pointer', fontSize: '0.875rem' }}>{result?.ok ? 'Done' : 'Cancel'}</button>
+                    {!result?.ok && (
+                        <button onClick={send} disabled={sending || !selected || !member.candidate_email} style={{ flex: 2, minHeight: 42, background: 'var(--primary)', border: 'none', borderRadius: 9, color: '#fff', fontWeight: 800, cursor: sending ? 'wait' : 'pointer', fontSize: '0.875rem', opacity: (sending || !member.candidate_email) ? 0.6 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+                            <Mail size={15} /> {sending ? 'Sending…' : 'Send Email'}
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function AddModal({ departments, onClose, onAdded }) {
     const [form, setForm] = useState({ candidate_name: '', candidate_email: '', role_offered: '', member_type: 'Intern', notes: '', joining_date: '', assigned_departments: [] });
     const [saving, setSaving] = useState(false);
     const [err, setErr] = useState('');
+    const [created, setCreated] = useState(null);
+    const [copied, setCopied] = useState(false);
+    const loginUrl = `${window.location.origin}/login`;
+
+    const copyCreds = () => {
+        navigator.clipboard?.writeText(`Username: ${created.username}\nTemp password: ${created.password}\nLogin: ${loginUrl}`);
+        setCopied(true); setTimeout(() => setCopied(false), 2000);
+    };
 
     const handleAdd = async () => {
         if (!form.candidate_name.trim()) { setErr('Full name is required.'); return; }
@@ -511,8 +651,11 @@ function AddModal({ departments, onClose, onAdded }) {
             hr_notes:             serializeMeta({ type: form.member_type, notes: form.notes, joining_date: form.joining_date }),
         });
         setSaving(false);
-        if (res?.id) onAdded(res);
-        else setErr(res?.error || 'Could not add member.');
+        if (res?.id) {
+            onAdded(res);
+            if (res._temp_password) setCreated({ username: res.account_username || res.candidate_email, password: res._temp_password });
+            else onClose();
+        } else setErr(res?.error || 'Could not add member.');
     };
 
     return (
@@ -525,6 +668,28 @@ function AddModal({ departments, onClose, onAdded }) {
                     </div>
                     <button onClick={onClose} style={{ background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'grid', placeItems: 'center', flexShrink: 0 }}><X size={14} /></button>
                 </div>
+                {created ? (
+                    <>
+                        <div style={{ padding: '22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <CheckCircle size={22} style={{ color: '#16a34a' }} />
+                                <strong style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>Member added — login created</strong>
+                            </div>
+                            <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                                The credentials email is currently off, so copy these and share them with the member:
+                            </p>
+                            <div style={{ background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', borderRadius: 10, padding: '14px 16px', display: 'grid', gap: 10, fontSize: '0.8125rem' }}>
+                                <div><span style={{ color: 'var(--text-muted)' }}>Username</span><div style={{ fontWeight: 700, color: 'var(--text-main)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{created.username}</div></div>
+                                <div><span style={{ color: 'var(--text-muted)' }}>Temp password</span><div style={{ fontWeight: 700, color: 'var(--text-main)', fontFamily: 'monospace' }}>{created.password}</div></div>
+                                <div><span style={{ color: 'var(--text-muted)' }}>Login URL</span><div style={{ fontWeight: 700, color: 'var(--primary)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{loginUrl}</div></div>
+                            </div>
+                            <button onClick={copyCreds} style={{ alignSelf: 'flex-start', padding: '7px 14px', borderRadius: 8, border: '1px solid var(--outline-variant)', background: 'transparent', color: 'var(--text-main)', fontWeight: 700, fontSize: '0.8125rem', cursor: 'pointer' }}>{copied ? 'Copied!' : 'Copy login details'}</button>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, padding: '0 22px 20px' }}>
+                            <button onClick={onClose} style={{ flex: 1, minHeight: 42, background: 'var(--primary)', border: 'none', borderRadius: 9, color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: '0.875rem' }}>Done</button>
+                        </div>
+                    </>
+                ) : (<>
                 <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div><Lbl>Full Name *</Lbl><input style={F} value={form.candidate_name} onChange={e => setForm(f => ({ ...f, candidate_name: e.target.value }))} placeholder="e.g. Priya Sharma" /></div>
@@ -560,6 +725,7 @@ function AddModal({ departments, onClose, onAdded }) {
                         {saving ? 'Adding…' : 'Add Member'}
                     </button>
                 </div>
+                </>)}
             </div>
         </div>
     );

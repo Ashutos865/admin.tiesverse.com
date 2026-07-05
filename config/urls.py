@@ -17,7 +17,9 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
-from accounts_app.views import CustomTokenObtainPairView, SettingViewSet
+from accounts_app.views import (
+    CustomTokenObtainPairView, SettingViewSet, PublicFeaturedView, PublicEmailTemplateView,
+)
 from tiesverse_app.media_views import MediaUploadView, CloudinaryImageListView
 from config.certificate_proxy import certificate_generator_proxy
 from config.certificate_workflow import (
@@ -36,6 +38,8 @@ router.register(r'settings', SettingViewSet, basename='setting')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/public/featured/', PublicFeaturedView.as_view(), name='public-featured'),
+    path('api/public/email-template/<str:key>/', PublicEmailTemplateView.as_view(), name='public-email-template'),
     path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/accounts/', include('accounts_app.urls')),

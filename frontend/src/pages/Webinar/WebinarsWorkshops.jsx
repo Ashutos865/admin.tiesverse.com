@@ -2,8 +2,8 @@ import './WebinarsWorkshops.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Award, ChevronDown, ChevronUp, ClipboardList, Edit2, FileQuestion, Mic2,
-  Plus, Save, Trash2, Upload, Users, Video, X,
+  Award, ChevronDown, ChevronUp, ClipboardList, Edit2, FileQuestion, Mail, Mic2,
+  Plus, Save, Send, Trash2, Upload, Users, Video, X,
 } from 'lucide-react';
 import {
   createEventRegistration, deleteEventRegistration,
@@ -11,11 +11,14 @@ import {
   getFormQuestions, createFormQuestion, updateFormQuestion,
   deleteFormQuestion, reorderFormQuestions,
   getEventSpeakers, createEventSpeaker,
-  getEventCertificateLink, saveEventCertificateLink,
   getWebinarRegistrationsFull, markAttended,
+  webinarBroadcast, getWebinarSendHistory,
+  generateWebinarMeeting, getWebinarMeetingGuests,
+  getEmailTemplates, getSESSenders,
   uploadImage,
 } from '../../apiClient';
-import { listCertificateTemplates } from '../Certificates/certificateApi';
+import { listCertificateTemplates, getCertificateTemplate, generateCertificate } from '../Certificates/certificateApi';
+import ScheduleCalendar from '../../components/ScheduleCalendar.jsx';
 
 /* ─── constants ─────────────────────────────────────────────── */
 const EMPTY_ITEM = {
@@ -25,6 +28,38 @@ const EMPTY_ITEM = {
 
 const toSlug = (str) =>
   String(str || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+// Registrant data fields available to map onto certificate fields + email tokens.
+const REG_FIELDS = [
+  ['name', 'Participant name'],
+  ['email', 'Email'],
+  ['phone', 'Phone'],
+  ['organization', 'Organisation'],
+  ['role', 'Role / designation'],
+  ['city', 'City'],
+  ['country', 'Country'],
+  ['event_title', 'Event title'],
+  ['event_date', 'Event date'],
+];
+const REG_SAMPLE = {
+  name: 'Aarav Sharma', email: 'aarav@example.com', phone: '+91 98765 43210',
+  organization: 'IIT Bombay', role: 'Student', city: 'Mumbai', country: 'India',
+};
+// Guess the best registrant field for a certificate variable name.
+const autoCertSource = (varName) => {
+  const n = (varName || '').toLowerCase();
+  if (n.includes('event') || n.includes('webinar') || n.includes('workshop') || n.includes('topic') || n.includes('course')) return 'event_title';
+  if (n.includes('email')) return 'email';
+  if (/(^|[^a-z])id([^a-z]|$)|cert/.test(n)) return 'id';
+  if (n.includes('name')) return 'name';
+  if (n.includes('position') || n.includes('designation') || n.includes('role') || n.includes('title')) return 'role';
+  if (n.includes('org') || n.includes('company') || n.includes('institut') || n.includes('college') || n.includes('university')) return 'organization';
+  if (n.includes('city')) return 'city';
+  if (n.includes('country')) return 'country';
+  if (n.includes('date')) return 'event_date';
+  if (n.includes('phone') || n.includes('mobile')) return 'phone';
+  return 'custom';
+};
 
 const makeDefaultQuestions = (eKey, eType) => [
   { label: 'Full Name',                    field_type: 'text',     required: true,  order: 0, placeholder: 'Your full name',                   event_key: eKey, event_type: eType },
@@ -56,8 +91,9 @@ const TABS = [
   { key: 'details',       label: 'Details',        icon: Edit2 },
   { key: 'questions',     label: 'Form Questions', icon: FileQuestion },
   { key: 'registrations', label: 'Registrations',  icon: ClipboardList },
+  { key: 'meeting',       label: 'Meeting',        icon: Video },
+  { key: 'emails',        label: 'Emails',         icon: Mail },
   { key: 'speaker',       label: 'Guest Speaker',  icon: Mic2 },
-  { key: 'certs',         label: 'Certificates',   icon: Award },
 ];
 
 /* ─── helpers ────────────────────────────────────────────────── */
@@ -68,28 +104,21 @@ const badge = (kind) => kind === 'webinar' ? 'Webinar' : 'Workshop';
    Sub-component: RegistrationsTab
    ═══════════════════════════════════════════════════════════════ */
 function RegistrationsTab({ item }) {
-  const navigate = useNavigate();
   const eKey  = toSlug(item.title || '');
-  const eType = item.kind === 'webinar' ? 'webinar' : 'workshop';
 
   const [rows,     setRows]     = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [sel,      setSel]      = useState(new Set());
   const [expanded, setExpanded] = useState(new Set());
   const [marking,  setMarking]  = useState(false);
-  const [certLink, setCertLink] = useState(null);
   const [msg,      setMsg]      = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [regs, link] = await Promise.all([
-      getWebinarRegistrationsFull(eKey),
-      getEventCertificateLink(eKey, eType).catch(() => null),
-    ]);
+    const regs = await getWebinarRegistrationsFull(eKey);
     setRows(Array.isArray(regs) ? regs : []);
-    setCertLink(link || null);
     setLoading(false);
-  }, [eKey, eType]);
+  }, [eKey]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -110,17 +139,6 @@ function RegistrationsTab({ item }) {
     await load();
     setSel(new Set());
     setMarking(false);
-  };
-
-  const handleSendCerts = () => {
-    if (!certLink?.template_id) {
-      setMsg('Assign a certificate template in the Certificates tab first, then come back here.');
-      return;
-    }
-    setMsg('');
-    navigate(`/certificates/templates/${certLink.template_id}/generate`, {
-      state: { event_key: eKey, event_type: eType, event_title: item.title },
-    });
   };
 
   const fmtMoney = (n) => parseInt(n || 0) > 0 ? `₹${parseInt(n).toLocaleString('en-IN')}` : 'Free';
@@ -146,14 +164,14 @@ function RegistrationsTab({ item }) {
               ✗ Unmark
             </button>
           </>)}
-          <button className="ww-btn ww-btn-primary" onClick={handleSendCerts}>
-            <Award size={14}/> Send Certificates
-          </button>
           <button className="ww-btn ww-btn-ghost" onClick={load} title="Refresh">↺</button>
         </div>
       </div>
 
       {msg && <p className="ww-err" style={{ margin: '0 0 12px' }}>{msg}</p>}
+      <p className="ww-tab-hint" style={{ margin: '0 0 12px' }}>
+        Mark who attended here. To issue certificates, go to the <strong>Emails</strong> tab and turn on <strong>“Attach a certificate PDF.”</strong>
+      </p>
 
       {loading ? (
         <p className="ww-loading">Loading registrations…</p>
@@ -551,113 +569,665 @@ function GuestSpeakerTab({ item }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   Sub-component: CertificatesTab
-═══════════════════════════════════════════════════════════════ */
-function CertificatesTab({ item }) {
-  const navigate = useNavigate();
-  const [templates, setTemplates] = useState([]);
-  const [link, setLink]           = useState({ template_id: '', template_name: '' });
-  const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
-  const [msg, setMsg]             = useState('');
-  const eKey  = toSlug(item.title || '');
-  const eType = item.kind === 'webinar' ? 'webinar' : 'workshop';
+   Sub-component: MeetingTab — one Google Meet per event + host controls
+   ═══════════════════════════════════════════════════════════════ */
+function MeetingTab({ item, showToast }) {
+  const [start, setStart]         = useState(item.meeting_start ? String(item.meeting_start).slice(0, 16) : '');
+  const [duration, setDuration]   = useState(item.meeting_duration_min || 60);
+  const [hosts, setHosts]         = useState((item.meeting_hosts || []).join(', '));
+  const [joinAccess, setJoinAccess] = useState(item.meeting_join_access || 'invited');
+  const [guestsSee, setGuestsSee] = useState(!!item.meeting_guests_see_each_other);
+  const [moderation, setModeration] = useState(item.meeting_moderation !== false);
+  const [autoRecord, setAutoRecord] = useState(!!item.meeting_auto_record);
+  const [link, setLink]           = useState(item.meeting_link || '');
+  const [busy, setBusy]           = useState(false);
+  const [guestInfo, setGuestInfo] = useState(null);   // { attendees, guests_can_see_other_guests, has_meeting }
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const [tmpl, current] = await Promise.all([
-        listCertificateTemplates().catch(() => []),
-        getEventCertificateLink(eKey, eType),
-      ]);
-      setTemplates(Array.isArray(tmpl) ? tmpl : []);
-      setLink(current || { template_id: '', template_name: '' });
-      setLoading(false);
-    })();
-  }, [eKey, eType]);
+  const loadGuests = useCallback(async () => {
+    const g = await getWebinarMeetingGuests(item.id);
+    setGuestInfo(g || null);
+  }, [item.id]);
+  useEffect(() => { loadGuests(); }, [loadGuests]);
 
-  const assignTemplate = async () => {
-    if (!link.template_id) return setMsg('Select a template first.');
-    setSaving(true);
-    const res = await saveEventCertificateLink({
-      event_key: eKey, event_type: eType,
-      template_id: link.template_id, template_name: link.template_name,
+  const generate = async () => {
+    if (!start) return showToast?.('Pick a meeting date and time.', 'error');
+    setBusy(true);
+    const res = await generateWebinarMeeting({
+      event_pk: item.id,
+      start, duration_min: Number(duration) || 60,
+      hosts: hosts.split(',').map((s) => s.trim()).filter(Boolean),
+      join_access: joinAccess, guests_see_each_other: guestsSee,
+      moderation, auto_record: autoRecord,
     });
-    if (res?.saved) setMsg(''); else setMsg(res?.error || 'Failed to save.');
-    setSaving(false);
+    setBusy(false);
+    if (res?.meeting_link) { setLink(res.meeting_link); showToast?.('Meeting created — Google Meet link generated.', 'success'); loadGuests(); }
+    else showToast?.(res?.error || 'Could not create the meeting.', 'error');
   };
 
-  const goSend = () => {
-    if (!link.template_id) return;
-    navigate(`/certificates/templates/${link.template_id}/generate`);
+  const F = {
+    field: { display: 'grid', gap: 6, fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' },
+    input: { padding: '9px 12px', border: '1px solid #dcdce6', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', fontWeight: 400 },
+    check: { display: 'flex', gap: 9, alignItems: 'center', fontSize: 13.5, fontWeight: 500, cursor: 'pointer' },
+    checkbox: { width: 'auto', margin: 0 },
   };
-
-  if (loading) return <p className="ww-loading">Loading certificate options…</p>;
 
   return (
     <div className="ww-tab-body">
       <p className="ww-tab-hint">
-        Assign a certificate template from the Certificate Portal. After the {badge(item.kind).toLowerCase()} ends,
-        send certificates to all marked attendees in one click.
+        One Google Meet for this {badge(item.kind).toLowerCase()}. <strong>Only paid registrants get the link</strong> —
+        they're added as guests automatically on payment. Set the host controls, then generate.
       </p>
 
-      {msg && <p className="ww-err">{msg}</p>}
+      {link && (
+        <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 13 }}>
+          <strong style={{ color: '#065f46' }}>Meet link:</strong>{' '}
+          <a href={link} target="_blank" rel="noreferrer" style={{ color: 'var(--primary, #6366f1)', fontWeight: 600, wordBreak: 'break-all' }}>{link}</a>
+        </div>
+      )}
 
-      <div className="ww-cert-section">
-        <label>Certificate Template
-          <select
-            value={link.template_id}
-            onChange={e => {
-              const t = templates.find(t => String(t.id) === e.target.value);
-              setLink({ template_id: e.target.value, template_name: t?.name || '' });
-            }}
-          >
-            <option value="">— Select a template —</option>
-            {templates.map(t => (
-              <option key={t.id} value={String(t.id)}>{t.name}</option>
-            ))}
+      <div style={{ display: 'grid', gap: 14, maxWidth: 560 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 12 }}>
+          <label style={F.field}>Date &amp; time<input type="datetime-local" style={F.input} value={start} onChange={(e) => setStart(e.target.value)} /></label>
+          <label style={F.field}>Duration (min)<input type="number" min="15" step="15" style={F.input} value={duration} onChange={(e) => setDuration(e.target.value)} /></label>
+        </div>
+        <label style={F.field}>Hosts / co-hosts <span style={{ fontWeight: 400, color: 'var(--soft)' }}>(emails, comma-separated — get the invite + host controls)</span>
+          <input style={F.input} value={hosts} onChange={(e) => setHosts(e.target.value)} placeholder="host@tiesverse.com, cohost@tiesverse.com" />
+        </label>
+        <label style={F.field}>Who can join
+          <select style={F.input} value={joinAccess} onChange={(e) => setJoinAccess(e.target.value)}>
+            <option value="invited">Invited only (paid guests + hosts)</option>
+            <option value="org">Anyone in the organisation</option>
+            <option value="open">Anyone with the link</option>
           </select>
         </label>
+        <label style={F.check}><input type="checkbox" style={F.checkbox} checked={guestsSee} onChange={(e) => setGuestsSee(e.target.checked)} /> Guests can see each other</label>
+        <label style={F.check}><input type="checkbox" style={F.checkbox} checked={moderation} onChange={(e) => setModeration(e.target.checked)} /> Moderation on — only hosts can present &amp; chat</label>
+        <label style={F.check}><input type="checkbox" style={F.checkbox} checked={autoRecord} onChange={(e) => setAutoRecord(e.target.checked)} /> Auto-record the session</label>
+        <button className="ww-btn ww-btn-primary" onClick={generate} disabled={busy} style={{ justifySelf: 'start' }}>
+          <Video size={14} /> {busy ? 'Creating…' : (link ? 'Regenerate meeting' : 'Generate Meet link')}
+        </button>
+      </div>
 
-        <div className="ww-cert-actions">
-          <button className="ww-btn ww-btn-ghost" onClick={assignTemplate} disabled={saving || !link.template_id}>
-            <Save size={14}/> {saving ? 'Saving…' : 'Assign Template'}
-          </button>
-
-          {link.template_id && (
-            <button className="ww-btn ww-btn-primary" onClick={goSend}>
-              <Award size={14}/> Send Certificates →
-            </button>
+      {/* Guest list (live from Google Calendar) */}
+      {guestInfo && guestInfo.has_meeting && (
+        <div style={{ marginTop: 20, border: '1px solid var(--rule, #eadfce)', borderRadius: 12, padding: 16, maxWidth: 560 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+            <strong style={{ fontSize: 13.5 }}>Guest list ({(guestInfo.attendees || []).length})</strong>
+            <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
+              background: guestInfo.guests_can_see_other_guests ? '#e0f2fe' : '#f3f4f6',
+              color: guestInfo.guests_can_see_other_guests ? '#075985' : '#6b7280' }}>
+              {guestInfo.guests_can_see_other_guests ? '👁 Guests CAN see each other' : '🙈 Guests can’t see each other'}
+            </span>
+            <button className="ww-btn ww-btn-ghost" onClick={loadGuests} title="Refresh" style={{ padding: '4px 10px' }}>↺</button>
+          </div>
+          {(guestInfo.attendees || []).length === 0 ? (
+            <p className="ww-tab-hint" style={{ margin: 0 }}>No guests yet. Hosts appear here after generating; paid registrants are added automatically when they pay.</p>
+          ) : (
+            <div style={{ display: 'grid', gap: 4 }}>
+              {guestInfo.attendees.map((a) => (
+                <div key={a.email} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, padding: '5px 0', borderTop: '1px solid var(--hair, #f0f0f5)' }}>
+                  <span>{a.email}{a.organizer ? ' · organiser' : ''}</span>
+                  <span style={{ color: 'var(--soft, #8a8aa0)', fontSize: 12 }}>{a.status === 'accepted' ? '✓ accepted' : a.status === 'declined' ? '✗ declined' : 'invited'}</span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
+      )}
 
-        {link.template_id && (
-          <div className="ww-cert-status">
-            <Award size={14}/>
-            <span>Template assigned: <strong>{link.template_name}</strong></span>
+      <p className="ww-tab-hint" style={{ marginTop: 14 }}>
+        Guest visibility &amp; the Meet link work now. Moderation, join-access and recording apply once the
+        <strong> Meet API</strong> step is enabled. True in-call <strong>co-host</strong> is a one-click action during the meeting (Google has no API for it).
+      </p>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Sub-component: EmailsTab — per-webinar mail automation + analytics
+   ═══════════════════════════════════════════════════════════════ */
+function EmailsTab({ item, showToast }) {
+  const eKey  = toSlug(item.title || '');
+  const eType = item.kind === 'webinar' ? 'webinar' : 'workshop';
+
+  const [templates, setTemplates] = useState([]);
+  const [rows, setRows]           = useState([]);      // registrants (for counts + audience)
+  const [history, setHistory]     = useState({ summary: {}, recipients: [], log: [] });
+  const [loading, setLoading]     = useState(true);
+
+  const [tplKey, setTplKey]       = useState('webinar_reminder');
+  const [subject, setSubject]     = useState('');
+  const [audience, setAudience]   = useState('all');
+  const [joinLink, setJoinLink]   = useState('');
+  const [recLink, setRecLink]     = useState('');
+  const [timeStr, setTimeStr]     = useState(item.time_tz || '');
+  const [testEmail, setTestEmail] = useState('');
+  const [busy, setBusy]           = useState(false);
+
+  // Recipient source: this webinar's registrants, or a custom list (CSV / manual)
+  const [recipMode, setRecipMode] = useState('registrants'); // 'registrants' | 'custom'
+  const [customList, setCustomList] = useState([]);           // [{ name, email }]
+  const [mName, setMName]         = useState('');
+  const [mEmail, setMEmail]       = useState('');
+
+  // Certificate attachment + field mapping
+  const [certTemplates, setCertTemplates] = useState([]);
+  const [attachCert, setAttachCert] = useState(false);
+  const [certTplId, setCertTplId]   = useState(item.certificate_template_id || '');
+  const [certVars, setCertVars]     = useState([]);       // manual variables of the chosen template
+  const [certMap, setCertMap]       = useState({});       // { varName: { source, value } }
+  const [certPreviewUrl, setCertPreviewUrl] = useState('');
+  const [certPreviewBusy, setCertPreviewBusy] = useState(false);
+  const [showCertMap, setShowCertMap] = useState(false);
+
+  const sourceLabel = (spec) => {
+    const s = spec?.source;
+    if (s === 'id') return 'Verification ID';
+    if (s === 'custom') return spec.value ? `“${spec.value}”` : 'custom text';
+    if (s === 'blank' || !s) return 'blank';
+    const f = REG_FIELDS.find(([k]) => k === s);
+    return f ? f[1] : s;
+  };
+
+  // When a certificate template is chosen, load its fields + auto-map name/id.
+  useEffect(() => {
+    if (!attachCert || !certTplId) { setCertVars([]); setCertMap({}); setCertPreviewUrl(''); return; }
+    let alive = true;
+    getCertificateTemplate(certTplId).then((tpl) => {
+      if (!alive) return;
+      const vars = (tpl?.variables || []).filter((v) => !v.generator_enabled);
+      setCertVars(vars);
+      setCertMap((prev) => {
+        const m = {};
+        vars.forEach((v) => {
+          if (prev[v.name]) { m[v.name] = prev[v.name]; return; }
+          const src = autoCertSource(v.name);
+          m[v.name] = { source: src, value: src === 'custom' ? (v.sample_value || v.default_value || '') : '' };
+        });
+        return m;
+      });
+      setCertPreviewUrl('');
+    }).catch(() => { setCertVars([]); setCertMap({}); });
+    return () => { alive = false; };
+  }, [certTplId, attachCert]); // eslint-disable-line
+
+  const hasIdField = certVars.some((v) => certMap[v.name]?.source === 'id');
+  const setMap = (name, patch) => setCertMap((m) => ({ ...m, [name]: { ...m[name], ...patch } }));
+
+  const previewCertificate = async () => {
+    if (!certTplId) return showToast?.('Pick a certificate template first.', 'error');
+    setCertPreviewBusy(true);
+    const sample = {};
+    certVars.forEach((v) => {
+      const s = (certMap[v.name] || {}).source;
+      if (s === 'id') sample[v.name] = 'TIES-WEB-4F9A2C';
+      else if (s === 'custom') sample[v.name] = (certMap[v.name] || {}).value || '';
+      else if (s === 'blank' || !s) { /* omit */ }
+      else if (s === 'event_title') sample[v.name] = item.title;
+      else if (s === 'event_date') sample[v.name] = item.date || '20 Jul 2026';
+      else sample[v.name] = REG_SAMPLE[s] != null ? REG_SAMPLE[s] : `[${s}]`;
+    });
+    try {
+      const res = await generateCertificate(certTplId, sample);
+      setCertPreviewUrl(URL.createObjectURL(res.blob));
+    } catch (e) {
+      showToast?.(`Could not generate preview — ${e?.message || 'certificate service error'}.`, 'error');
+    } finally {
+      setCertPreviewBusy(false);
+    }
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [tpls, regs, hist, certs] = await Promise.all([
+      getEmailTemplates().catch(() => []),
+      getWebinarRegistrationsFull(eKey).catch(() => []),
+      getWebinarSendHistory(eKey),
+      listCertificateTemplates().catch(() => []),
+    ]);
+    setTemplates(Array.isArray(tpls) ? tpls : []);
+    setRows(Array.isArray(regs) ? regs : []);
+    setHistory(hist || { summary: {}, recipients: [], log: [] });
+    setCertTemplates(Array.isArray(certs) ? certs : []);
+    setLoading(false);
+  }, [eKey]);
+  useEffect(() => { load(); }, [load]);
+
+  // Prefer webinar templates in the picker; fall back gracefully.
+  const tplOptions = [...templates].sort((a, b) => {
+    const aw = a.key?.startsWith('webinar_') ? 0 : 1;
+    const bw = b.key?.startsWith('webinar_') ? 0 : 1;
+    return aw - bw || String(a.name).localeCompare(String(b.name));
+  });
+  useEffect(() => {
+    if (!templates.length) return;
+    if (!templates.some(t => t.key === tplKey)) {
+      const pref = templates.find(t => t.key === 'webinar_reminder')
+        || templates.find(t => t.key?.startsWith('webinar_')) || templates[0];
+      if (pref) setTplKey(pref.key);
+    }
+  }, [templates]); // eslint-disable-line
+  const currentTpl = templates.find(t => t.key === tplKey) || null;
+  useEffect(() => { setSubject(currentTpl?.subject || ''); }, [tplKey]); // eslint-disable-line
+
+  const [showPreview, setShowPreview] = useState(false);
+  const previewHtml = (currentTpl?.body_html || '<p style="padding:24px;font-family:sans-serif;color:#888">Pick a template to preview.</p>')
+    .replace(/{{\s*(\w+)\s*}}/g, (m, k) => {
+      const vals = {
+        name: 'Aarav Sharma', topic: item.title, event_title: item.title,
+        date: item.date || 'Jul 20, 2026', time: timeStr || '6:00 PM IST',
+        join_link: joinLink || 'https://meet.google.com/abc-defg-hij',
+        recording_link: recLink || 'https://youtu.be/xxxxxxxx',
+      };
+      return vals[k] != null ? vals[k] : m;
+    });
+
+  const total    = rows.length;
+  const attended = rows.filter(r => Number(r.attended) === 1).length;
+  const noShow   = total - attended;
+  const audienceCount = audience === 'attended' ? attended : audience === 'not_attended' ? noShow : total;
+
+  const extraCtx = () => ({ join_link: joinLink, recording_link: recLink, time: timeStr, date: item.date || '' });
+  const fmt = (iso) => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); };
+
+  // ── custom recipient list (CSV upload + manual entry) ──
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const validCustom = customList.filter(r => EMAIL_RE.test((r.email || '').trim()));
+  const sendCount = recipMode === 'custom' ? validCustom.length : audienceCount;
+
+  const parseCSV = (text) => {
+    const out = []; let i = 0, f = '', row = [], q = false;
+    const pf = () => { row.push(f); f = ''; }; const pr = () => { out.push(row); row = []; };
+    while (i < text.length) {
+      const c = text[i];
+      if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+      else if (c === '"') q = true;
+      else if (c === ',') pf();
+      else if (c === '\r') { /* skip */ }
+      else if (c === '\n') { pf(); pr(); }
+      else f += c;
+      i++;
+    }
+    if (f.length || row.length) { pf(); pr(); }
+    return out.filter(r => r.some(c => (c || '').trim() !== ''));
+  };
+  const onCsv = (file) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = parseCSV(String(reader.result || ''));
+      if (!rows.length) { showToast?.('CSV looks empty.', 'error'); return; }
+      const headers = rows[0].map(h => h.trim().toLowerCase());
+      let ei = headers.findIndex(h => /e-?mail/.test(h));
+      let ni = headers.findIndex(h => /name/.test(h));
+      let data;
+      if (ei === -1) { // no recognisable header → treat every row as data, guess columns
+        data = rows;
+        ei = rows[0].findIndex(c => EMAIL_RE.test((c || '').trim()));
+        if (ei === -1) ei = 0;
+        ni = ei === 0 ? 1 : 0;
+      } else { data = rows.slice(1); }
+      const list = data
+        .map(r => ({ name: (r[ni] || '').trim(), email: (r[ei] || '').trim() }))
+        .filter(x => x.email);
+      setCustomList(list);
+      setRecipMode('custom');
+      showToast?.(`Loaded ${list.length} recipient(s) from CSV.`, 'success');
+    };
+    reader.readAsText(file);
+  };
+  const addManual = () => {
+    const em = mEmail.trim();
+    if (!EMAIL_RE.test(em)) return showToast?.('Enter a valid email address.', 'error');
+    if (customList.some(r => r.email.toLowerCase() === em.toLowerCase())) return showToast?.('That email is already on the list.', 'info');
+    setCustomList(prev => [...prev, { name: mName.trim(), email: em }]);
+    setMName(''); setMEmail('');
+  };
+  const removeRecip = (idx) => setCustomList(prev => prev.filter((_, i) => i !== idx));
+
+  const certPayload = () => (attachCert && certTplId
+    ? { certificate_template_id: certTplId, include_certificate: true, include_id: hasIdField, certificate_fields: certMap }
+    : {});
+
+  const doTest = async () => {
+    if (!testEmail.trim()) return showToast?.('Enter a test email address.', 'error');
+    if (attachCert && !certTplId) return showToast?.('Pick a certificate template.', 'error');
+    setBusy(true);
+    const res = await webinarBroadcast({
+      event_key: eKey, event_type: eType, event_title: item.title,
+      template_key: tplKey, subject, extra_context: extraCtx(), test_email: testEmail.trim(),
+      ...certPayload(),
+    });
+    setBusy(false);
+    if (res?.sent) showToast?.(`Test sent to ${testEmail.trim()}`, 'success');
+    else if (res?.stubbed) showToast?.('Test stubbed — email sending is off or SES creds are missing.', 'info');
+    else showToast?.(res?.error || 'Test failed.', 'error');
+  };
+
+  const doSend = async () => {
+    if (!sendCount) return showToast?.('No valid recipients selected.', 'error');
+    const label = recipMode === 'custom' ? `${sendCount} on your list` : `${sendCount} recipient(s)`;
+    if (!window.confirm(`Send “${currentTpl?.name || tplKey}” to ${label}?`)) return;
+    setBusy(true);
+    const payload = {
+      event_key: eKey, event_type: eType, event_title: item.title,
+      template_key: tplKey, subject, extra_context: extraCtx(),
+    };
+    if (recipMode === 'custom') payload.recipients = validCustom;
+    else payload.audience = audience;
+    Object.assign(payload, certPayload());
+    const res = await webinarBroadcast(payload);
+    setBusy(false);
+    if (res?.error) return showToast?.(res.error, 'error');
+    const parts = [`${res.sent} sent`];
+    if (res.stubbed) parts.push(`${res.stubbed} stubbed`);
+    if (res.skipped) parts.push(`${res.skipped} skipped`);
+    showToast?.(`Broadcast complete — ${parts.join(', ')}.`, 'success');
+    load();
+  };
+
+  const S = {
+    strip: { display: 'flex', gap: 10, flexWrap: 'wrap', margin: '0 0 18px' },
+    stat: { flex: '1 1 120px', background: '#f8f8fb', border: '1px solid #ececf3', borderRadius: 10, padding: '12px 14px' },
+    statN: { fontSize: 22, fontWeight: 800, lineHeight: 1, color: '#1a1a2e' },
+    statL: { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: '#8a8aa0', marginTop: 5 },
+    card: { background: '#fff', border: '1px solid #ececf3', borderRadius: 12, padding: 18, marginBottom: 18 },
+    label: { display: 'block', fontSize: 12.5, fontWeight: 700, color: '#3a3a4d', margin: '0 0 6px' },
+    input: { width: '100%', padding: '9px 11px', border: '1px solid #dcdce6', borderRadius: 8, fontSize: 14, fontFamily: 'inherit' },
+    row: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 },
+    aud: (on) => ({ flex: '1 1 30%', padding: '10px 12px', border: `1.5px solid ${on ? '#6366f1' : '#e2e2ee'}`, borderRadius: 9, cursor: 'pointer', background: on ? 'rgba(99,102,241,.06)' : '#fff' }),
+    audN: { fontSize: 13, fontWeight: 700, color: '#1a1a2e' },
+    audL: { fontSize: 11, color: '#8a8aa0' },
+    section: { fontSize: 12, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: '#6366f1', margin: '0 0 12px' },
+  };
+
+  if (loading) return <p className="ww-loading">Loading email tools…</p>;
+
+  return (
+    <div className="ww-tab-body">
+      {/* stats strip */}
+      <div style={S.strip}>
+        <div style={S.stat}><div style={S.statN}>{total}</div><div style={S.statL}>Registered</div></div>
+        <div style={S.stat}><div style={{ ...S.statN, color: '#16a34a' }}>{attended}</div><div style={S.statL}>Attended</div></div>
+        <div style={S.stat}><div style={{ ...S.statN, color: '#d97706' }}>{noShow}</div><div style={S.statL}>No-show</div></div>
+        <div style={S.stat}><div style={{ ...S.statN, color: '#6366f1' }}>{history.summary?.total_sends || 0}</div><div style={S.statL}>Emails sent</div></div>
+      </div>
+
+      {/* composer */}
+      <div style={S.card}>
+        <p style={S.section}><Send size={13} style={{ verticalAlign: -2, marginRight: 6 }} />Broadcast to registrants</p>
+
+        <div style={S.row}>
+          <div style={{ flex: '1 1 260px' }}>
+            <label style={S.label}>Email template</label>
+            <select style={S.input} value={tplKey} onChange={e => setTplKey(e.target.value)}>
+              {tplOptions.map(t => <option key={t.key} value={t.key}>{t.name}{t.key?.startsWith('webinar_') ? '' : ' (general)'}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: '1 1 260px' }}>
+            <label style={S.label}>Subject <span style={{ fontWeight: 400, color: '#a0a0b4' }}>(override for this send)</span></label>
+            <input style={S.input} value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject line" />
+          </div>
+        </div>
+
+        <div className="ww-tab-hint" style={{ margin: '0 0 12px' }}>
+          {currentTpl?.variables?.length ? (
+            <>Tokens in “<strong>{currentTpl.name}</strong>” <span style={{ color: '#a0a0b4' }}>(click to add to subject)</span>:{' '}
+              {currentTpl.variables.map((t) => (
+                <code key={t} onClick={() => setSubject((s) => `${s}{{${t}}}`)} title="Add to subject"
+                  style={{ background: '#eef0fe', color: '#4338ca', padding: '1px 5px', borderRadius: 4, marginRight: 5, fontSize: 11.5, cursor: 'pointer' }}>{`{{${t}}}`}</code>
+              ))}
+            </>
+          ) : (
+            <>This template has no tokens defined — add some in the Email Designer.</>
+          )}
+          <div style={{ marginTop: 4, color: '#a0a0b4' }}>
+            Any registrant field also works even if not listed:{' '}
+            {['organization', 'role', 'city', 'country', 'event_date'].map((t) => (
+              <code key={t} onClick={() => setSubject((s) => `${s}{{${t}}}`)} title="Add to subject"
+                style={{ background: '#f0f0f5', padding: '1px 5px', borderRadius: 4, marginRight: 5, fontSize: 11, cursor: 'pointer' }}>{`{{${t}}}`}</code>
+            ))}
+          </div>
+        </div>
+
+        <label style={S.label}>Recipients</label>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          <button type="button" className={`ww-btn ${recipMode === 'registrants' ? 'ww-btn-primary' : 'ww-btn-ghost'}`} onClick={() => setRecipMode('registrants')}>
+            <Users size={14} /> Registrants
+          </button>
+          <button type="button" className={`ww-btn ${recipMode === 'custom' ? 'ww-btn-primary' : 'ww-btn-ghost'}`} onClick={() => setRecipMode('custom')}>
+            <Upload size={14} /> Upload / manual list
+          </button>
+        </div>
+
+        {recipMode === 'registrants' ? (
+          <div style={S.row}>
+            {[['all', 'Everyone', total], ['attended', 'Attended only', attended], ['not_attended', 'Did not attend', noShow]].map(([v, l, n]) => (
+              <div key={v} style={S.aud(audience === v)} onClick={() => setAudience(v)}>
+                <div style={S.audN}>{l}</div>
+                <div style={S.audL}>{n} recipient{n !== 1 ? 's' : ''}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+              <label className="ww-btn ww-btn-ghost" style={{ cursor: 'pointer' }}>
+                <Upload size={14} /> {customList.length ? 'Replace CSV' : 'Upload CSV'}
+                <input type="file" accept=".csv,text/csv" hidden onChange={e => e.target.files[0] && onCsv(e.target.files[0])} />
+              </label>
+              <span className="ww-tab-hint" style={{ margin: 0 }}>
+                CSV with <code>name</code> &amp; <code>email</code> columns.
+                {customList.length > 0 && <> <strong>{validCustom.length}</strong> valid{customList.length !== validCustom.length ? ` · ${customList.length - validCustom.length} invalid` : ''}</>}
+              </span>
+              {customList.length > 0 && <button className="ww-btn ww-btn-ghost" onClick={() => setCustomList([])}>Clear</button>}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              <input style={{ ...S.input, flex: '1 1 150px' }} value={mName} onChange={e => setMName(e.target.value)} placeholder="Name (optional)" />
+              <input style={{ ...S.input, flex: '1 1 200px' }} value={mEmail} onChange={e => setMEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && addManual()} placeholder="email@example.com" />
+              <button className="ww-btn ww-btn-ghost" onClick={addManual}><Plus size={14} /> Add</button>
+            </div>
+
+            {customList.length > 0 && (
+              <div className="ww-reg-wrap" style={{ maxHeight: 220, overflow: 'auto' }}>
+                <table className="ww-reg-table">
+                  <thead><tr><th>Name</th><th>Email</th><th /></tr></thead>
+                  <tbody>
+                    {customList.map((r, idx) => {
+                      const ok = EMAIL_RE.test((r.email || '').trim());
+                      return (
+                        <tr key={idx} style={ok ? undefined : { background: '#fef2f2' }}>
+                          <td>{r.name || '—'}</td>
+                          <td style={{ color: ok ? undefined : '#b91c1c' }}>{r.email}{ok ? '' : ' · invalid'}</td>
+                          <td><button className="ww-btn ww-btn-ghost" style={{ padding: '3px 8px' }} onClick={() => removeRecip(idx)}><Trash2 size={13} /></button></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
-        {!link.template_id && templates.length === 0 && (
-          <div className="ww-empty">
-            <Award size={36} strokeWidth={1.3}/>
-            <p>No certificate templates found. Upload one in the <strong>Certificate Generator</strong> portal first.</p>
-            <button className="ww-btn ww-btn-ghost" onClick={() => navigate('/certificates/templates')}>
-              Go to Certificate Portal
-            </button>
+        <div style={S.row}>
+          <div style={{ flex: '1 1 30%' }}>
+            <label style={S.label}>Join link <span style={{ fontWeight: 400, color: '#a0a0b4' }}>{'{{join_link}}'}</span></label>
+            <input style={S.input} value={joinLink} onChange={e => setJoinLink(e.target.value)} placeholder="https://meet…" />
+          </div>
+          <div style={{ flex: '1 1 30%' }}>
+            <label style={S.label}>Recording link <span style={{ fontWeight: 400, color: '#a0a0b4' }}>{'{{recording_link}}'}</span></label>
+            <input style={S.input} value={recLink} onChange={e => setRecLink(e.target.value)} placeholder="https://youtu.be…" />
+          </div>
+          <div style={{ flex: '1 1 30%' }}>
+            <label style={S.label}>Time <span style={{ fontWeight: 400, color: '#a0a0b4' }}>{'{{time}}'}</span></label>
+            <input style={S.input} value={timeStr} onChange={e => setTimeStr(e.target.value)} placeholder="6:00 PM IST" />
+          </div>
+        </div>
+
+        {/* live email preview */}
+        <div style={{ borderTop: '1px solid #f0f0f5', paddingTop: 14, marginTop: 4 }}>
+          <button type="button" className="ww-btn ww-btn-ghost" onClick={() => setShowPreview((v) => !v)} style={{ padding: '6px 12px' }}>
+            {showPreview ? 'Hide preview' : '👁 Preview email'}
+          </button>
+          {showPreview && (
+            <div style={{ marginTop: 10, border: '1px solid #e6e6ef', borderRadius: 10, overflow: 'hidden', background: '#f4f4f8' }}>
+              <iframe title="Email preview" srcDoc={previewHtml} style={{ width: '100%', height: 460, border: 'none', background: '#fff' }} />
+            </div>
+          )}
+        </div>
+
+        {/* certificate attachment */}
+        <div style={{ borderTop: '1px solid #f0f0f5', paddingTop: 14, marginTop: 4 }}>
+          <label style={{ display: 'flex', gap: 9, alignItems: 'center', fontSize: 13.5, fontWeight: 700, color: 'var(--ink)', cursor: 'pointer' }}>
+            <input type="checkbox" style={{ width: 'auto', margin: 0 }} checked={attachCert} onChange={e => setAttachCert(e.target.checked)} />
+            🎓 Attach a certificate PDF to each email
+          </label>
+          {attachCert && (
+            <div style={{ display: 'grid', gap: 12, marginTop: 10, paddingLeft: 28 }}>
+              <label style={S.label}>Certificate template
+                <select style={S.input} value={certTplId} onChange={e => setCertTplId(e.target.value)}>
+                  <option value="">— Select a template —</option>
+                  {certTemplates.map(t => <option key={t.id} value={String(t.id)}>{t.name}</option>)}
+                </select>
+              </label>
+              {certTemplates.length === 0 && (
+                <p className="ww-tab-hint" style={{ margin: 0, color: '#b45309' }}>No templates found — design one in the Certificate Generator first.</p>
+              )}
+
+              {/* Auto-match summary + optional review table */}
+              {certTplId && certVars.length > 0 && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--soft, #6b6b80)', flex: '1 1 260px' }}>
+                      <span style={{ color: '#16a34a', fontWeight: 700 }}>✓ Auto-matched</span>{' '}
+                      <span style={{ color: 'var(--ink)' }}>{certVars.map((v) => `${v.name} → ${sourceLabel(certMap[v.name])}`).join('  ·  ')}</span>
+                    </div>
+                    <button type="button" className="ww-btn ww-btn-ghost" style={{ padding: '4px 10px' }} onClick={() => setShowCertMap((s) => !s)}>
+                      {showCertMap ? 'Hide fields' : 'Review / edit'}
+                    </button>
+                  </div>
+                  {showCertMap && (
+                  <div className="ww-reg-wrap" style={{ marginTop: 10 }}>
+                    <table className="ww-reg-table">
+                      <thead><tr><th>Certificate field</th><th>Fill with</th></tr></thead>
+                      <tbody>
+                        {certVars.map((v) => {
+                          const spec = certMap[v.name] || {};
+                          return (
+                            <tr key={v.name}>
+                              <td style={{ fontWeight: 600 }}>{v.name}
+                                {v.sample_value ? <span style={{ fontWeight: 400, color: 'var(--soft, #8a8aa0)', fontSize: 11 }}><br />e.g. {v.sample_value}</span> : null}
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <select style={{ ...S.input, padding: '6px 8px', width: 'auto' }} value={spec.source || 'custom'} onChange={e => setMap(v.name, { source: e.target.value })}>
+                                    <optgroup label="From each registrant">
+                                      {REG_FIELDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                                    </optgroup>
+                                    <option value="id">Verification ID (auto)</option>
+                                    <option value="custom">Custom text</option>
+                                    <option value="blank">Leave blank</option>
+                                  </select>
+                                  {spec.source === 'custom' && (
+                                    <input style={{ ...S.input, padding: '6px 8px', flex: '1 1 120px' }} value={spec.value || ''} onChange={e => setMap(v.name, { value: e.target.value })} placeholder="text to print" />
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  )}
+                </div>
+              )}
+
+              {certTplId && certVars.length === 0 && (
+                <p className="ww-tab-hint" style={{ margin: 0 }}>This template has no fillable fields — it'll be sent as-is.</p>
+              )}
+
+              {/* Preview */}
+              {certTplId && (
+                <div>
+                  <button type="button" className="ww-btn ww-btn-ghost" onClick={previewCertificate} disabled={certPreviewBusy} style={{ padding: '6px 12px' }}>
+                    {certPreviewBusy ? 'Generating…' : '👁 Preview certificate'}
+                  </button>
+                  {certPreviewUrl && (
+                    <div style={{ marginTop: 10, border: '1px solid #e6e6ef', borderRadius: 10, overflow: 'hidden' }}>
+                      <iframe title="Certificate preview" src={certPreviewUrl} style={{ width: '100%', height: 380, border: 'none', background: '#f4f4f8' }} />
+                    </div>
+                  )}
+                  <p className="ww-tab-hint" style={{ margin: '8px 0 0' }}>
+                    Preview uses sample data (name “Aarav Sharma”{hasIdField ? ', ID “TIES-WEB-4F9A2C”' : ''}). Each real recipient gets their own name{hasIdField ? ' + a unique ID' : ''}.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', borderTop: '1px solid #f0f0f5', paddingTop: 14 }}>
+          <div style={{ flex: '1 1 200px' }}>
+            <label style={S.label}>Send a test to</label>
+            <input style={S.input} value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="you@tiesverse.com" />
+          </div>
+          <button className="ww-btn ww-btn-ghost" onClick={doTest} disabled={busy}>Send test</button>
+          <button className="ww-btn ww-btn-primary" onClick={doSend} disabled={busy || !sendCount}>
+            <Send size={14} /> {busy ? 'Sending…' : `Send to ${sendCount}`}
+          </button>
+        </div>
+        <p className="ww-tab-hint" style={{ marginTop: 10 }}>
+          Uses the “{currentTpl?.name || tplKey}” template · from {currentTpl?.from_name || 'Tiesverse'}. Edit content in the Email Designer.
+        </p>
+      </div>
+
+      {/* send history / counts */}
+      <div style={S.card}>
+        <p style={S.section}><Mail size={13} style={{ verticalAlign: -2, marginRight: 6 }} />Send history · {history.summary?.unique_recipients || 0} people · {history.summary?.total_sends || 0} emails</p>
+        {(!history.recipients || history.recipients.length === 0) ? (
+          <p className="ww-tab-hint" style={{ margin: 0 }}>No emails sent for this {eType} yet. Your broadcasts will show here with per-person counts.</p>
+        ) : (
+          <div className="ww-reg-wrap">
+            <table className="ww-reg-table">
+              <thead><tr><th>Recipient</th><th>Emails</th><th>Last sent</th><th>Templates</th></tr></thead>
+              <tbody>
+                {history.recipients.map(r => (
+                  <tr key={r.email}>
+                    <td><strong>{r.name || '—'}</strong><br /><span style={{ color: '#8a8aa0', fontSize: 12 }}>{r.email}</span></td>
+                    <td><span style={{ fontWeight: 800, color: '#6366f1' }}>{r.count}×</span></td>
+                    <td style={{ fontSize: 12.5 }}>{fmt(r.last_sent)}</td>
+                    <td style={{ fontSize: 12, color: '#6a6a80' }}>{(r.templates || []).join(', ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
-      <div className="ww-cert-help">
-        <h4>How it works</h4>
-        <ol>
-          <li>Upload and design your certificate template in the Certificate Generator portal.</li>
-          <li>Assign it here to this {badge(item.kind).toLowerCase()}.</li>
-          <li>After the session, mark attendees in the Registrations page.</li>
-          <li>Click "Send Certificates →" — the generate page opens pre-linked to this event's attendees.</li>
-          <li>Choose "Email batch" mode and send in one click.</li>
-        </ol>
+      {/* certificates sent */}
+      <div style={S.card}>
+        <p style={S.section}>🎓 Certificates sent · {history.summary?.certificates_sent || 0}</p>
+        {(!history.certificates || history.certificates.length === 0) ? (
+          <p className="ww-tab-hint" style={{ margin: 0 }}>No certificates sent yet. Turn on “Attach a certificate PDF” above and send — each one is logged here with its verification ID.</p>
+        ) : (
+          <div className="ww-reg-wrap">
+            <table className="ww-reg-table">
+              <thead><tr><th>Recipient</th><th>Certificate ID</th><th>Sent</th></tr></thead>
+              <tbody>
+                {history.certificates.map((c, i) => (
+                  <tr key={`${c.email}-${i}`}>
+                    <td><strong>{c.name || '—'}</strong><br /><span style={{ color: '#8a8aa0', fontSize: 12 }}>{c.email}</span></td>
+                    <td style={{ fontFamily: 'monospace', fontSize: 12.5, fontWeight: 600 }}>{c.certificate_id || '—'}</td>
+                    <td style={{ fontSize: 12.5 }}>{fmt(c.sent_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -668,6 +1238,7 @@ function CertificatesTab({ item }) {
 ═══════════════════════════════════════════════════════════════ */
 const WebinarsWorkshops = () => {
   const [items, setItems]       = useState([]);
+  const [calView, setCalView]   = useState('list');   // 'list' | 'calendar'
   const [loading, setLoading]   = useState(true);
   const [selected, setSelected] = useState(null);  // { item, tab }
   const [activeTab, setActiveTab] = useState('details');
@@ -820,13 +1391,32 @@ const WebinarsWorkshops = () => {
       </div>
 
       {/* Filter tabs */}
-      <div className="ww-filter-bar">
+      <div className="ww-filter-bar" style={{ display: 'flex', alignItems: 'center' }}>
         {[['all','All'],['webinar','Webinars'],['workshop','Workshops']].map(([val, lbl]) => (
           <button key={val} className={`ww-filter-btn ${filter === val ? 'is-active' : ''}`}
             onClick={() => setFilter(val)}>{lbl}</button>
         ))}
+        <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 2, border: '1px solid var(--rule, #e6e6ef)', borderRadius: 8, padding: 2 }}>
+          <button type="button" onClick={() => setCalView('list')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: 'none', borderRadius: 6, background: calView === 'list' ? 'var(--accent, #6366f1)' : 'transparent', color: calView === 'list' ? '#fff' : 'inherit', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 }}><ClipboardList size={14} /> List</button>
+          <button type="button" onClick={() => setCalView('calendar')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: 'none', borderRadius: 6, background: calView === 'calendar' ? 'var(--accent, #6366f1)' : 'transparent', color: calView === 'calendar' ? '#fff' : 'inherit', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 }}><Award size={14} /> Calendar</button>
+        </div>
       </div>
 
+      {calView === 'calendar' ? (
+        <div style={{ padding: '4px 0' }}>
+          <ScheduleCalendar
+            accent="#6366f1"
+            events={visible.map((it) => ({
+              id: it.id,
+              date: it.meeting_start || it.date,
+              title: it.title,
+              subtitle: it.host || badge(it.kind),
+              link: it.meeting_link || '',
+            }))}
+            emptyLabel="No webinars/workshops with a date yet."
+          />
+        </div>
+      ) : (
       <div className="ww-layout">
         {/* Left: cards */}
         <div className="ww-list">
@@ -901,8 +1491,9 @@ const WebinarsWorkshops = () => {
               {activeTab === 'details'       && <DetailsTab item={selected.item} onSaved={load} showToast={showToast} />}
               {activeTab === 'questions'     && <FormQuestionsTab item={selected.item} />}
               {activeTab === 'registrations' && <RegistrationsTab item={selected.item} />}
+              {activeTab === 'meeting'       && <MeetingTab item={selected.item} showToast={showToast} />}
+              {activeTab === 'emails'        && <EmailsTab item={selected.item} showToast={showToast} />}
               {activeTab === 'speaker'       && <GuestSpeakerTab item={selected.item} />}
-              {activeTab === 'certs'         && <CertificatesTab item={selected.item} />}
             </div>
           </div>
         ) : (
@@ -912,6 +1503,7 @@ const WebinarsWorkshops = () => {
           </div>
         )}
       </div>
+      )}
 
       {/* Create / Edit modal */}
       {formModal && (

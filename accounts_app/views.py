@@ -5,9 +5,10 @@ from rest_framework.decorators import action
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import (
     UserSerializer, PermissionSerializer, CustomTokenObtainPairSerializer,
-    SettingSerializer, EmailTemplateSerializer,
+    SettingSerializer, EmailTemplateSerializer, EmailCampaignSerializer,
+    FeaturedContentSerializer,
 )
-from .models import Setting, EmailTemplate
+from .models import Setting, EmailTemplate, EmailCampaign, FeaturedContent
 
 
 # ── Permission classes ────────────────────────────────────────────────────────
@@ -328,6 +329,70 @@ class EmailTemplateViewSet(viewsets.ModelViewSet):
         ok = send_email(to, subject, body, from_email=resolve_from(tpl), enabled=True)
         return response.Response({'sent': bool(ok), 'to': to})
 
+    @action(detail=True, methods=['post'], url_path='send-campaign')
+    def send_campaign(self, request, pk=None):
+        """Bulk mail-merge: render this template per recipient and send via SES.
+        Body: {recipients:[{...vars, email}], email_field, name?, subject?,
+        html_mode?, body_html?, content_json?}. Each recipient dict fills the
+        {{tokens}} for that person. Records the send in campaign history."""
+        import re
+        from config.email_templates import render_tokens, render_content, resolve_from
+        from config.email_utils import send_email
+
+        tpl = self.get_object()
+        recipients = request.data.get('recipients') or []
+        email_field = request.data.get('email_field') or 'email'
+
+        # Allow sending with unsaved edits from the campaign screen.
+        subject_src = request.data.get('subject', tpl.subject)
+        html_mode = request.data.get('html_mode', tpl.html_mode)
+        if html_mode:
+            body_src = request.data.get('body_html', tpl.body_html)
+        else:
+            body_src = render_content(request.data.get('content_json', tpl.content_json))
+
+        # Sender override: campaign can send from any verified address/name.
+        from_email = (request.data.get('from_email') or '').strip()
+        from_name = (request.data.get('from_name') or '').strip()
+        if from_email:
+            source = f'"{from_name}" <{from_email}>' if from_name else from_email
+        else:
+            source = resolve_from(tpl)
+
+        email_re = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+        sent = failed = skipped = 0
+        results = []
+        seen = set()
+        for row in recipients:
+            row = row if isinstance(row, dict) else {}
+            to = str(row.get(email_field, '')).strip()
+            if not to or not email_re.match(to) or to.lower() in seen:
+                skipped += 1
+                results.append({'email': to, 'status': 'skipped'})
+                continue
+            seen.add(to.lower())
+            subject = render_tokens(subject_src, row)
+            body = render_tokens(body_src, row)
+            ok = send_email(to, subject, body, from_email=source, enabled=True)
+            if ok:
+                sent += 1
+                results.append({'email': to, 'status': 'sent'})
+            else:
+                failed += 1
+                results.append({'email': to, 'status': 'failed'})
+
+        EmailCampaign.objects.create(
+            name=request.data.get('name', ''),
+            template_key=tpl.key, template_name=tpl.name,
+            subject=render_tokens(subject_src, {}),
+            recipient_count=len(recipients),
+            sent_count=sent, failed_count=failed, skipped_count=skipped,
+            created_by=self._actor(),
+        )
+        return response.Response({
+            'sent': sent, 'failed': failed, 'skipped': skipped, 'results': results,
+        })
+
     @action(detail=True, methods=['post'])
     def preview(self, request, pk=None):
         """Return the rendered subject + HTML with sample data (no email sent).
@@ -347,6 +412,88 @@ class EmailTemplateViewSet(viewsets.ModelViewSet):
             'subject': render_tokens(subject_src, sample),
             'html': render_tokens(body_src, sample),
         })
+
+
+class EmailCampaignViewSet(viewsets.ReadOnlyModelViewSet):
+    """History of bulk email campaigns."""
+    serializer_class = EmailCampaignSerializer
+    permission_classes = [IsSuperUser]
+    queryset = EmailCampaign.objects.all()
+
+
+class PublicEmailTemplateView(views.APIView):
+    """Public read of a whitelisted email template (subject + HTML with {{tokens}}
+    intact) so another service — the careers site — can render + send it via SES.
+    Only career-safe templates are exposed; internal ones (password reset, etc.)
+    are never public."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    ALLOWED = {'career_application'}
+
+    def get(self, request, key):
+        if key not in self.ALLOWED:
+            return response.Response({'error': 'Not available'}, status=404)
+        from config.email_templates import get_template
+        tpl = get_template(key)
+        if tpl is None:
+            return response.Response({'error': 'Unknown template'}, status=404)
+        return response.Response({
+            'key': tpl.key, 'subject': tpl.subject, 'body_html': tpl.body_html,
+            'from_name': tpl.from_name, 'from_email': tpl.from_email,
+        })
+
+
+class SESSendersView(views.APIView):
+    """List the SES-verified sender identities so the UI can offer valid 'from'
+    addresses. Any address under a verified domain also works."""
+    permission_classes = [IsSuperUser]
+
+    def get(self, request):
+        from django.conf import settings as s
+        payload = {'emails': [], 'domains': [], 'default': getattr(s, 'SES_FROM_EMAIL', '')}
+        try:
+            import boto3
+            client = boto3.client(
+                'ses', region_name=s.AWS_SES_REGION,
+                aws_access_key_id=s.AWS_SES_ACCESS_KEY_ID,
+                aws_secret_access_key=s.AWS_SES_SECRET_ACCESS_KEY,
+            )
+            ids = client.list_identities().get('Identities', [])
+            attrs = (client.get_identity_verification_attributes(Identities=ids)
+                     .get('VerificationAttributes', {}) if ids else {})
+            for i in ids:
+                if attrs.get(i, {}).get('VerificationStatus') != 'Success':
+                    continue
+                (payload['emails'] if '@' in i else payload['domains']).append(i)
+            payload['emails'].sort()
+            payload['domains'].sort()
+        except Exception as exc:  # noqa: BLE001
+            payload['error'] = str(exc)
+        return response.Response(payload)
+
+
+class FeaturedContentViewSet(viewsets.ModelViewSet):
+    """Superuser CRUD for the public homepage's curated cards."""
+    serializer_class = FeaturedContentSerializer
+    permission_classes = [IsSuperUser]
+    queryset = FeaturedContent.objects.all()
+
+
+class PublicFeaturedView(views.APIView):
+    """Public, unauthenticated feed of active homepage cards, grouped by section.
+    The website fetches this so cards update without a redeploy."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        out = {'spotlight': [], 'insights': [], 'engagements': []}
+        for item in FeaturedContent.objects.filter(is_active=True):
+            out.setdefault(item.section, []).append({
+                'kind': item.kind, 'title': item.title, 'subtitle': item.subtitle,
+                'image_url': item.image_url, 'link_url': item.link_url,
+                'cta_label': item.cta_label, 'date_label': item.date_label,
+            })
+        return response.Response(out)
 
 
 class SettingViewSet(viewsets.ModelViewSet):

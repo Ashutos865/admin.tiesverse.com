@@ -6,10 +6,13 @@ from .views import (
     InitiateOnboardingView, OnboardingListView, OnboardingDetailView,
     OnboardingVerifyView, OnboardingDocView, ManualAddMemberView,
     OnboardingPublicInfoView, OnboardingPublicUploadView,
-    CertificateIssueView, DocumentAuditLogListView, MeView,
+    CertificateIssueView, SendCertificateEmailView, DocumentAuditLogListView,
+    MeView, DirectorySearchView,
     AttendanceListView, AttendanceCheckInView, AttendanceCheckOutView,
     AttendanceApproveView, AttendanceDetailView,
     LeaveListView, LeaveDetailView, LeaveReviewView,
+    OffboardingListView, OffboardingDetailView, OffboardingReviewView,
+    OffboardingRevokeView, OffboardingReactivateView,
     AssetListView, AssetDetailView, AssetAssignView,
     TaskListView, TaskDetailView,
 )
@@ -24,6 +27,8 @@ urlpatterns = [
     path('', include(router.urls)),
     # Current member identity + scope
     path('me/', MeView.as_view(), name='career-me'),
+    # Master directory — unified people search
+    path('directory/', DirectorySearchView.as_view(), name='career-directory'),
     path('candidates/', CandidateListView.as_view(), name='career-candidates'),
     path('candidates/<int:pk>/', CandidateDetailView.as_view(), name='career-candidate-detail'),
     path('form-gates/', FormGateView.as_view(), name='career-form-gates'),
@@ -44,6 +49,7 @@ urlpatterns = [
 
     # ── Certificates & Audit Logs ─────────────────────────────────────────
     path('onboarding/<int:pk>/certificate/', CertificateIssueView.as_view(), name='certificate-issue'),
+    path('onboarding/<int:pk>/send-certificate/', SendCertificateEmailView.as_view(), name='certificate-send'),
     path('onboarding/<int:pk>/audit-log/', DocumentAuditLogListView.as_view(), name='document-audit-log'),
 
     # ── Attendance ─────────────────────────────────────────────────────────
@@ -57,6 +63,13 @@ urlpatterns = [
     path('leave/', LeaveListView.as_view(), name='leave-list'),
     path('leave/<int:pk>/', LeaveDetailView.as_view(), name='leave-detail'),
     path('leave/<int:pk>/review/', LeaveReviewView.as_view(), name='leave-review'),
+
+    # ── Offboarding ────────────────────────────────────────────────────────
+    path('offboarding/', OffboardingListView.as_view(), name='offboarding-list'),
+    path('offboarding/<int:pk>/', OffboardingDetailView.as_view(), name='offboarding-detail'),
+    path('offboarding/<int:pk>/review/', OffboardingReviewView.as_view(), name='offboarding-review'),
+    path('offboarding/<int:pk>/revoke/', OffboardingRevokeView.as_view(), name='offboarding-revoke'),
+    path('offboarding/<int:pk>/reactivate/', OffboardingReactivateView.as_view(), name='offboarding-reactivate'),
 
     # ── Asset Management ───────────────────────────────────────────────────
     path('assets/', AssetListView.as_view(), name='asset-list'),
