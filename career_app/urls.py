@@ -15,6 +15,7 @@ from .views import (
     OffboardingRevokeView, OffboardingReactivateView,
     AssetListView, AssetDetailView, AssetAssignView,
     TaskListView, TaskDetailView,
+    AdvisoryTaskOversightView, AdvisoryDailyUpdatesView, WeeklyUpdateView,
 )
 
 router = DefaultRouter()
@@ -79,4 +80,9 @@ urlpatterns = [
     # ── Task Management ────────────────────────────────────────────────────
     path('tasks/', TaskListView.as_view(), name='task-list'),
     path('tasks/<int:pk>/', TaskDetailView.as_view(), name='task-detail'),
+
+    # ── Advisory oversight + weekly team-lead updates ──────────────────────
+    path('advisory/task-oversight/', AdvisoryTaskOversightView.as_view(), name='advisory-task-oversight'),
+    path('advisory/daily-updates/', AdvisoryDailyUpdatesView.as_view(), name='advisory-daily-updates'),
+    path('weekly-updates/', WeeklyUpdateView.as_view(), name='weekly-updates'),
 ]

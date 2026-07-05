@@ -528,3 +528,28 @@ class Task(models.Model):
 
     def __str__(self):
         return self.title
+
+
+# ── Weekly Team-Lead Updates (submitted to Advisory via the portal) ───────────
+
+class WeeklyUpdate(models.Model):
+    """A team lead's weekly update, submitted through the portal to Advisory."""
+    team_lead = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.CASCADE, related_name='weekly_updates',
+    )
+    week_ending = models.DateField(help_text='Date the reported week ends')
+    summary = models.TextField(help_text='What the team did this week')
+    wins = models.TextField(blank=True, help_text='Key wins / highlights')
+    blockers = models.TextField(blank=True, help_text='Blockers / needs attention')
+    submitted_by_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
+        related_name='weekly_updates_submitted',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'weekly_updates'
+        ordering = ['-week_ending', '-created_at']
+
+    def __str__(self):
+        return f"{self.team_lead.candidate_name} - week of {self.week_ending}"

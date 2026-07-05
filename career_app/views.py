@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 from .models import (
     Position, Enrollment, OfferLetter, HRDepartment, OnboardingSubmission,
     MemberAccount, DocumentAuditLog, AttendanceRecord, LeaveRequest, Asset, Task,
-    OffboardingRequest,
+    OffboardingRequest, WeeklyUpdate,
 )
 from .serializers import (
     PositionSerializer, EnrollmentSerializer, OfferLetterSerializer,
@@ -1544,3 +1544,104 @@ class ResumeDownloadView(APIView):
             return response
         except ProviderError as e:
             return HttpResponse(str(e), status=500)
+
+
+# ── Advisory oversight + weekly team-lead updates ─────────────────────────────
+
+def _is_advisory(user):
+    """True for Advisory members, superusers, and the Admins group."""
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if user.is_superuser or user.groups.filter(name__in=['Advisory', 'Admins']).exists():
+        return True
+    m = access.get_member_for_user(user)
+    return bool(m and (m.portal_role or '') in ('advisory', 'admin'))
+
+
+class AdvisoryTaskOversightView(APIView):
+    """Advisory-only: every completed task with its team lead + completer + detail."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _is_advisory(request.user):
+            return Response({'detail': 'Advisory access only.'}, status=status.HTTP_403_FORBIDDEN)
+        tasks = Task.objects.filter(status='done').select_related('assigned_by', 'assigned_to')[:500]
+        data = [{
+            'id': t.id,
+            'title': t.title,
+            'description': t.description,
+            'team_lead': (t.assigned_by.candidate_name if t.assigned_by_id else ''),
+            'completer': (t.assigned_to.candidate_name if t.assigned_to_id else (t.assigned_to_department or '')),
+            'department': ((t.assigned_to.assigned_departments if t.assigned_to_id else None)
+                           or ([t.assigned_to_department] if t.assigned_to_department else [])),
+            'priority': t.priority,
+            'completed_at': t.completed_at,
+            'completion_note': t.completion_note,
+        } for t in tasks]
+        return Response({'tasks': data})
+
+
+class AdvisoryDailyUpdatesView(APIView):
+    """Advisory-only: daily check-out work reports across the org."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _is_advisory(request.user):
+            return Response({'detail': 'Advisory access only.'}, status=status.HTTP_403_FORBIDDEN)
+        qs = AttendanceRecord.objects.exclude(work_report='').select_related('member').order_by('-date')[:500]
+        data = [{
+            'id': r.id,
+            'member': (r.member.candidate_name if r.member_id else ''),
+            'department': (r.member.assigned_departments if r.member_id else []),
+            'date': r.date,
+            'work_report': r.work_report,
+            'check_out': r.check_out,
+        } for r in qs]
+        return Response({'updates': data})
+
+
+class WeeklyUpdateView(APIView):
+    """Team leads submit weekly updates (POST); Advisory sees all, a lead sees their own (GET)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        member = access.get_member_for_user(request.user)
+        if _is_advisory(request.user):
+            qs = WeeklyUpdate.objects.select_related('team_lead').all()[:500]
+        elif member:
+            qs = WeeklyUpdate.objects.filter(team_lead=member).select_related('team_lead')[:500]
+        else:
+            qs = WeeklyUpdate.objects.none()
+        data = [{
+            'id': w.id,
+            'team_lead': (w.team_lead.candidate_name if w.team_lead_id else ''),
+            'department': (w.team_lead.assigned_departments if w.team_lead_id else []),
+            'week_ending': w.week_ending,
+            'summary': w.summary,
+            'wins': w.wins,
+            'blockers': w.blockers,
+            'created_at': w.created_at,
+        } for w in qs]
+        return Response({'updates': data})
+
+    def post(self, request):
+        member = access.get_member_for_user(request.user)
+        if not member:
+            return Response({'detail': 'No member profile linked to your account.'},
+                            status=status.HTTP_403_FORBIDDEN)
+        if not (access.is_lead(member) or _is_advisory(request.user)):
+            return Response({'detail': 'Only team leads submit weekly updates.'},
+                            status=status.HTTP_403_FORBIDDEN)
+        d = request.data
+        if not (d.get('week_ending') and d.get('summary')):
+            return Response({'detail': 'week_ending and summary are required.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        w = WeeklyUpdate.objects.create(
+            team_lead=member,
+            week_ending=d['week_ending'],
+            summary=d['summary'],
+            wins=d.get('wins', ''),
+            blockers=d.get('blockers', ''),
+            submitted_by_user=request.user if request.user.is_authenticated else None,
+        )
+        return Response({'id': w.id, 'status': 'submitted'}, status=status.HTTP_201_CREATED)
