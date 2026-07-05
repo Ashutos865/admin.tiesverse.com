@@ -1419,3 +1419,40 @@ def generate_webinar_meeting(request):
         'meeting_link': obj.meeting_link, 'event_id': obj.calendar_event_id,
         'start': start, 'host_controls_applied': controls_applied,
     })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def payment_reminder(request):
+    """Email an abandoned/failed payer a link to finish their webinar payment.
+    Only sends if they genuinely have a PENDING (unpaid) order for this event —
+    so the endpoint can't be used to spam arbitrary addresses."""
+    from django.conf import settings as dj_settings
+    from .ses_email import send_payment_reminder
+
+    data = request.data
+    email = str(data.get('email') or '').strip()
+    event_title = str(data.get('event_title') or '').strip()
+    if not email or not event_title:
+        return Response({'error': 'email and event_title required.'}, status=400)
+
+    name = ''
+    try:
+        rows = turso_client.execute(
+            "SELECT name FROM registrations WHERE email=:email AND event_title=:title "
+            "AND payment_status='pending' ORDER BY registered_at DESC LIMIT 1",
+            {'email': email, 'title': event_title},
+        ) or []
+    except Exception:
+        rows = []
+    if not rows:
+        return Response({'status': 'no_pending_registration', 'sent': False})
+    try:
+        name = rows[0].get('name') or ''
+    except Exception:
+        name = ''
+
+    website = getattr(dj_settings, 'WEBSITE_URL', 'https://tiesverse.com').rstrip('/')
+    event_url = f"{website}/webinars/{slugify(event_title)}"
+    sent = send_payment_reminder(email, name, event_title, event_url)
+    return Response({'status': 'reminder_sent' if sent else 'skipped', 'sent': sent})

@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     WebinarEventViewSet, CalendarEventViewSet,
     register_for_event, list_registrations,
-    create_payment_order, verify_payment, razorpay_webhook,
+    create_payment_order, verify_payment, razorpay_webhook, payment_reminder,
     coupons, coupon_detail, validate_coupon,
     form_questions, form_question_detail, reorder_form_questions,
     mark_attended, list_registrations_extended,
@@ -32,6 +32,7 @@ urlpatterns = [
     # Paid flow
     path('create-order/', create_payment_order, name='webinar-create-order'),
     path('verify-payment/', verify_payment, name='webinar-verify-payment'),
+    path('payment-reminder/', payment_reminder, name='webinar-payment-reminder'),
     path('razorpay-webhook/', razorpay_webhook, name='razorpay-webhook'),
 
     # Form questions (custom registration fields per event/webinar)

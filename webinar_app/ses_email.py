@@ -90,3 +90,50 @@ def send_registration_confirmation(to_email, name, event_title, event_type, even
     except Exception as exc:
         logger.error('SES send failed for %s: %s', to_email, exc)
         return False
+
+
+def send_payment_reminder(to_email, name, event_title, event_url):
+    """Email an abandoned/failed payer a link to finish their webinar payment.
+    Silently returns False if SES is not configured — never raises."""
+    key_id = getattr(settings, 'AWS_SES_ACCESS_KEY_ID', '') or getattr(settings, 'AWS_ACCESS_KEY_ID', '')
+    secret = getattr(settings, 'AWS_SES_SECRET_ACCESS_KEY', '') or getattr(settings, 'AWS_SECRET_ACCESS_KEY', '')
+    region = getattr(settings, 'AWS_SES_REGION', 'ap-south-1')
+    from_email = getattr(settings, 'SES_FROM_EMAIL', '')
+    if not all([key_id, secret, from_email]):
+        logger.warning('SES not configured — skipping payment reminder to %s', to_email)
+        return False
+    try:
+        import boto3
+        ses = boto3.client('ses', region_name=region, aws_access_key_id=key_id, aws_secret_access_key=secret)
+        html_body = f"""
+<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
+  <div style="background:#FE7A00;padding:24px 32px"><span style="color:#fff;font-size:20px;font-weight:700">.tiesverse</span></div>
+  <div style="padding:32px">
+    <h2 style="margin:0 0 16px">Complete your registration</h2>
+    <p style="margin:0 0 16px">Hi {name or 'there'},</p>
+    <p style="margin:0 0 24px">Your payment for <strong>{event_title}</strong> wasn't completed, so your spot isn't confirmed yet. You can finish it in under a minute:</p>
+    <div style="margin:0 0 24px">
+      <a href="{event_url}" style="display:inline-block;background:#FE7A00;color:#fff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:700">Complete payment</a>
+      <p style="margin:10px 0 0;font-size:13px;color:#666;word-break:break-all">Or open: {event_url}</p>
+    </div>
+    <p style="margin:0;color:#666;font-size:13px">Already paid? Please ignore this email. Questions? contact@tiesverse.com</p>
+  </div>
+  <div style="background:#f5f5f5;padding:16px 32px;font-size:12px;color:#999">Tiesverse</div>
+</div>"""
+        text_body = (
+            f"Hi {name or 'there'},\n\n"
+            f"Your payment for {event_title} wasn't completed, so your spot isn't confirmed yet.\n"
+            f"Complete it here: {event_url}\n\n"
+            "Already paid? Please ignore this. Questions? contact@tiesverse.com\n\n- Tiesverse"
+        )
+        ses.send_email(
+            Source=from_email,
+            Destination={'ToAddresses': [to_email]},
+            Message={'Subject': {'Data': f'Complete your registration for {event_title}'},
+                     'Body': {'Text': {'Data': text_body}, 'Html': {'Data': html_body}}},
+        )
+        logger.info('Payment reminder sent to %s for "%s"', to_email, event_title)
+        return True
+    except Exception as exc:
+        logger.error('SES payment reminder failed for %s: %s', to_email, exc)
+        return False
