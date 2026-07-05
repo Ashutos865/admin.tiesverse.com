@@ -258,5 +258,14 @@ else:
         }
     }
 
+# ── Behind nginx / HTTPS in production ───────────────────────────────────────
+# nginx terminates TLS and proxies plain HTTP to gunicorn; this header lets
+# Django know the original request was HTTPS (fixes CSRF/secure-cookie/redirects
+# and correct absolute URLs for the Django admin login form).
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+CSRF_TRUSTED_ORIGINS = [
+    o.strip() for o in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',') if o.strip()
+]
+
 # Keep implicit primary keys aligned with the existing migrations.
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
