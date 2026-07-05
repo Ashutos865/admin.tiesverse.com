@@ -238,6 +238,10 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
 GOOGLE_OAUTH_REFRESH_TOKEN = os.environ.get('GOOGLE_OAUTH_REFRESH_TOKEN', '')
 GOOGLE_CAL_TIMEZONE = os.environ.get('GOOGLE_CAL_TIMEZONE', 'Asia/Kolkata')
 
+# ── Self-service signup: the one shared hashed link's secret ──────────────────
+# The public signup URL is /signup/<SIGNUP_LINK_HASH>. Share it with interns/members.
+SIGNUP_LINK_HASH = os.environ.get('SIGNUP_LINK_HASH', '')
+
 # ── Cache: Redis in production, in-process memory in dev ──────────────────────
 # Set REDIS_URL (e.g. redis://127.0.0.1:6379/1) in prod to offload hot reads
 # (public feeds, gates, event lists) from the DB / external APIs. No-op locally.

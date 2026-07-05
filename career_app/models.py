@@ -553,3 +553,40 @@ class WeeklyUpdate(models.Model):
 
     def __str__(self):
         return f"{self.team_lead.candidate_name} - week of {self.week_ending}"
+
+
+# ── Self-service signup (hashed link -> OTP -> HR approval) ───────────────────
+
+class SelfSignup(models.Model):
+    """A person who self-registered via the shared hashed link. They verify their
+    email by OTP, then wait for HR to approve + assign a role/department, which
+    provisions their real member account."""
+    STATUS_OTP = 'otp_pending'       # submitted, must verify email OTP
+    STATUS_VERIFIED = 'verified'     # OTP done, awaiting HR approval
+    STATUS_APPROVED = 'approved'     # HR approved -> member account created
+    STATUS_REJECTED = 'rejected'
+    STATUS_CHOICES = [
+        (STATUS_OTP, 'OTP pending'), (STATUS_VERIFIED, 'Awaiting HR'),
+        (STATUS_APPROVED, 'Approved'), (STATUS_REJECTED, 'Rejected'),
+    ]
+
+    name = models.CharField(max_length=255)
+    email = models.EmailField()
+    photo_url = models.URLField(blank=True)
+    otp_code = models.CharField(max_length=6, blank=True)
+    otp_expires_at = models.DateTimeField(null=True, blank=True)
+    otp_attempts = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OTP)
+    reviewed_by_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
+        related_name='signups_reviewed',
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'self_signups'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name} <{self.email}> ({self.status})"

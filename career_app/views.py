@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 from .models import (
     Position, Enrollment, OfferLetter, HRDepartment, OnboardingSubmission,
     MemberAccount, DocumentAuditLog, AttendanceRecord, LeaveRequest, Asset, Task,
-    OffboardingRequest, WeeklyUpdate,
+    OffboardingRequest, WeeklyUpdate, SelfSignup,
 )
 from .serializers import (
     PositionSerializer, EnrollmentSerializer, OfferLetterSerializer,
@@ -1646,3 +1646,163 @@ class WeeklyUpdateView(APIView):
             submitted_by_user=request.user if request.user.is_authenticated else None,
         )
         return Response({'id': w.id, 'status': 'submitted'}, status=status.HTTP_201_CREATED)
+
+
+# ── Self-service signup: hashed link -> OTP -> HR approval ────────────────────
+
+def _signup_hash_ok(link_hash):
+    from django.conf import settings as dj
+    expected = getattr(dj, 'SIGNUP_LINK_HASH', '') or ''
+    return bool(expected) and str(link_hash or '') == expected
+
+
+def _send_otp_email(email, name, otp):
+    from django.conf import settings as dj
+    key_id = getattr(dj, 'AWS_SES_ACCESS_KEY_ID', '')
+    secret = getattr(dj, 'AWS_SES_SECRET_ACCESS_KEY', '')
+    region = getattr(dj, 'AWS_SES_REGION', 'ap-south-1')
+    from_email = getattr(dj, 'SES_FROM_EMAIL', '')
+    if not all([key_id, secret, from_email]):
+        return False
+    try:
+        import boto3
+        ses = boto3.client('ses', region_name=region, aws_access_key_id=key_id, aws_secret_access_key=secret)
+        html = (
+            '<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">'
+            '<div style="background:#FE7A00;padding:20px 28px"><span style="color:#fff;font-size:20px;font-weight:700">.tiesverse</span></div>'
+            '<div style="padding:28px"><h2 style="margin:0 0 12px">Verify your email</h2>'
+            f'<p style="margin:0 0 8px">Hi {name or "there"}, use this code to verify your Tiesverse signup:</p>'
+            f'<div style="font-size:34px;font-weight:800;letter-spacing:8px;color:#FE7A00;margin:16px 0">{otp}</div>'
+            '<p style="margin:0;color:#666;font-size:13px">This code expires in 15 minutes. If you did not request it, ignore this email.</p>'
+            '</div></div>'
+        )
+        ses.send_email(
+            Source=from_email, Destination={'ToAddresses': [email]},
+            Message={'Subject': {'Data': 'Your Tiesverse verification code'},
+                     'Body': {'Html': {'Data': html}, 'Text': {'Data': f'Your Tiesverse code: {otp} (expires in 15 minutes).'}}},
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001
+        print(f'[SIGNUP OTP] SES error: {exc}')
+        return False
+
+
+class PublicSignupView(APIView):
+    """Public: with the shared hashed link, submit name/email/photo -> emails an OTP."""
+    permission_classes = [AllowAny]
+
+    def post(self, request, link_hash):
+        if not _signup_hash_ok(link_hash):
+            return Response({'error': 'Invalid or expired signup link.'}, status=403)
+        name = (request.data.get('name') or '').strip()
+        email = (request.data.get('email') or '').strip().lower()
+        photo_url = (request.data.get('photo_url') or '').strip()
+        if not name or not email:
+            return Response({'error': 'Name and email are required.'}, status=400)
+        if OnboardingSubmission.objects.filter(candidate_email__iexact=email).exists():
+            return Response({'error': 'This email is already registered. Please contact HR.'}, status=409)
+        import random
+        otp = f'{random.randint(0, 999999):06d}'
+        signup, _ = SelfSignup.objects.update_or_create(
+            email=email,
+            defaults={
+                'name': name, 'photo_url': photo_url, 'otp_code': otp,
+                'otp_expires_at': timezone.now() + datetime.timedelta(minutes=15),
+                'otp_attempts': 0, 'status': SelfSignup.STATUS_OTP,
+            },
+        )
+        _send_otp_email(email, name, otp)
+        return Response({'status': 'otp_sent', 'signup_id': signup.id})
+
+
+class VerifySignupOtpView(APIView):
+    """Public: verify the emailed OTP -> signup moves to 'awaiting HR'."""
+    permission_classes = [AllowAny]
+
+    def post(self, request, link_hash):
+        if not _signup_hash_ok(link_hash):
+            return Response({'error': 'Invalid link.'}, status=403)
+        email = (request.data.get('email') or '').strip().lower()
+        otp = (request.data.get('otp') or '').strip()
+        signup = SelfSignup.objects.filter(email=email, status=SelfSignup.STATUS_OTP).order_by('-created_at').first()
+        if not signup:
+            return Response({'error': 'No pending signup for this email.'}, status=404)
+        if signup.otp_attempts >= 6:
+            return Response({'error': 'Too many attempts. Please sign up again.'}, status=429)
+        if not signup.otp_expires_at or timezone.now() > signup.otp_expires_at:
+            return Response({'error': 'Code expired. Please sign up again.'}, status=400)
+        signup.otp_attempts += 1
+        if otp != signup.otp_code:
+            signup.save(update_fields=['otp_attempts'])
+            return Response({'error': 'Incorrect code.'}, status=400)
+        signup.status = SelfSignup.STATUS_VERIFIED
+        signup.otp_code = ''
+        signup.save(update_fields=['status', 'otp_code', 'otp_attempts'])
+        return Response({'status': 'verified'})
+
+
+class SignupListView(APIView):
+    """HR: list self-signups awaiting review (verified + otp_pending), newest first."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        qs = SelfSignup.objects.exclude(
+            status__in=[SelfSignup.STATUS_APPROVED, SelfSignup.STATUS_REJECTED]
+        ).order_by('-created_at')[:500]
+        data = [{
+            'id': s.id, 'name': s.name, 'email': s.email, 'photo_url': s.photo_url,
+            'status': s.status, 'created_at': s.created_at,
+        } for s in qs]
+        return Response({'signups': data})
+
+
+class ApproveSignupView(APIView):
+    """HR: approve a verified signup -> create member record + provision login,
+    assigning the role + departments HR chose."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            signup = SelfSignup.objects.get(pk=pk)
+        except SelfSignup.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=404)
+        if signup.status == SelfSignup.STATUS_APPROVED:
+            return Response({'error': 'Already approved.'}, status=400)
+        portal_role = (request.data.get('portal_role') or 'intern').strip()
+        departments = request.data.get('assigned_departments') or []
+        if isinstance(departments, str):
+            departments = [d.strip() for d in departments.split(',') if d.strip()]
+
+        sub = OnboardingSubmission.objects.create(
+            candidate_id=f'signup-{signup.id}',
+            candidate_name=signup.name,
+            candidate_email=signup.email,
+            portal_role=portal_role,
+            assigned_departments=departments,
+            status=OnboardingSubmission.STATUS_VERIFIED,
+            token=secrets.token_urlsafe(32),
+            has_photo=bool(signup.photo_url),
+        )
+        _ensure_hr_departments(departments)
+        _provision_member_account(sub, request.user)
+
+        signup.status = SelfSignup.STATUS_APPROVED
+        signup.reviewed_by_user = request.user
+        signup.reviewed_at = timezone.now()
+        signup.save(update_fields=['status', 'reviewed_by_user', 'reviewed_at'])
+        return Response({'status': 'approved', 'member_id': sub.id})
+
+
+class RejectSignupView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            signup = SelfSignup.objects.get(pk=pk)
+        except SelfSignup.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=404)
+        signup.status = SelfSignup.STATUS_REJECTED
+        signup.reviewed_by_user = request.user
+        signup.reviewed_at = timezone.now()
+        signup.save(update_fields=['status', 'reviewed_by_user', 'reviewed_at'])
+        return Response({'status': 'rejected'})

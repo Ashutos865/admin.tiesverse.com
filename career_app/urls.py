@@ -16,6 +16,7 @@ from .views import (
     AssetListView, AssetDetailView, AssetAssignView,
     TaskListView, TaskDetailView,
     AdvisoryTaskOversightView, AdvisoryDailyUpdatesView, WeeklyUpdateView,
+    PublicSignupView, VerifySignupOtpView, SignupListView, ApproveSignupView, RejectSignupView,
 )
 
 router = DefaultRouter()
@@ -85,4 +86,11 @@ urlpatterns = [
     path('advisory/task-oversight/', AdvisoryTaskOversightView.as_view(), name='advisory-task-oversight'),
     path('advisory/daily-updates/', AdvisoryDailyUpdatesView.as_view(), name='advisory-daily-updates'),
     path('weekly-updates/', WeeklyUpdateView.as_view(), name='weekly-updates'),
+
+    # ── Self-service signup (public hashed link -> OTP) + HR review ─────────
+    path('signup/<str:link_hash>/', PublicSignupView.as_view(), name='public-signup'),
+    path('signup/<str:link_hash>/verify/', VerifySignupOtpView.as_view(), name='verify-signup-otp'),
+    path('signups/', SignupListView.as_view(), name='signup-list'),
+    path('signups/<int:pk>/approve/', ApproveSignupView.as_view(), name='signup-approve'),
+    path('signups/<int:pk>/reject/', RejectSignupView.as_view(), name='signup-reject'),
 ]
