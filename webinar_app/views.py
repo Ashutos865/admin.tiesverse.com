@@ -1456,3 +1456,41 @@ def payment_reminder(request):
     event_url = f"{website}/webinars/{slugify(event_title)}"
     sent = send_payment_reminder(email, name, event_title, event_url)
     return Response({'status': 'reminder_sent' if sent else 'skipped', 'sent': sent})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def webinar_revenue(request):
+    """Paid-webinar revenue summary. Advisory / Admin / superuser ONLY — the
+    figure is hidden from every other role (role-based dashboard data-hiding)."""
+    from career_app.views import _is_advisory
+    if not _is_advisory(request.user):
+        return Response({'detail': 'Advisory access only.'}, status=403)
+    try:
+        rows = turso_client.execute(
+            "SELECT event_title, final_amount, amount FROM registrations WHERE payment_status='paid'"
+        ) or []
+    except Exception as exc:
+        logger.warning('revenue query failed: %s', exc)
+        rows = []
+    total, count, by_event = 0, 0, {}
+    for r in rows:
+        try:
+            paise = int(r.get('final_amount') or r.get('amount') or 0)
+        except Exception:
+            paise = 0
+        total += paise
+        count += 1
+        title = r.get('event_title') or 'Unknown'
+        e = by_event.setdefault(title, {'event': title, 'revenue': 0, 'count': 0})
+        e['revenue'] += paise
+        e['count'] += 1
+    events = sorted(by_event.values(), key=lambda x: -x['revenue'])
+    for e in events:
+        e['revenue'] = round(e['revenue'] / 100, 2)
+    return Response({
+        'total_revenue': round(total / 100, 2),
+        'paid_count': count,
+        'currency': 'INR',
+        'by_event': events,
+    })

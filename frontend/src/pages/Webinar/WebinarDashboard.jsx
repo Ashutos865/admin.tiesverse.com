@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { getEvents, getEventRegistrations, getWebinarRegistrations } from '../../apiClient';
-import { Video, Users, CheckSquare, RefreshCw } from 'lucide-react';
+import { getEvents, getEventRegistrations, getWebinarRegistrations, getWebinarRevenue } from '../../apiClient';
+import { Video, Users, CheckSquare, RefreshCw, IndianRupee } from 'lucide-react';
+import { useMe } from '../../context/MeContext';
 
 const WebinarDashboard = () => {
+  const { isAdvisory } = useMe();
   const [events, setEvents] = useState([]);
   const [listings, setListings] = useState([]);
   const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filterType, setFilterType] = useState('All');
+  const [revenue, setRevenue] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -26,6 +29,10 @@ const WebinarDashboard = () => {
         setRegistrations([]);
       } else {
         setRegistrations(Array.isArray(regs) ? regs : []);
+      }
+      if (isAdvisory) {
+        const rev = await getWebinarRevenue().catch(() => null);
+        setRevenue(rev && !rev.detail ? rev : null);
       }
     } catch (e) {
       setError('Failed to load data');
@@ -55,6 +62,7 @@ const WebinarDashboard = () => {
       {/* Stats */}
       <div className="dashboard-grid" style={{ marginBottom: 24 }}>
         {[
+          ...(isAdvisory && revenue ? [{ label: 'Revenue (paid)', value: `₹${Number(revenue.total_revenue || 0).toLocaleString('en-IN')}`, icon: <IndianRupee size={20} />, color: '#16A34A' }] : []),
           { label: 'Webinars & Workshops', value: listings.length, icon: <Video size={20} />, color: '#FE7A00' },
           { label: 'Total Registrations', value: registrations.length, icon: <Users size={20} />, color: '#3B82F6' },
           { label: 'Webinar Signups', value: webinarRegs.length, icon: <CheckSquare size={20} />, color: '#A855F7' },

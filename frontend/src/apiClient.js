@@ -198,6 +198,8 @@ export const updateFormGates = (data) => adminFetch('/api/career/form-gates', 'P
 
 // WEBINAR (Portal) — registrations sourced from Turso
 export const getWebinarEvents = () => adminFetch('/api/webinar/events').catch(() => []);
+// Paid-webinar revenue (advisory/admin only; 403 otherwise)
+export const getWebinarRevenue = () => adminFetch('/api/webinar/revenue/');
 export const createWebinarEvent = (data) => adminFetch('/api/webinar/events', 'POST', data);
 export const getWebinarRegistrations = () =>
   adminFetch('/api/webinar/registrations')

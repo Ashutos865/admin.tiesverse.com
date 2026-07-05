@@ -11,6 +11,7 @@ from .views import (
     list_public_events,
     webinar_broadcast, webinar_send_history,
     generate_webinar_meeting, webinar_meeting_guests,
+    webinar_revenue,
 )
 
 router = DefaultRouter()
@@ -42,6 +43,9 @@ urlpatterns = [
 
     # Attendee tracking
     path('mark-attended/', mark_attended, name='webinar-mark-attended'),
+
+    # Paid-webinar revenue (advisory/admin only)
+    path('revenue/', webinar_revenue, name='webinar-revenue'),
 
     # Certificate link
     path('event-certificate/', event_certificate_link, name='webinar-event-certificate'),
