@@ -11,13 +11,16 @@ const fieldStyle = {
 
 const EMPTY = { name: '', description: '', lead_name: '', co_lead_name: '', is_active: true };
 
+const ROLE_LABELS = { intern: 'Intern', member: 'Member', team_lead: 'Team Lead', advisory: 'Advisory', hr: 'HR', admin: 'Admin' };
+const memberRoleLabel = (m) => ROLE_LABELS[m.portal_role] || m.role_offered || 'No role';
+
 // Dropdown to pick a team member by name (or clear)
 function MemberSelect({ value, onChange, members, placeholder }) {
     return (
         <select style={{ ...fieldStyle, cursor: 'pointer', appearance: 'auto' }} value={value} onChange={e => onChange(e.target.value)}>
             <option value="">{placeholder}</option>
             {members.map(m => (
-                <option key={m.id} value={m.candidate_name}>{m.candidate_name} — {m.role_offered || 'No role'}</option>
+                <option key={m.id} value={m.candidate_name}>{m.candidate_name} — {memberRoleLabel(m)}</option>
             ))}
         </select>
     );
