@@ -40,6 +40,7 @@ import OffboardingPage from './pages/Career/OffboardingPage.jsx';
 import AssetsPage from './pages/Career/AssetsPage.jsx';
 import TasksPage from './pages/Career/TasksPage.jsx';
 import MyWork from './pages/MyWork/MyWork.jsx';
+import AdvisoryPanel from './pages/Advisory/AdvisoryPanel.jsx';
 
 // Certificate Generator
 import CertificateTemplates from './pages/Certificates/CertificateTemplates.jsx';
@@ -122,6 +123,9 @@ function App() {
               <Route path="/hr/offboarding" element={<OffboardingPage />} />
               <Route path="/hr/assets" element={<AssetsPage />} />
               <Route path="/hr/tasks" element={<TasksPage />} />
+
+              {/* Advisory oversight + weekly updates */}
+              <Route path="/advisory" element={<AdvisoryPanel />} />
 
               {/* Certificate Generator Routes */}
               <Route path="/certificates/templates" element={<CertificateTemplates />} />

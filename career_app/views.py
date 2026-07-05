@@ -633,6 +633,7 @@ class MeView(APIView):
             },
             'scope': scope,                       # 'all' | 'team' | 'self'
             'is_lead': scope == 'team',
+            'is_advisory': _is_advisory(request.user),
             'is_member': member is not None,
             'member': OnboardingSubmissionSerializer(member).data if member else None,
             'led_departments': sorted(access.led_department_names(member)) if member else [],

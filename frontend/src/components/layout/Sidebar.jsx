@@ -108,6 +108,16 @@ const portals = [
     ],
   },
   {
+    key: 'advisory',
+    label: 'Advisory',
+    icon: ClipboardCheck,
+    firstPath: '/advisory',
+    advisoryOrLead: true,
+    links: [
+      { name: 'Oversight & Updates', path: '/advisory', icon: ClipboardCheck, advisoryOrLead: true },
+    ],
+  },
+  {
     key: 'webinar',
     label: 'Webinar Portal',
     icon: Video,
@@ -158,17 +168,21 @@ const portals = [
 
 const Sidebar = ({ activePortal, isOpen, onClose }) => {
   const { hasAnyPermission, isSuperuser } = usePermissions();
-  const { isMember, scope } = useMe();
+  const { isMember, isLead, isAdvisory, scope } = useMe();
   const navigate = useNavigate();
 
   const isPortalVisible = (portal) => {
     if (portal.memberOnly) return isMember;
+    if (portal.advisoryOnly) return isSuperuser || isAdvisory;
+    if (portal.advisoryOrLead) return isSuperuser || isAdvisory || isLead;
     if (portal.perms === null) return isSuperuser;
     return isSuperuser || hasAnyPermission(portal.perms);
   };
 
   const isLinkVisible = (link) => {
     if (link.superuserOnly) return isSuperuser;
+    if (link.advisoryOnly) return isSuperuser || isAdvisory;
+    if (link.advisoryOrLead) return isSuperuser || isAdvisory || isLead;
     if (link.scopeAll) return isSuperuser || scope === 'all';
     return (link.perms || []).length === 0 || isSuperuser || hasAnyPermission(link.perms);
   };

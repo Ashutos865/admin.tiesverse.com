@@ -324,6 +324,12 @@ export const addTeamMember = (data) => adminFetch('/api/career/onboarding/manual
 
 // CURRENT MEMBER — who am I + my access scope (drives self-service + role-aware nav)
 export const getMe = () => adminFetch('/api/career/me');
+
+// Advisory oversight + weekly team-lead updates
+export const getAdvisoryTaskOversight = () => adminFetch('/api/career/advisory/task-oversight/');
+export const getAdvisoryDailyUpdates = () => adminFetch('/api/career/advisory/daily-updates/');
+export const getWeeklyUpdates = () => adminFetch('/api/career/weekly-updates/');
+export const submitWeeklyUpdate = (data) => adminFetch('/api/career/weekly-updates/', 'POST', data);
 // MASTER DIRECTORY — unified people search across members, registrations, certificates
 export const searchDirectory = (q) => adminFetch(`/api/career/directory?q=${encodeURIComponent(q || '')}`);
 

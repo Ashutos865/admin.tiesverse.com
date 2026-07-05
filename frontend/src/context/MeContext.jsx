@@ -30,6 +30,7 @@ export const MeProvider = ({ children }) => {
     refresh,
     isMember: Boolean(me?.is_member),
     isLead: Boolean(me?.is_lead),
+    isAdvisory: Boolean(me?.is_advisory),
     scope: me?.scope || null,
     memberId: me?.member?.id || null,
     member: me?.member || null,
