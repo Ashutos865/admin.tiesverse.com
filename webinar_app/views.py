@@ -59,34 +59,28 @@ def _coupon_by_code(code):
 
 
 def _resolve_hosted_price(event_id, event_title, event_type):
-    """Read the authoritative INR price from Supabase, never from the browser."""
-    from tiesverse_app import supabase_sync
+    """Authoritative INR price from EventRegistration (turso_db) — the SAME source
+    the public website lists from — never from the browser.
 
-    table = 'workshops' if str(event_type).lower() == 'webinar' else 'events'
-    client = supabase_sync.get_client()
-    if not client:
-        return None
+    Matches on the event title (case-insensitive) first, then falls back to a slug
+    match, so underscores/case in the title never break verification.
+    """
+    from tiesverse_app.models import EventRegistration
+
+    title = str(event_title or '').strip()
+    eid = str(event_id or '').strip().lower()
     try:
-        rows = (
-            client.table(table)
-            .select('title,price')
-            .eq('title', str(event_title or '').strip())
-            .limit(1)
-            .execute()
-            .data
-            or []
-        )
+        match = EventRegistration.objects.using('turso_db').filter(title__iexact=title).first()
+        if not match and eid:
+            for e in EventRegistration.objects.using('turso_db').all():
+                if slugify(e.title or '').lower() == eid:
+                    match = e
+                    break
+        if not match:
+            return None
+        return max(Decimal(str(match.price or 0)), Decimal('0'))
     except Exception as exc:
-        logger.warning('Could not resolve hosted price from %s: %s', table, exc)
-        return None
-    if not rows:
-        return None
-    row = rows[0]
-    if slugify(str(row.get('title') or '')).lower() != str(event_id or '').strip().lower():
-        return None
-    try:
-        return max(Decimal(str(row.get('price') or 0)), Decimal('0'))
-    except InvalidOperation:
+        logger.warning('Could not resolve hosted price: %s', exc)
         return None
 
 
