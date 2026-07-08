@@ -19,6 +19,10 @@ from .serializers import (
 from . import turso_client
 from . import razorpay_client
 from .ses_email import send_registration_confirmation
+from .webinar_access import (
+    require_webinar_cap, member_capabilities, can_grant, WebinarEventPermission,
+    CAPABILITIES, CAP_KEYS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -424,7 +428,7 @@ def list_registrations(request):
 class WebinarEventViewSet(viewsets.ModelViewSet):
     queryset = WebinarEvent.objects.all()
     serializer_class = WebinarEventSerializer
-    permission_classes = [IsAuthenticated, StaffModelPermissions]
+    permission_classes = [IsAuthenticated, WebinarEventPermission]
 
     @action(detail=True, methods=['post'], url_path='calendar-sync')
     def calendar_sync(self, request, pk=None):
@@ -722,6 +726,7 @@ def razorpay_webhook(request):
 
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
+@require_webinar_cap('manage_questions')
 def form_questions(request):
     """List or create form questions for an event/webinar.
     GET is public (website reads form schema). POST requires a logged-in admin.
@@ -754,6 +759,7 @@ def form_questions(request):
 
 @api_view(['GET', 'PATCH', 'DELETE'])
 @permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_questions')
 def form_question_detail(request, pk):
     """Retrieve, update or delete a single form question."""
     try:
@@ -778,6 +784,7 @@ def form_question_detail(request, pk):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_questions')
 def reorder_form_questions(request):
     """Bulk-update `order` field. Body: { items: [{id, order}, …] }"""
     items = request.data.get('items', [])
@@ -840,6 +847,7 @@ def list_public_events(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_registrations')
 def mark_attended(request):
     """
     Toggle the `attended` flag on Turso registration rows.
@@ -875,6 +883,7 @@ def mark_attended(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_registrations')
 def list_registrations_extended(request):
     """
     Same as list_registrations but includes the `attended` column.
@@ -910,6 +919,7 @@ def list_registrations_extended(request):
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
+@require_webinar_cap('send_emails')
 def event_certificate_link(request):
     """
     GET  ?event_key=...&event_type=event|webinar  → current cert assignment
@@ -1014,6 +1024,7 @@ def _fetch_url_attachments(metas):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@require_webinar_cap('send_emails')
 def webinar_broadcast(request):
     """
     Bulk-email a webinar's registrants using an admin email template.
@@ -1180,6 +1191,7 @@ def webinar_broadcast(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+@require_webinar_cap('send_emails')
 def webinar_send_history(request):
     """
     GET ?event_key=...  -> per-recipient send counts + recent log for a webinar.
@@ -1378,6 +1390,7 @@ def _make_cert_id(event_title):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_meeting')
 def webinar_meeting_guests(request):
     """List the meeting's current guests (from Google Calendar) + guest-visibility.
     GET ?event_key=|event_pk="""
@@ -1399,6 +1412,7 @@ def webinar_meeting_guests(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_meeting')
 def generate_webinar_meeting(request):
     """Create/refresh the single Google Meet for a webinar and store it on the event.
     Body: { event_key|event_pk, start (ISO 'YYYY-MM-DDTHH:MM'), duration_min,
@@ -1540,3 +1554,51 @@ def webinar_revenue(request):
         'currency': 'INR',
         'by_event': events,
     })
+
+
+# ── Webinar access control (granular per-member capabilities) ──────────────────
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def webinar_my_access(request):
+    """The caller's own webinar capabilities + whether they may grant to others.
+    Drives which tabs/buttons the Webinar portal shows."""
+    return Response({
+        'capabilities': sorted(member_capabilities(request.user)),
+        'can_grant': can_grant(request.user),
+        'all_capabilities': [{'key': k, 'label': label} for k, label in CAPABILITIES],
+    })
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def webinar_access_admin(request):
+    """GET: current grants (granters only). POST {member_id, capabilities:[...]}:
+    set a member's webinar capabilities (empty list = revoke all)."""
+    from career_app.models import OnboardingSubmission, WebinarAccess
+    if not can_grant(request.user):
+        return Response({'error': 'Only the Webinar lead or an admin can manage webinar access.'},
+                        status=status.HTTP_403_FORBIDDEN)
+    if request.method == 'GET':
+        rows = [{
+            'member_id': wa.member_id,
+            'member_name': (wa.member.candidate_name if wa.member_id else ''),
+            'capabilities': wa.capabilities or [],
+            'updated_at': wa.updated_at,
+        } for wa in WebinarAccess.objects.select_related('member').all()]
+        return Response({'grants': rows,
+                         'all_capabilities': [{'key': k, 'label': label} for k, label in CAPABILITIES]})
+
+    mid = request.data.get('member_id') or request.data.get('member')
+    caps = [c for c in (request.data.get('capabilities') or []) if c in CAP_KEYS]
+    member = OnboardingSubmission.objects.filter(pk=mid, status='verified').first()
+    if not member:
+        return Response({'error': 'Member not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if caps:
+        wa, _ = WebinarAccess.objects.update_or_create(
+            member=member,
+            defaults={'capabilities': caps,
+                      'granted_by_user': request.user if request.user.is_authenticated else None},
+        )
+        return Response({'member_id': member.id, 'capabilities': wa.capabilities})
+    WebinarAccess.objects.filter(member=member).delete()
+    return Response({'member_id': member.id, 'capabilities': []})

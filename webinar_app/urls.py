@@ -12,6 +12,7 @@ from .views import (
     webinar_broadcast, webinar_send_history,
     generate_webinar_meeting, webinar_meeting_guests,
     webinar_revenue,
+    webinar_my_access, webinar_access_admin,
 )
 
 router = DefaultRouter()
@@ -57,6 +58,10 @@ urlpatterns = [
     # Meeting (one Google Meet per event)
     path('generate-meeting/', generate_webinar_meeting, name='webinar-generate-meeting'),
     path('meeting-guests/', webinar_meeting_guests, name='webinar-meeting-guests'),
+
+    # Granular access control
+    path('my-access/', webinar_my_access, name='webinar-my-access'),
+    path('access/', webinar_access_admin, name='webinar-access'),
 
     path('', include(router.urls)),
 ]

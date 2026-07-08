@@ -980,6 +980,28 @@ class DailyWorkSummary(models.Model):
         return f"{self.member_id} {self.date} — {self.total_minutes}m (locked)"
 
 
+class WebinarAccess(models.Model):
+    """Per-member granular access to the Webinar portal, granted by the Webinar
+    lead (or admin). Webinar-department members get 'view' by default; explicit
+    capabilities listed here add edit / questions / emails / etc. and persist
+    until revoked. Admin / Advisory / the Webinar lead always have everything."""
+    member = models.OneToOneField(
+        OnboardingSubmission, on_delete=models.CASCADE, related_name='webinar_access',
+    )
+    capabilities = models.JSONField(default=list, blank=True)   # subset of the capability keys
+    granted_by_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
+        related_name='webinar_access_grants',
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'webinar_access'
+
+    def __str__(self):
+        return f"{self.member_id}: {', '.join(self.capabilities or []) or 'none'}"
+
+
 class TaskStep(models.Model):
     """An ordered step in a task's workflow — 'how this work is done'. The task's
     assignee (or a project manager) adds steps and ticks them off."""

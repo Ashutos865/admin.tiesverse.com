@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getTasks, createTask, updateTask, deleteTask, getOnboardingList, getHRDepartments } from '../../apiClient';
+import { getTasks, createTask, updateTask, deleteTask, getOnboardingList, getHRDepartments, getWebinarMyAccess, getWebinarAccessGrants, setWebinarAccess } from '../../apiClient';
 
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 const STATUSES = ['todo', 'in_progress', 'review', 'done', 'cancelled'];
@@ -47,10 +47,32 @@ export default function TasksPage() {
         assigned_to: '', assigned_to_department: '', due_date: '', estimated_hours: '',
     });
 
+    // Webinar access delegation — the Webinar lead/admin can grant capabilities to the assignee.
+    const [canGrantWebinar, setCanGrantWebinar] = useState(false);
+    const [webinarCapDefs, setWebinarCapDefs] = useState([]);   // [{key,label}] excluding 'view'
+    const [memberGrants, setMemberGrants] = useState({});       // { member_id: [caps] }
+    const [grantCaps, setGrantCaps] = useState([]);             // selected caps for current assignee
+
     const showToast = (msg, err = false) => {
         setToast({ msg, err });
         setTimeout(() => setToast(null), 3000);
     };
+
+    useEffect(() => {
+        getWebinarMyAccess().then(r => {
+            setCanGrantWebinar(!!r?.can_grant);
+            setWebinarCapDefs((r?.all_capabilities || []).filter(c => c.key !== 'view'));
+        });
+        getWebinarAccessGrants().then(r => {
+            const map = {};
+            (r?.grants || []).forEach(g => { map[g.member_id] = g.capabilities || []; });
+            setMemberGrants(map);
+        });
+    }, []);
+
+    useEffect(() => {
+        setGrantCaps(form.assigned_to ? (memberGrants[form.assigned_to] || []) : []);
+    }, [form.assigned_to, memberGrants]);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -100,6 +122,10 @@ export default function TasksPage() {
         const res = taskModal === 'new'
             ? await createTask(payload)
             : await updateTask(taskModal.id, payload);
+        if (res?.id && canGrantWebinar && form.assigned_to) {
+            await setWebinarAccess(form.assigned_to, grantCaps).catch(() => {});
+            setMemberGrants(m => ({ ...m, [form.assigned_to]: grantCaps }));
+        }
         setSaving(false);
         if (res?.id) {
             showToast(taskModal === 'new' ? 'Task created' : 'Task updated');
@@ -283,6 +309,24 @@ export default function TasksPage() {
                                 {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
                             </select>
                         </div>
+                        {canGrantWebinar && form.assigned_to && webinarCapDefs.length > 0 && (
+                            <div>
+                                <label style={labelStyle}>Webinar access for this member</label>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                    {webinarCapDefs.map(c => {
+                                        const on = grantCaps.includes(c.key);
+                                        return (
+                                            <button key={c.key} type="button"
+                                                onClick={() => setGrantCaps(g => on ? g.filter(x => x !== c.key) : [...g, c.key])}
+                                                style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${on ? 'var(--primary)' : 'var(--outline-variant)'}`, background: on ? 'var(--primary)' : 'transparent', color: on ? '#fff' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                                                {on ? '✓ ' : ''}{c.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '5px 0 0' }}>Grants persist until removed. Everyone in the Webinar dept keeps view.</p>
+                            </div>
+                        )}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                             <div>
                                 <label style={labelStyle}>Due Date (deadline)</label>

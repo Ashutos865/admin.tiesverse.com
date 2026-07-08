@@ -12,7 +12,7 @@ import {
   deleteFormQuestion, reorderFormQuestions,
   getEventSpeakers, createEventSpeaker,
   getWebinarRegistrationsFull, markAttended,
-  webinarBroadcast, getWebinarSendHistory,
+  webinarBroadcast, getWebinarSendHistory, getWebinarMyAccess,
   generateWebinarMeeting, getWebinarMeetingGuests,
   getEmailTemplates, getSESSenders,
   uploadImage, uploadFile,
@@ -88,6 +88,11 @@ const FIELD_TYPES = [
   { value: 'radio',   label: 'Radio' },
   { value: 'checkbox',label: 'Checkbox' },
 ];
+// Which capability each detail tab needs (details is always shown to viewers).
+const TAB_CAP = {
+  details: 'view', questions: 'manage_questions', registrations: 'manage_registrations',
+  meeting: 'manage_meeting', emails: 'send_emails', speaker: 'manage_speakers',
+};
 const TABS = [
   { key: 'details',       label: 'Details',        icon: Edit2 },
   { key: 'questions',     label: 'Form Questions', icon: FileQuestion },
@@ -1304,6 +1309,8 @@ const WebinarsWorkshops = () => {
   const [loading, setLoading]   = useState(true);
   const [selected, setSelected] = useState(null);  // { item, tab }
   const [activeTab, setActiveTab] = useState('details');
+  const [caps, setCaps] = useState(null);          // null = loading; array of capability keys
+  const can = (c) => Array.isArray(caps) && caps.includes(c);
   const [formModal, setFormModal] = useState(null); // null | { mode, data }
   const [form, setForm]         = useState({ ...EMPTY_ITEM });
   const [saving, setSaving]     = useState(false);
@@ -1355,6 +1362,7 @@ const WebinarsWorkshops = () => {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { getWebinarMyAccess().then(r => setCaps(r?.capabilities || [])); }, []);
 
   const closeModal = () => { setFormModal(null); setModalStep(1); setStepQs([]); setStepCreatedItem(null); };
 
@@ -1450,9 +1458,11 @@ const WebinarsWorkshops = () => {
           <h2>Webinars &amp; Workshops</h2>
           <p>Manage listings, registration forms, speakers, and certificate distribution.</p>
         </div>
-        <button className="ww-btn ww-btn-primary" onClick={openCreate}>
-          <Plus size={15}/> New
-        </button>
+        {can('edit_event') && (
+          <button className="ww-btn ww-btn-primary" onClick={openCreate}>
+            <Plus size={15}/> New
+          </button>
+        )}
       </div>
 
       {/* Filter tabs */}
@@ -1515,12 +1525,14 @@ const WebinarsWorkshops = () => {
                   <h3 className="ww-card-title">{item.title}</h3>
                   <p className="ww-card-meta">{item.host && `${item.host} • `}{item.date}</p>
                 </div>
-                <div className="ww-card-actions" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => openEdit(item)} title="Edit details"><Edit2 size={14}/></button>
-                  <button onClick={() => setDeleteTarget(item)} title="Delete" className="ww-btn-danger-icon">
-                    <Trash2 size={14}/>
-                  </button>
-                </div>
+                {can('edit_event') && (
+                  <div className="ww-card-actions" onClick={e => e.stopPropagation()}>
+                    <button onClick={() => openEdit(item)} title="Edit details"><Edit2 size={14}/></button>
+                    <button onClick={() => setDeleteTarget(item)} title="Delete" className="ww-btn-danger-icon">
+                      <Trash2 size={14}/>
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -1545,7 +1557,8 @@ const WebinarsWorkshops = () => {
             <div className="ww-tabs">
               {/* Past events don't need the registration form or a meeting link;
                   keep Registrations for attendance + certificate distribution. */}
-              {TABS.filter(tab => !(selected.item.status === 'past' && (tab.key === 'questions' || tab.key === 'meeting'))).map(tab => {
+              {TABS.filter(tab => (tab.key === 'details' || can(TAB_CAP[tab.key]))
+                && !(selected.item.status === 'past' && (tab.key === 'questions' || tab.key === 'meeting'))).map(tab => {
                 const Icon = tab.icon;
                 return (
                   <button

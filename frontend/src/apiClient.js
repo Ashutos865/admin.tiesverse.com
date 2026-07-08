@@ -274,6 +274,14 @@ export const getWebinarSendHistory = (event_key) =>
   adminFetch(`/api/webinar/send-history/?event_key=${encodeURIComponent(event_key)}`)
     .catch(() => ({ summary: {}, recipients: [], log: [] }));
 
+// Webinar granular access control
+export const getWebinarMyAccess = () =>
+  adminFetch('/api/webinar/my-access/').catch(() => ({ capabilities: [], can_grant: false, all_capabilities: [] }));
+export const getWebinarAccessGrants = () =>
+  adminFetch('/api/webinar/access/').catch(() => ({ grants: [], all_capabilities: [] }));
+export const setWebinarAccess = (member_id, capabilities) =>
+  adminFetch('/api/webinar/access/', 'POST', { member_id, capabilities });
+
 // SITE SETTINGS
 export const getSettings = () => adminFetch('/api/settings').catch(() => []);
 export const updateSetting = (key, data) => adminFetch(`/api/settings/${key}`, 'PATCH', data).catch(() => ({}));
