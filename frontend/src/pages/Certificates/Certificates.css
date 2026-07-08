@@ -70,15 +70,15 @@
   border-radius: 999px;
   border-color: #c7c4d8;
   background: #ffffff;
-  color: #3525cd;
+  color: #fe7a00;
   font-size: 10px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .certificate-editor-toolbar button.is-primary {
-  border-color: #3525cd;
-  background: #3525cd;
+  border-color: #fe7a00;
+  background: #fe7a00;
   color: #ffffff;
   box-shadow: 0 10px 22px rgba(53, 37, 205, 0.18);
 }
@@ -137,7 +137,7 @@
 }
 
 .certificate-page-item.is-active {
-  border-color: #3525cd;
+  border-color: #fe7a00;
   background: #e5eeff;
   box-shadow: 0 0 0 5px rgba(53, 37, 205, 0.06);
 }
@@ -258,7 +258,7 @@
 }
 
 .certificate-floating-tools button:hover {
-  color: #3525cd;
+  color: #fe7a00;
   background: rgba(53, 37, 205, 0.06);
 }
 
@@ -289,7 +289,7 @@
 }
 
 .certificate-overlay.is-selected {
-  outline: 1px solid #3525cd;
+  outline: 1px solid #fe7a00;
   outline-offset: 3px;
   background-color: rgba(53, 37, 205, 0.035) !important;
   box-shadow: 0 0 0 1px rgba(53, 37, 205, 0.18);
@@ -302,10 +302,10 @@
   height: 8px;
   border: 1px solid #ffffff;
   border-radius: 0;
-  background: #3525cd;
+  background: #fe7a00;
   box-shadow:
-    calc(-100% - 4px) 0 0 #3525cd,
-    0 calc(-100% - 4px) 0 #3525cd;
+    calc(-100% - 4px) 0 0 #fe7a00,
+    0 calc(-100% - 4px) 0 #fe7a00;
 }
 
 .certificate-properties {
@@ -328,7 +328,7 @@
 
 .certificate-properties-tabs button.is-active {
   background: #ffffff;
-  color: #3525cd;
+  color: #fe7a00;
   box-shadow: 0 4px 12px rgba(11, 28, 48, 0.08);
 }
 
@@ -376,9 +376,9 @@
 }
 
 .certificate-format-buttons button.is-active {
-  border-color: #3525cd;
+  border-color: #fe7a00;
   background: rgba(53, 37, 205, 0.08);
-  color: #3525cd;
+  color: #fe7a00;
 }
 
 .certificate-inline-action {
@@ -401,7 +401,7 @@
   display: block;
   margin-bottom: 5px;
   color: var(--primary);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -433,7 +433,7 @@
   border-radius: 999px;
   background: rgba(6, 122, 80, 0.06);
   color: #067a50;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
@@ -608,7 +608,7 @@
 
 .certificate-template-main small {
   margin-top: 13px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 8px;
 }
 
@@ -684,7 +684,7 @@
 .certificate-backend-note {
   margin: 22px 0 0;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 8px;
   text-align: right;
 }
@@ -875,7 +875,7 @@
 .certificate-page-sidebar h2 {
   margin: 0 4px 11px;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 8px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -983,7 +983,7 @@
 }
 
 .certificate-overlay.is-selected {
-  outline: 2px solid #3525cd;
+  outline: 2px solid #fe7a00;
   outline-offset: 2px;
 }
 
@@ -995,7 +995,7 @@
   height: 8px;
   border: 1px solid #fff;
   border-radius: 2px;
-  background: #3525cd;
+  background: #fe7a00;
   content: '';
 }
 
@@ -1110,7 +1110,7 @@
 .certificate-field > span,
 .certificate-color-fields label span {
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -1138,7 +1138,7 @@
 
 .certificate-field textarea.is-code {
   min-height: 260px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 9px;
 }
 
@@ -1462,7 +1462,7 @@
 
 .certificate-email-preview > span {
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
@@ -1776,7 +1776,7 @@
 }
 
 .certificate-page-item.is-active {
-  border-color: #3525cd;
+  border-color: #fe7a00;
   background: #e5eeff;
   box-shadow: 0 0 0 5px rgba(53, 37, 205, 0.06);
 }

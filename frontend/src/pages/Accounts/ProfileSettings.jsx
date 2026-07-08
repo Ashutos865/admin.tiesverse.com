@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
-import { getProfile, updateProfile } from '../../apiClient';
-import { Save, RotateCcw, User, Mail, ShieldAlert, Sparkles, Bell } from 'lucide-react';
+import { getProfile, updateProfile, requestPasswordChange, confirmPasswordChange, uploadImage } from '../../apiClient';
+import { Save, RotateCcw, User, Mail, ShieldAlert, Sparkles, Bell, KeyRound, Camera } from 'lucide-react';
+import ImageCropper from '../../components/ImageCropper.jsx';
 
 const ProfileSettings = () => {
   const { profile, updateProfileState, applyThemeAndColor } = useContext(AuthContext);
@@ -18,10 +19,23 @@ const ProfileSettings = () => {
   const [sessionTimeout, setSessionTimeout] = useState(10);
   const [theme, setTheme] = useState('dark');
   const [accentColor, setAccentColor] = useState('#FE7A00');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [cropFile, setCropFile] = useState(null);       // raw file awaiting crop
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = React.useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState({ message: '', type: '' });
+
+  // Change-password (email OTP) flow
+  const [pwdStep, setPwdStep] = useState('idle');   // 'idle' | 'sent'
+  const [pwdOtp, setPwdOtp] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [pwdBusy, setPwdBusy] = useState(false);
+  const [pwdMsg, setPwdMsg] = useState('');
+  const [maskedEmail, setMaskedEmail] = useState('');
 
   // Preset color swatches
   const colorPresets = [
@@ -51,6 +65,7 @@ const ProfileSettings = () => {
           setSessionTimeout(res.profile.session_timeout ?? 10);
           setTheme(res.profile.theme || 'dark');
           setAccentColor(res.profile.accent_color || '#FE7A00');
+          setAvatarUrl(res.profile.avatar_url || '');
         }
       }
       setLoading(false);
@@ -78,27 +93,52 @@ const ProfileSettings = () => {
     };
   }, [profile]);
 
+  const buildPayload = (extra = {}) => ({
+    email,
+    profile: {
+      display_name: displayName,
+      bio,
+      email_notifications: emailNotifications,
+      push_notifications: pushNotifications,
+      weekly_reports: weeklyReports,
+      two_factor_enabled: twoFactorEnabled,
+      session_timeout: Number(sessionTimeout),
+      theme,
+      accent_color: accentColor,
+      avatar_url: avatarUrl,
+      ...extra,
+    },
+  });
+
+  const sendPwdCode = async () => {
+    setPwdBusy(true); setPwdMsg('');
+    const res = await requestPasswordChange();
+    setPwdBusy(false);
+    if (res?.sent) { setPwdStep('sent'); setMaskedEmail(res.email || email); }
+    else setPwdMsg(res?.error || 'Could not send the code.');
+  };
+
+  const submitPwdChange = async () => {
+    if (newPwd.length < 8) { setPwdMsg('Password must be at least 8 characters.'); return; }
+    if (newPwd !== confirmPwd) { setPwdMsg('The two passwords do not match.'); return; }
+    setPwdBusy(true); setPwdMsg('');
+    const res = await confirmPasswordChange(pwdOtp.trim(), newPwd);
+    setPwdBusy(false);
+    if (res?.detail) {
+      setPwdStep('idle'); setPwdOtp(''); setNewPwd(''); setConfirmPwd('');
+      setToast({ message: 'Password changed successfully.', type: 'success' });
+      setTimeout(() => setToast({ message: '', type: '' }), 4000);
+    } else {
+      setPwdMsg(res?.error || 'Could not change the password.');
+    }
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
     setToast({ message: '', type: '' });
 
-    const payload = {
-      email,
-      profile: {
-        display_name: displayName,
-        bio,
-        email_notifications: emailNotifications,
-        push_notifications: pushNotifications,
-        weekly_reports: weeklyReports,
-        two_factor_enabled: twoFactorEnabled,
-        session_timeout: Number(sessionTimeout),
-        theme,
-        accent_color: accentColor
-      }
-    };
-
-    const res = await updateProfile(payload);
+    const res = await updateProfile(buildPayload());
     setSaving(false);
 
     if (res && !res.error) {
@@ -112,6 +152,37 @@ const ProfileSettings = () => {
     } else {
       setToast({ message: res?.error || 'Failed to save settings.', type: 'error' });
     }
+  };
+
+  // Pick a photo → open the circular cropper (clears the input so the same file re-selects).
+  const pickPhoto = (e) => {
+    const f = e.target.files?.[0];
+    if (f) setCropFile(f);
+    e.target.value = '';
+  };
+
+  // Cropped square image → upload to Cloudinary → persist avatar_url immediately.
+  const onCropped = async (croppedFile) => {
+    setCropFile(null);
+    setUploadingPhoto(true);
+    setToast({ message: '', type: '' });
+    const up = await uploadImage(croppedFile);
+    const url = up?.secure_url || up?.url || '';
+    if (!url) {
+      setUploadingPhoto(false);
+      setToast({ message: up?.error || 'Photo upload failed. Please try again.', type: 'error' });
+      return;
+    }
+    setAvatarUrl(url);
+    const res = await updateProfile(buildPayload({ avatar_url: url }));
+    setUploadingPhoto(false);
+    if (res && !res.error) {
+      if (res.profile) updateProfileState(res.profile);
+      setToast({ message: 'Profile photo updated.', type: 'success' });
+    } else {
+      setToast({ message: res?.error || 'Photo saved locally — click Save to persist.', type: 'error' });
+    }
+    setTimeout(() => setToast({ message: '', type: '' }), 4000);
   };
 
   const handleReset = () => {
@@ -176,6 +247,40 @@ const ProfileSettings = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>
               <User size={20} style={{ color: 'var(--primary)' }} />
               <h2 style={{ fontSize: '1.2rem', fontWeight: '700' }}>Admin Profile Information</h2>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <button
+                type="button"
+                onClick={() => !uploadingPhoto && photoInputRef.current?.click()}
+                title="Change photo"
+                style={{ position: 'relative', width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', background: 'var(--surface-hover)', border: '1px solid var(--border)', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: uploadingPhoto ? 'wait' : 'pointer' }}
+              >
+                {avatarUrl
+                  ? <img src={avatarUrl} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <User size={30} style={{ color: 'var(--text-muted)' }} />}
+                {/* hover / upload overlay */}
+                <span style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: uploadingPhoto ? 1 : 0, transition: 'opacity .15s' }}
+                  onMouseEnter={(e) => { if (!uploadingPhoto) e.currentTarget.style.opacity = 1; }}
+                  onMouseLeave={(e) => { if (!uploadingPhoto) e.currentTarget.style.opacity = 0; }}>
+                  {uploadingPhoto ? '…' : <Camera size={20} />}
+                </span>
+              </button>
+              <input ref={photoInputRef} type="file" accept="image/*" onChange={pickPhoto} style={{ display: 'none' }} />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>Profile photo</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                  {uploadingPhoto ? 'Uploading…' : 'Shown in the top bar. Click the photo to upload a new one — you can crop it to fit the circle.'}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => !uploadingPhoto && photoInputRef.current?.click()}
+                  disabled={uploadingPhoto}
+                  style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-hover)', color: 'var(--text-main)', fontSize: '0.8rem', fontWeight: 600, cursor: uploadingPhoto ? 'not-allowed' : 'pointer' }}
+                >
+                  <Camera size={14} /> {avatarUrl ? 'Change photo' : 'Upload photo'}
+                </button>
+              </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -385,6 +490,45 @@ const ProfileSettings = () => {
             </div>
           </div>
 
+          {/* CHANGE PASSWORD (email OTP) */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>
+              <KeyRound size={20} style={{ color: 'var(--primary)' }} />
+              <h2 style={{ fontSize: '1.2rem', fontWeight: '700' }}>Change Password</h2>
+            </div>
+
+            {pwdStep === 'idle' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>For your security, we&apos;ll email a 6-digit code to verify it&apos;s you before changing your password.</p>
+                <button type="button" onClick={sendPwdCode} disabled={pwdBusy} className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
+                  <Mail size={16} /> {pwdBusy ? 'Sending…' : 'Send code to my email'}
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>We sent a code to <strong style={{ color: 'var(--text-main)' }}>{maskedEmail}</strong>. Enter it with your new password.</p>
+                <div>
+                  <label style={labelStyle}>Verification code</label>
+                  <input value={pwdOtp} onChange={(e) => setPwdOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="6-digit code" style={{ ...inputStyle, letterSpacing: '4px', fontFamily: 'monospace' }} />
+                </div>
+                <div>
+                  <label style={labelStyle}>New password</label>
+                  <input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="At least 8 characters" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Confirm new password</label>
+                  <input type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} placeholder="Re-enter new password" style={inputStyle} />
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <button type="button" onClick={submitPwdChange} disabled={pwdBusy} className="btn btn-primary"><KeyRound size={16} /> {pwdBusy ? 'Saving…' : 'Change password'}</button>
+                  <button type="button" onClick={sendPwdCode} disabled={pwdBusy} className="btn" style={{ border: '1px solid var(--border)', background: 'transparent' }}>Resend code</button>
+                  <button type="button" onClick={() => { setPwdStep('idle'); setPwdMsg(''); }} className="btn" style={{ background: 'transparent', color: 'var(--text-muted)' }}>Cancel</button>
+                </div>
+              </div>
+            )}
+            {pwdMsg && <div style={{ fontSize: '0.8rem', color: '#EF4444' }}>{pwdMsg}</div>}
+          </div>
+
           {/* ACTION BUTTONS FOOTER */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '0.5rem' }}>
             <button 
@@ -409,6 +553,8 @@ const ProfileSettings = () => {
         </div>
 
       </form>
+
+      {cropFile && <ImageCropper file={cropFile} onCancel={() => setCropFile(null)} onCrop={onCropped} />}
     </div>
   );
 };

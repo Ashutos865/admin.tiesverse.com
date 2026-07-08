@@ -128,6 +128,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'supabase_db.sqlite3',
+        # Wait up to 30s for a write lock instead of erroring instantly — the
+        # campaign worker process and the web workers both write here.
+        'OPTIONS': {'timeout': 30},
     },
     'turso_db': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -202,13 +205,40 @@ CLOUDINARY_UPLOAD_FOLDER = os.environ.get('CLOUDINARY_UPLOAD_FOLDER', 'tiesverse
 TURSO_DATABASE_URL = os.environ.get('TURSO_DATABASE_URL', '')
 TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN', '')
 
+# Mail-merge campaigns can carry per-recipient certificate PDFs (base64) in the
+# request body, so allow larger JSON bodies than Django's 2.5 MB default.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 40 * 1024 * 1024   # 40 MB
+
+# How long certificate send-audit rows are kept before auto-deletion (the PDFs
+# themselves are never stored — only lightweight log rows). 0 = purge on next send.
+CAMPAIGN_CERT_RETENTION_DAYS = int(os.environ.get('CAMPAIGN_CERT_RETENTION_DAYS', '30'))
+
+# How many certificates a campaign generates+sends in parallel (server-side).
+CAMPAIGN_CONCURRENCY = int(os.environ.get('CAMPAIGN_CONCURRENCY', '8'))
+
+# Target max size (KB) for an emailed certificate PDF. Generated PDFs are
+# downsampled (via Ghostscript) toward this cap before attaching.
+CERT_MAX_KB = int(os.environ.get('CERT_MAX_KB', '600'))
+
 # ---------------------------------------------------------
 # AWS SES (registration confirmation emails)
 # ---------------------------------------------------------
+# WordPress site (managed from the admin panel via a server-side proxy).
+WORDPRESS_URL = os.environ.get('WORDPRESS_URL', '')
+WORDPRESS_USER = os.environ.get('WORDPRESS_USER', '')
+WORDPRESS_APP_PASSWORD = os.environ.get('WORDPRESS_APP_PASSWORD', '')
+
 AWS_SES_ACCESS_KEY_ID = os.environ.get('AWS_SES_ACCESS_KEY_ID', '')
 AWS_SES_SECRET_ACCESS_KEY = os.environ.get('AWS_SES_SECRET_ACCESS_KEY', '')
 AWS_SES_REGION = os.environ.get('AWS_SES_REGION', 'ap-south-1')
 SES_FROM_EMAIL = os.environ.get('SES_FROM_EMAIL', 'noreply@tiesverse.com')
+
+# Developer/infra dashboard — only these emails (plus superusers) can see /technical
+DEVELOPER_EMAILS = [
+    e.strip().lower()
+    for e in os.environ.get('DEVELOPER_EMAILS', 'ashutosp865@gmail.com').split(',')
+    if e.strip()
+]
 
 # Offer letters are emailed from the no-reply careers address. Sending stays
 # DISABLED until careers@tiesverse.com is verified in SES — flip

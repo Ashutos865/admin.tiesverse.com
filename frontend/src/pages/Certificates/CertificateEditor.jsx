@@ -45,10 +45,13 @@ import {
 } from './certificateUtils';
 import './Certificates.css';
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+// Cache-buster (?v=2): the worker .mjs was previously cached `immutable` with a
+// wrong MIME type, so a plain refresh won't re-fetch it. A new query key forces
+// browsers to fetch it fresh (nginx now serves .mjs as application/javascript).
+pdfjs.GlobalWorkerOptions.workerSrc = `${new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url,
-).toString();
+).toString()}?v=2`;
 
 const numberValue = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -372,7 +375,7 @@ const CertificateEditor = () => {
                 onLoadError={(caught) => setPdfError(caught?.message || 'Could not render PDF page.')}
               />
               {pageElements.map((element) => {
-                const content = preview ? fillCertificateVariables(element.content, sampleData) : element.content;
+                const content = preview ? fillCertificateVariables(element.content, sampleData, effectiveVariables, { preview: true }) : element.content;
                 const overlayStyle = {
                   left: element.x * zoom,
                   top: element.y * zoom,

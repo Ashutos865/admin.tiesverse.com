@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Mail, Save, Send, Eye, LayoutTemplate, Code, Paperclip, Plus, Trash2, X } from 'lucide-react';
+import { Mail, Save, Send, Eye, LayoutTemplate, Code, Paperclip, Plus, Trash2, X, Pencil } from 'lucide-react';
 import {
     getEmailTemplates, createEmailTemplate, updateEmailTemplate, deleteEmailTemplate, testEmailTemplate,
 } from '../../apiClient';
@@ -12,7 +12,21 @@ const SAMPLE = {
     subject_title: 'AI Workshop 2026', certificate_id: 'TV-CERT-SAMPLE-0001',
     department: 'Content', status: 'Selected', effective_date: '4 July 2026',
 };
-const fillTokens = (t) => (t || '').replace(/{{\s*(\w+)\s*}}/g, (m, k) => (k in SAMPLE ? SAMPLE[k] : m));
+const fillTokens = (t, defaults = {}) => (t || '').replace(/{{\s*(\w+)\s*}}/g, (m, k) =>
+    (defaults[k] ? defaults[k] : (k in SAMPLE ? SAMPLE[k] : m)));
+// Every distinct {{token}} used across the given strings.
+const tokensIn = (...texts) => {
+    const found = [];
+    texts.forEach(t => { const re = /{{\s*(\w+)\s*}}/g; let m; while ((m = re.exec(t || ''))) { if (!found.includes(m[1])) found.push(m[1]); } });
+    return found;
+};
+// Variables can arrive as legacy strings or {name,label,default}. Always normalize to objects.
+const normVars = (vars) => (vars || [])
+    .map(v => typeof v === 'string'
+        ? { name: v, label: '', default: '' }
+        : { name: (v.name || '').trim(), label: v.label || '', default: v.default == null ? '' : String(v.default) })
+    .filter(v => v.name);
+const varDefaults = (vars) => Object.fromEntries(normVars(vars).filter(v => v.default !== '').map(v => [v.name, v.default]));
 
 const paras = (text) => (text || '').trim().split(/\n\s*\n/).filter(b => b.trim())
     .map(b => `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#374151;">${b.trim().replace(/\n/g, '<br>')}</p>`).join('');
@@ -36,10 +50,10 @@ function renderContent(c = {}) {
     const inner = parts.filter(Boolean).join('');
     return `<div style="background:#f3f4f6;padding:24px 12px;font-family:-apple-system,Segoe UI,sans-serif;"><div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);"><div style="background:linear-gradient(135deg,#4338ca,#3730a3);padding:24px 32px;"><span style="font-size:18px;font-weight:800;color:#fff;">Tiesverse</span></div><div style="padding:32px;">${inner}</div><div style="padding:20px 32px;background:#f9fafb;border-top:1px solid #eef0f3;"><p style="margin:0;font-size:12px;color:#9ca3af;">© Tiesverse. This is an automated message — please do not reply.</p></div></div></div>`;
 }
-const previewHtml = (d) => fillTokens(d.html_mode ? (d.body_html || '') : renderContent(d.content_json));
+const previewHtml = (d) => fillTokens(d.html_mode ? (d.body_html || '') : renderContent(d.content_json), varDefaults(d.variables));
 
 const EMPTY_CONTENT = { heading: '', body: '', table: [], closing: '', button: { label: '', url: '' }, signature: '' };
-const normalize = (t) => ({ ...t, content_json: { ...EMPTY_CONTENT, ...(t.content_json || {}), button: { ...EMPTY_CONTENT.button, ...((t.content_json || {}).button || {}) } } });
+const normalize = (t) => ({ ...t, variables: normVars(t.variables), content_json: { ...EMPTY_CONTENT, ...(t.content_json || {}), button: { ...EMPTY_CONTENT.button, ...((t.content_json || {}).button || {}) } } });
 
 export default function EmailTemplates() {
     const [templates, setTemplates] = useState([]);
@@ -116,7 +130,8 @@ export default function EmailTemplates() {
             is_enabled: draft.is_enabled, html_mode: draft.html_mode, content_json: draft.content_json,
         };
         if (draft.html_mode) payload.body_html = draft.body_html;
-        if (draft.is_custom) { payload.name = draft.name; payload.variables = draft.variables; payload.allow_attachment = draft.allow_attachment; }
+        payload.variables = draft.variables;   // variables are editable on every template now
+        if (draft.is_custom) { payload.name = draft.name; payload.allow_attachment = draft.allow_attachment; }
         const res = await updateEmailTemplate(draft.id, payload);
         setSaving(false);
         if (res?.id) { setTemplates(ts => ts.map(t => t.id === res.id ? res : t)); showToast('Template saved'); }
@@ -132,12 +147,46 @@ export default function EmailTemplates() {
         else showToast(res?.error || 'Test failed', true);
     };
 
-    const addVariable = () => {
-        const v = newVar.trim().replace(/[^a-zA-Z0-9_]/g, '_');
+    const addVariable = (nameArg) => {
+        const v = String(nameArg ?? newVar).trim().replace(/[^a-zA-Z0-9_]/g, '_');
         if (!v) return;
-        if (!(draft.variables || []).includes(v)) setDraft(d => ({ ...d, variables: [...(d.variables || []), v] }));
-        setNewVar('');
+        setDraft(d => (d.variables || []).some(x => x.name === v)
+            ? d : ({ ...d, variables: [...(d.variables || []), { name: v, label: '', default: '' }] }));
+        if (nameArg == null) setNewVar('');
     };
+    const setVarDefault = (name, value) => setDraft(d => ({ ...d, variables: (d.variables || []).map(v => v.name === name ? { ...v, default: value } : v) }));
+    const removeVar = (name) => setDraft(d => ({ ...d, variables: (d.variables || []).filter(v => v.name !== name) }));
+    // Rename a variable AND rewrite every {{oldName}} it uses across subject + body,
+    // so changing a variable never leaves an orphaned token behind.
+    const renameVar = (oldName) => {
+        const raw = window.prompt(`Rename variable {{${oldName}}} to:`, oldName);
+        if (raw == null) return;
+        const nn = raw.trim().replace(/[^a-zA-Z0-9_]/g, '_');
+        if (!nn || nn === oldName) return;
+        setDraft(d => {
+            if ((d.variables || []).some(v => v.name === nn)) { showToast(`"${nn}" already exists`, true); return d; }
+            const re = new RegExp(`{{\\s*${oldName}\\s*}}`, 'g');
+            const rep = (s) => (s || '').replace(re, `{{${nn}}}`);
+            const cj = d.content_json || {};
+            return {
+                ...d,
+                subject: rep(d.subject),
+                body_html: rep(d.body_html),
+                content_json: {
+                    ...cj,
+                    heading: rep(cj.heading), body: rep(cj.body), closing: rep(cj.closing), signature: rep(cj.signature),
+                    button: { ...(cj.button || {}), label: rep(cj.button?.label), url: rep(cj.button?.url) },
+                    table: (cj.table || []).map(r => ({ label: rep(r.label), value: rep(r.value) })),
+                },
+                variables: (d.variables || []).map(v => v.name === oldName ? { ...v, name: nn } : v),
+            };
+        });
+    };
+
+    // Live conflict check: tokens used in subject/body that aren't defined variables.
+    const definedNames = (draft?.variables || []).map(v => v.name);
+    const bodySrc = draft ? (draft.html_mode ? draft.body_html : renderContent(draft.content_json)) : '';
+    const undefinedTokens = draft ? tokensIn(draft.subject, bodySrc).filter(t => !definedNames.includes(t)) : [];
 
     if (loading) return <div style={{ padding: 32 }}><p style={{ color: 'var(--text-muted)' }}>Loading templates…</p></div>;
 
@@ -183,7 +232,7 @@ export default function EmailTemplates() {
                                 {draft.is_custom && <button onClick={removeTemplate} style={{ ...iconBtn, borderColor: 'transparent' }} title="Delete template"><Trash2 size={16} /></button>}
                                 <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
                                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>HTML mode</span>
-                                    <Toggle on={draft.html_mode} onChange={setHtmlMode} color="#6366f1" />
+                                    <Toggle on={draft.html_mode} onChange={setHtmlMode} color="#fe7a00" />
                                 </label>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
                                     <span style={{ fontSize: 12.5, fontWeight: 600, color: draft.is_enabled ? '#16a34a' : 'var(--text-muted)' }}>{draft.is_enabled ? 'ON' : 'Off'}</span>
@@ -193,21 +242,35 @@ export default function EmailTemplates() {
                         </div>
 
                         {/* Variables */}
-                        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--outline-variant)', display: 'flex', flexWrap: 'wrap', gap: 7, alignItems: 'center' }}>
-                            <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 700 }}>Variables:</span>
-                            {(draft.variables || []).map(v => (
-                                <span key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontFamily: 'monospace', background: 'color-mix(in srgb, var(--primary) 10%, transparent)', color: 'var(--primary)', padding: '3px 7px', borderRadius: 6, border: '1px solid color-mix(in srgb, var(--primary) 30%, transparent)', fontWeight: 600 }}>
-                                    <button onClick={() => insertVar(v)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', font: 'inherit', padding: 0 }} title="Insert">{`{{${v}}}`}</button>
-                                    {draft.is_custom && <button onClick={() => setDraft(d => ({ ...d, variables: d.variables.filter(x => x !== v) }))} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', display: 'inline-flex', opacity: .7, padding: 0 }} title="Remove"><X size={12} /></button>}
-                                </span>
-                            ))}
-                            {draft.is_custom && (
-                                <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-                                    <input value={newVar} onChange={e => setNewVar(e.target.value)} onKeyDown={e => e.key === 'Enter' && addVariable()} placeholder="new_variable" style={{ ...input, width: 120, padding: '4px 8px', fontSize: 12 }} />
-                                    <button onClick={addVariable} style={{ ...ghostBtn, padding: '5px 10px' }}>Add</button>
-                                </span>
+                        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--outline-variant)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '.04em' }}>VARIABLES</span>
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>· click a token to insert it · set a default so it is never blank</span>
+                                {draft.allow_attachment && <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--primary)', fontWeight: 600 }}><Paperclip size={13} /> PDF attaches automatically</span>}
+                            </div>
+
+                            {undefinedTokens.length > 0 && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
+                                    <span style={{ fontSize: 12, color: '#c2410c', fontWeight: 600 }}>⚠ Used but not defined — will be blank in real emails:</span>
+                                    {undefinedTokens.map(t => <span key={t} style={{ fontFamily: 'monospace', fontSize: 11.5, color: '#c2410c' }}>{`{{${t}}}`}</span>)}
+                                    <button onClick={() => undefinedTokens.forEach(t => addVariable(t))} style={{ ...ghostBtn, padding: '4px 10px', marginLeft: 'auto', color: '#c2410c', borderColor: '#fdba74' }}>Add {undefinedTokens.length === 1 ? 'it' : 'all'} as variable{undefinedTokens.length === 1 ? '' : 's'}</button>
+                                </div>
                             )}
-                            {draft.allow_attachment && <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--primary)', fontWeight: 600 }}><Paperclip size={13} /> PDF attaches automatically</span>}
+
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                                {(draft.variables || []).map(v => (
+                                    <span key={v.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--surface-container-lowest,#fff)', border: '1px solid var(--outline-variant)', borderRadius: 8, padding: '4px 6px 4px 8px' }}>
+                                        <button onClick={() => insertVar(v.name)} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', font: 'inherit', fontFamily: 'monospace', fontSize: 11.5, fontWeight: 700, padding: 0 }} title="Insert into the focused field">{`{{${v.name}}}`}</button>
+                                        <button onClick={() => renameVar(v.name)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'inline-flex', opacity: .7, padding: 0 }} title="Rename variable"><Pencil size={11} /></button>
+                                        <input value={v.default} onChange={e => setVarDefault(v.name, e.target.value)} placeholder="default…" title="Fallback value used when no value is provided" style={{ width: 92, padding: '3px 6px', fontSize: 11.5, borderRadius: 6, border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', color: 'var(--text-main)' }} />
+                                        <button onClick={() => removeVar(v.name)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'inline-flex', opacity: .7, padding: 0 }} title="Remove variable"><X size={12} /></button>
+                                    </span>
+                                ))}
+                                <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                                    <input value={newVar} onChange={e => setNewVar(e.target.value)} onKeyDown={e => e.key === 'Enter' && addVariable()} placeholder="new_variable" style={{ ...input, width: 130, padding: '5px 8px', fontSize: 12 }} />
+                                    <button onClick={() => addVariable()} style={{ ...ghostBtn, padding: '6px 10px' }}>Add</button>
+                                </span>
+                            </div>
                         </div>
 
                         <div style={{ padding: 20 }}>
@@ -218,7 +281,7 @@ export default function EmailTemplates() {
 
                             {mode === 'preview' ? (
                                 <div>
-                                    <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 10 }}>Subject: <strong style={{ color: 'var(--text-main)' }}>{fillTokens(draft.subject)}</strong></div>
+                                    <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 10 }}>Subject: <strong style={{ color: 'var(--text-main)' }}>{fillTokens(draft.subject, varDefaults(draft.variables))}</strong></div>
                                     <div style={{ border: '1px solid var(--outline-variant)', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
                                         <iframe title="preview" srcDoc={previewHtml(draft)} style={{ width: '100%', height: 520, border: 'none', background: '#fff' }} sandbox="" />
                                     </div>

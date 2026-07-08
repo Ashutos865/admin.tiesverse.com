@@ -1,5 +1,7 @@
+from datetime import timedelta
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 
 class Position(models.Model):
@@ -517,6 +519,18 @@ class Task(models.Model):
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=PRIORITY_MED)
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default=STATUS_TODO)
 
+    # Optional link to a Project (career_app.Project). Nullable so all existing
+    # standalone tasks are unaffected.
+    project = models.ForeignKey(
+        'Project', on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks',
+    )
+    # Optional link to a sub-team within the project (all its members see the task).
+    project_team = models.ForeignKey(
+        'ProjectTeam', on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks',
+    )
+    # Lead's estimate of how many hours the task should take (actual comes from work sessions).
+    estimated_hours = models.FloatField(null=True, blank=True)
+
     due_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -590,3 +604,442 @@ class SelfSignup(models.Model):
 
     def __str__(self):
         return f"{self.name} <{self.email}> ({self.status})"
+
+
+# ── Projects (Advisory + Team Leads create; tasks, deadlines, chat) ───────────
+
+class Project(models.Model):
+    """A project owned by Advisory (org-wide / chosen departments) or a Team Lead
+    (their own team). Tasks link to it; participants come from the chosen
+    departments plus manual adds. Group chat + DMs (Phase 2) are auto-purged
+    `chat_purge_after_days` after the project completes."""
+
+    PRIORITY_LOW = 'low'
+    PRIORITY_MED = 'medium'
+    PRIORITY_HIGH = 'high'
+    PRIORITY_URGENT = 'urgent'
+    PRIORITY_CHOICES = [
+        (PRIORITY_LOW, 'Low'), (PRIORITY_MED, 'Medium'),
+        (PRIORITY_HIGH, 'High'), (PRIORITY_URGENT, 'Urgent'),
+    ]
+
+    STATUS_PLANNING = 'planning'
+    STATUS_ACTIVE = 'active'
+    STATUS_ON_HOLD = 'on_hold'
+    STATUS_COMPLETED = 'completed'
+    STATUS_CANCELLED = 'cancelled'
+    STATUS_CHOICES = [
+        (STATUS_PLANNING, 'Planning'), (STATUS_ACTIVE, 'Active'),
+        (STATUS_ON_HOLD, 'On hold'), (STATUS_COMPLETED, 'Completed'),
+        (STATUS_CANCELLED, 'Cancelled'),
+    ]
+
+    SCOPE_ALL = 'all'                 # org-wide (every department)
+    SCOPE_DEPARTMENTS = 'departments'  # only the listed departments
+    SCOPE_CHOICES = [(SCOPE_ALL, 'All departments'), (SCOPE_DEPARTMENTS, 'Selected departments')]
+
+    title = models.CharField(max_length=500)
+    description = models.TextField(blank=True)
+
+    # Creator (a member, e.g. Advisory/Team Lead) and/or the admin user account.
+    created_by = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='projects_created',
+    )
+    created_by_admin = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
+        related_name='projects_created',
+    )
+    owner_role = models.CharField(max_length=20, blank=True, help_text="'advisory' or 'team_lead'")
+
+    # Which departments the project is for, and each one's priority.
+    scope = models.CharField(max_length=15, choices=SCOPE_CHOICES, default=SCOPE_DEPARTMENTS)
+    departments = models.JSONField(default=list, blank=True)             # ['Research', ...]
+    department_priorities = models.JSONField(default=dict, blank=True)   # {'Research': 'high'}
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=PRIORITY_MED)
+
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default=STATUS_PLANNING)
+
+    start_date = models.DateField(null=True, blank=True)
+    deadline = models.DateField(null=True, blank=True)
+    original_deadline = models.DateField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    chat_purge_after_days = models.PositiveIntegerField(default=15)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'projects'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def chat_purge_at(self):
+        """When this project's chats/DMs should be erased (None until completed)."""
+        if self.completed_at:
+            return self.completed_at + timedelta(days=self.chat_purge_after_days or 15)
+        return None
+
+    @property
+    def is_overdue(self):
+        return bool(
+            self.deadline and self.status not in (self.STATUS_COMPLETED, self.STATUS_CANCELLED)
+            and self.deadline < timezone.localdate()
+        )
+
+
+class ProjectMember(models.Model):
+    """A participant in a project. Auto-added from the project's departments,
+    plus any manual additions."""
+    ROLE_LEAD = 'lead'
+    ROLE_MEMBER = 'member'
+    ROLE_VIEWER = 'viewer'
+    ROLE_CHOICES = [(ROLE_LEAD, 'Lead'), (ROLE_MEMBER, 'Member'), (ROLE_VIEWER, 'Viewer')]
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='members')
+    member = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.CASCADE, related_name='project_memberships',
+    )
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_MEMBER)
+    teams = models.ManyToManyField('ProjectTeam', related_name='members', blank=True)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'project_members'
+        unique_together = ('project', 'member')
+        ordering = ['role', 'added_at']
+
+    def __str__(self):
+        return f"{self.member.candidate_name} in {self.project.title}"
+
+
+class ProjectDeadlineChange(models.Model):
+    """Audit trail of every deadline extension/change on a project."""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='deadline_changes')
+    old_deadline = models.DateField(null=True, blank=True)
+    new_deadline = models.DateField(null=True, blank=True)
+    reason = models.TextField(blank=True)
+    changed_by = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='project_deadline_changes',
+    )
+    changed_by_admin = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
+        related_name='project_deadline_changes',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'project_deadline_changes'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.project.title}: {self.old_deadline} → {self.new_deadline}"
+
+
+class ProjectChecklistItem(models.Model):
+    """A pinned 'what to do' item for the whole project — the shared to-do/agenda
+    every participant sees (separate from assigned Kanban tasks)."""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='checklist')
+    text = models.CharField(max_length=1000)
+    is_done = models.BooleanField(default=False)
+    order = models.IntegerField(default=0)
+    created_by = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    created_by_admin = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False, related_name='+',
+    )
+    done_by = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    done_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'project_checklist_items'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f"{self.project_id}: {self.text[:40]}"
+
+
+class ProjectMessage(models.Model):
+    """A chat message in a project. team=null is the whole-project group chat;
+    team=<ProjectTeam> is that sub-team's private channel. Erased 15 days after
+    the project ends."""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='messages')
+    team = models.ForeignKey(
+        'ProjectTeam', on_delete=models.CASCADE, null=True, blank=True, related_name='messages',
+    )
+    sender = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.SET_NULL, null=True, blank=True, related_name='project_messages',
+    )
+    sender_admin = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False, related_name='+',
+    )
+    body = models.TextField()
+    mentions = models.JSONField(default=list, blank=True)   # list of OnboardingSubmission ids
+    pinned = models.BooleanField(default=False)
+    reply_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'project_messages'
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.project_id}: {self.body[:40]}"
+
+
+class DirectMessage(models.Model):
+    """A 1:1 message between two people in a project context. Each side is either a
+    member (OnboardingSubmission) or an admin user (auth.User). Erased with the
+    project's group chat, 15 days after the project ends."""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='dms')
+    sender = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.CASCADE, null=True, blank=True, related_name='dms_sent',
+    )
+    sender_admin = models.ForeignKey(
+        User, on_delete=models.CASCADE, null=True, blank=True, db_constraint=False, related_name='+',
+    )
+    recipient = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.CASCADE, null=True, blank=True, related_name='dms_received',
+    )
+    recipient_admin = models.ForeignKey(
+        User, on_delete=models.CASCADE, null=True, blank=True, db_constraint=False, related_name='+',
+    )
+    body = models.TextField()
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'project_direct_messages'
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.sender_id or self.sender_admin_id}->{self.recipient_id or self.recipient_admin_id}: {self.body[:30]}"
+
+
+class ProjectNotification(models.Model):
+    """An in-app notification for a member (mention, chat, DM, task, deadline)."""
+    KIND_MENTION = 'mention'
+    KIND_MESSAGE = 'message'
+    KIND_DM = 'dm'
+    KIND_TASK = 'task'
+    KIND_DEADLINE = 'deadline'
+    KIND_CHOICES = [
+        (KIND_MENTION, 'Mention'), (KIND_MESSAGE, 'Message'), (KIND_DM, 'Direct message'),
+        (KIND_TASK, 'Task'), (KIND_DEADLINE, 'Deadline'),
+    ]
+
+    recipient = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.CASCADE, related_name='project_notifications',
+    )
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default=KIND_MESSAGE)
+    text = models.CharField(max_length=500)
+    link = models.CharField(max_length=300, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'project_notifications'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.recipient_id}: {self.text[:40]}"
+
+
+class ProjectTeam(models.Model):
+    """A sub-team inside a project. Participants can be split into teams and tasks
+    can be assigned to a whole team."""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='teams')
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    lead = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    color = models.CharField(max_length=20, blank=True)
+    order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'project_teams'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f"{self.project_id}: {self.name}"
+
+
+class ProjectMilestone(models.Model):
+    """A dated milestone/phase within a project."""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='milestones')
+    title = models.CharField(max_length=300)
+    due_date = models.DateField(null=True, blank=True)
+    is_done = models.BooleanField(default=False)
+    order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'project_milestones'
+        ordering = ['order', 'due_date', 'id']
+
+    def __str__(self):
+        return f"{self.project_id}: {self.title}"
+
+
+class WorkSession(models.Model):
+    """One check-in → check-out work session. A person can have several per day,
+    each optionally tied to a task. The day's total = sum of its sessions; the
+    day's approval lives on the matching AttendanceRecord (approved as a whole)."""
+    member = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.CASCADE, related_name='work_sessions',
+    )
+    date = models.DateField()
+    check_in = models.DateTimeField()
+    check_out = models.DateTimeField(null=True, blank=True)
+    task = models.ForeignKey(
+        Task, on_delete=models.SET_NULL, null=True, blank=True, related_name='work_sessions',
+    )
+    note = models.TextField(blank=True)
+    completed_task = models.BooleanField(default=False)   # marked the task done at checkout
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'work_sessions'
+        ordering = ['-check_in']
+
+    @property
+    def duration_minutes(self):
+        if self.check_in and self.check_out:
+            return max(0, int((self.check_out - self.check_in).total_seconds() // 60))
+        return 0
+
+    def __str__(self):
+        return f"{self.member_id} {self.date} ({self.duration_minutes}m)"
+
+
+class TaskStep(models.Model):
+    """An ordered step in a task's workflow — 'how this work is done'. The task's
+    assignee (or a project manager) adds steps and ticks them off."""
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='steps')
+    text = models.CharField(max_length=500)
+    is_done = models.BooleanField(default=False)
+    order = models.IntegerField(default=0)
+    done_by = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    done_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'task_steps'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f"{self.task_id}: {self.text[:40]}"
+
+
+class ProjectAttachment(models.Model):
+    """A file/link attached to a project (uploaded image URL or a pasted link)."""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='attachments')
+    name = models.CharField(max_length=300)
+    url = models.URLField(max_length=1000)
+    uploaded_by = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    uploaded_by_admin = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'project_attachments'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.project_id}: {self.name}"
+
+
+class Policy(models.Model):
+    """A company policy published by HR. Simple shared library: every member
+    sees every published policy (no per-team targeting, no acknowledgement)."""
+    title = models.CharField(max_length=255)
+    category = models.CharField(max_length=80, blank=True, default='General')
+    summary = models.CharField(max_length=300, blank=True)
+    body = models.TextField(blank=True)
+    is_published = models.BooleanField(default=True)
+    order = models.IntegerField(default=0)
+    created_by_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
+        related_name='policies_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'policies'
+        ordering = ['order', '-updated_at']
+
+    def __str__(self):
+        return self.title
+
+
+class Form(models.Model):
+    """A custom form (Google-Forms / Tally style). Fields, theme and settings are
+    stored as JSON so the builder is fully flexible. HR/Advisory build them; they
+    can be filled internally (logged-in) or via a public hashed link."""
+    VIS_INTERNAL = 'internal'
+    VIS_PUBLIC = 'public'
+    VISIBILITY_CHOICES = [(VIS_INTERNAL, 'Internal (logged-in members)'), (VIS_PUBLIC, 'Public link')]
+
+    title = models.CharField(max_length=255, default='Untitled form')
+    description = models.TextField(blank=True)
+    schema = models.JSONField(default=list, blank=True)      # [{id,type,label,help,required,options,...}]
+    theme = models.JSONField(default=dict, blank=True)       # {bg_type,bg_color,bg_image,accent,font,layout,button_text}
+    settings = models.JSONField(default=dict, blank=True)    # {accepting,require_login,one_response,thank_you,close_date,collect_email}
+    visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default=VIS_INTERNAL)
+    is_published = models.BooleanField(default=False)
+    token = models.CharField(max_length=64, unique=True, blank=True)
+    created_by_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
+        related_name='forms_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'forms'
+        ordering = ['-updated_at']
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            import secrets
+            self.token = secrets.token_urlsafe(12)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.title
+
+
+class FormResponse(models.Model):
+    form = models.ForeignKey(Form, on_delete=models.CASCADE, related_name='responses')
+    answers = models.JSONField(default=dict, blank=True)     # {field_id: value}
+    submitted_by_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
+        related_name='form_responses',
+    )
+    submitter_name = models.CharField(max_length=255, blank=True)
+    submitter_email = models.EmailField(blank=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'form_responses'
+        ordering = ['-submitted_at']
+
+    def __str__(self):
+        return f"Response to {self.form_id} @ {self.submitted_at}"

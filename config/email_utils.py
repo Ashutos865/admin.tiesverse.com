@@ -123,6 +123,42 @@ def render_email(
     return html, _text_from_html(html)
 
 
+def list_ses_senders():
+    """Return {emails, domains, default} of SES-verified identities so the UI can
+    offer valid 'from' addresses. Any address under a verified domain also works."""
+    payload = {'emails': [], 'domains': [], 'default': getattr(settings, 'SES_FROM_EMAIL', '')}
+    try:
+        import boto3
+        client = boto3.client(
+            'ses', region_name=getattr(settings, 'AWS_SES_REGION', 'ap-south-1'),
+            aws_access_key_id=getattr(settings, 'AWS_SES_ACCESS_KEY_ID', ''),
+            aws_secret_access_key=getattr(settings, 'AWS_SES_SECRET_ACCESS_KEY', ''),
+        )
+        ids = client.list_identities().get('Identities', [])
+        attrs = (client.get_identity_verification_attributes(Identities=ids)
+                 .get('VerificationAttributes', {}) if ids else {})
+        for i in ids:
+            if attrs.get(i, {}).get('VerificationStatus') != 'Success':
+                continue
+            (payload['emails'] if '@' in i else payload['domains']).append(i)
+        payload['emails'].sort()
+        payload['domains'].sort()
+    except Exception as exc:  # noqa: BLE001
+        payload['error'] = str(exc)
+    return payload
+
+
+def verified_sender_domains():
+    """Domains under which any alias is a valid SES sender — used to validate a
+    custom 'from' address without an SES round-trip on every send. Falls back to
+    the configured sender domains when a live SES lookup isn't available."""
+    domains = set()
+    for addr in (getattr(settings, 'SES_FROM_EMAIL', ''), getattr(settings, 'SES_CAREERS_FROM_EMAIL', '')):
+        if '@' in (addr or ''):
+            domains.add(addr.split('@', 1)[1].lower())
+    return domains
+
+
 def send_email(
     to: str,
     subject: str,
@@ -131,8 +167,13 @@ def send_email(
     from_email: str | None = None,
     attachments: list[tuple[str, bytes, str]] | None = None,
     enabled: bool = True,
-) -> bool:
+    detailed: bool = False,
+):
     """Send one email via AWS SES.
+
+    With detailed=True returns {'ok', 'message_id', 'error'} so callers can log
+    the SES MessageId (for bounce matching) and the failure reason per recipient.
+    Otherwise returns a bool.
 
     Returns True if actually sent, False if stubbed (disabled or no creds) or if
     sending soft-failed. Never raises for a missing config — callers can email
@@ -144,10 +185,13 @@ def send_email(
         and getattr(settings, 'AWS_SES_SECRET_ACCESS_KEY', '')
     )
 
+    def _ret(ok, message_id='', error=''):
+        return {'ok': ok, 'message_id': message_id, 'error': error} if detailed else ok
+
     if not (enabled and has_creds and to):
         reason = 'disabled' if not enabled else ('no-SES-creds' if not has_creds else 'no-recipient')
         print(f"[EMAIL STUB:{reason}] to={to!r} subject={subject!r} from={from_addr!r}")
-        return False
+        return _ret(False, error=reason)
 
     try:
         import boto3
@@ -176,10 +220,10 @@ def send_email(
             aws_access_key_id=settings.AWS_SES_ACCESS_KEY_ID,
             aws_secret_access_key=settings.AWS_SES_SECRET_ACCESS_KEY,
         )
-        client.send_raw_email(
+        resp = client.send_raw_email(
             Source=from_addr, Destinations=[to], RawMessage={'Data': msg.as_string()},
         )
-        return True
+        return _ret(True, message_id=(resp or {}).get('MessageId', ''))
     except Exception as exc:  # noqa: BLE001 — email must never break the request
         print(f"[EMAIL ERROR] to={to!r} subject={subject!r}: {exc}")
-        return False
+        return _ret(False, error=str(exc)[:400])

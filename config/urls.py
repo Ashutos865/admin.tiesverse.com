@@ -22,6 +22,11 @@ from accounts_app.views import (
 )
 from tiesverse_app.media_views import MediaUploadView, CloudinaryImageListView
 from config.certificate_proxy import certificate_generator_proxy
+from config.wordpress_proxy import wordpress_proxy
+from config.newsroom import (
+    public_newsroom_nav, public_newsroom_articles,
+    public_events_feed, public_guests_feed,
+)
 from config.certificate_workflow import (
     certificate_import_records,
     certificate_import_rows,
@@ -31,6 +36,8 @@ from config.certificate_workflow import (
     certificate_send_emails,
     certificate_sources,
 )
+from config.data_sources import list_data_sources, data_source_rows
+from config.tech_stats import technical_stats
 from rest_framework.routers import DefaultRouter
 
 router = DefaultRouter()
@@ -39,6 +46,10 @@ router.register(r'settings', SettingViewSet, basename='setting')
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/public/featured/', PublicFeaturedView.as_view(), name='public-featured'),
+    path('api/public/newsroom/nav/', public_newsroom_nav, name='public-newsroom-nav'),
+    path('api/public/newsroom/articles/', public_newsroom_articles, name='public-newsroom-articles'),
+    path('api/public/events/', public_events_feed, name='public-events-feed'),
+    path('api/public/guests/', public_guests_feed, name='public-guests-feed'),
     path('api/public/email-template/<str:key>/', PublicEmailTemplateView.as_view(), name='public-email-template'),
     path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
@@ -49,6 +60,7 @@ urlpatterns = [
     path('api/media/upload/', MediaUploadView.as_view(), name='media_upload'),
     path('api/media/images/', CloudinaryImageListView.as_view(), name='media_images'),
     path('api/certificates/proxy/<path:remote_path>', certificate_generator_proxy, name='certificate_generator_proxy'),
+    path('api/wordpress/<path:remote_path>', wordpress_proxy, name='wordpress_proxy'),
     path('api/certificates/sources/', certificate_sources, name='certificate_sources'),
     path('api/certificates/import-rows/', certificate_import_rows, name='certificate_import_rows'),
     path('api/certificates/import-records/', certificate_import_records, name='certificate_import_records'),
@@ -56,5 +68,8 @@ urlpatterns = [
     path('api/certificates/records/csv/', certificate_records_csv, name='certificate_records_csv'),
     path('api/certificates/records/mark-emailed/', certificate_mark_emailed, name='certificate_mark_emailed'),
     path('api/certificates/records/send-emails/', certificate_send_emails, name='certificate_send_emails'),
+    path('api/data-sources/', list_data_sources, name='data_sources'),
+    path('api/data-sources/<str:source_id>/rows/', data_source_rows, name='data_source_rows'),
+    path('api/technical/stats/', technical_stats, name='technical_stats'),
     path('api/', include(router.urls)),
 ]

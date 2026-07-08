@@ -2,53 +2,140 @@
 @variant dark (&:where(.dark, .dark *));
 
 :root {
-  --primary: #6f67f0;
-  --primary-hover: #837cf5;
-  --primary-container: #4f46e5;
-  --primary-fixed: #2d285c;
-  --primary-fixed-dim: #7770df;
-  --secondary-container: #272d42;
-  --on-secondary-container: #c8d0ef;
+  --primary: #ff8c2e;
+  --primary-hover: #ffa04f;
+  --primary-container: #ef6f00;
+  --primary-fixed: #4a2a08;
+  --primary-fixed-dim: #c47a2e;
+  --secondary-container: #3a2a18;
+  --on-secondary-container: #f0dcc4;
   --tertiary: #4edea3;
-  --on-primary-container: #f0efff;
-  --surface-container-lowest: #17191d;
-  --surface-container-low: #1c1f24;
-  --surface-container: #22252b;
-  --surface-container-high: #292d34;
-  --outline-variant: #353a43;
-  --bg-color: #111317;
-  --surface: #17191d;
-  --surface-hover: #22252b;
-  --text-main: #f0f1f4;
-  --text-muted: #9a9faa;
-  --border: #343840;
+  --on-primary-container: #fff0e0;
+  --surface-container-lowest: #211c15;
+  --surface-container-low: #262019;
+  --surface-container: #2c251d;
+  --surface-container-high: #342c22;
+  --outline-variant: #3c3328;
+  --bg-color: #17130d;
+  --surface: #211c15;
+  --surface-hover: #2c251d;
+  --text-main: #f4f0e9;
+  --text-muted: #a99f8e;
+  --border: #3a3227;
   --sidebar-width: 260px;
   --navbar-height: 64px;
   --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  --radius: 12px;
+  --radius: 14px;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', 'Segoe UI', system-ui, sans-serif;
+
+  /* ── Liquid Glass — materials (DARK / default) ── */
+  --lg-blur: 30px;
+  --lg-sat: 175%;
+  --lg-r-control: 12px;
+  --lg-r-card: 18px;
+  --lg-r-sheet: 24px;
+  --lg-glass: rgba(44, 37, 29, 0.55);
+  --lg-glass-clear: rgba(44, 37, 29, 0.40);
+  --lg-glass-strong: rgba(38, 32, 25, 0.80);
+  --lg-border: rgba(255, 255, 255, 0.10);
+  --lg-highlight: rgba(255, 255, 255, 0.14);
+  --lg-shadow-1: 0 2px 10px -5px rgba(0, 0, 0, 0.55);
+  --lg-shadow-2: 0 16px 38px -18px rgba(0, 0, 0, 0.62);
+  --lg-shadow-3: 0 38px 76px -26px rgba(0, 0, 0, 0.70);
+  --lg-glow: 0 8px 26px -8px rgba(254, 122, 0, 0.45);
+  --accent-grad: linear-gradient(180deg, #ff9a3d 0%, #fe7a00 58%, #ef6f00 100%);
 }
 
 :root.light {
-  --primary: #3525cd;
-  --primary-hover: #291ba9;
-  --primary-container: #4f46e5;
-  --primary-fixed: #e2dfff;
-  --primary-fixed-dim: #c3c0ff;
-  --secondary-container: #dae2fd;
-  --on-secondary-container: #5c647a;
+  --primary: #fe7a00;
+  --primary-hover: #e96d00;
+  --primary-container: #ef6f00;
+  --primary-fixed: #ffe6cf;
+  --primary-fixed-dim: #ffcfa1;
+  --secondary-container: #ffe9d6;
+  --on-secondary-container: #9a6234;
   --tertiary: #005338;
-  --on-primary-container: #dad7ff;
+  --on-primary-container: #5a3410;
   --surface-container-lowest: #ffffff;
   --surface-container-low: #f2f4f6;
   --surface-container: #eceef0;
   --surface-container-high: #e6e8ea;
   --outline-variant: #d8dce2;
-  --bg-color: #f7f9fb;
+  --bg-color: #faf2e8;
   --surface: #ffffff;
-  --surface-hover: #f2f4f6;
+  --surface-hover: #f6ede1;
   --text-main: #191c1e;
   --text-muted: #626873;
   --border: #dfe3e8;
+
+  /* ── Liquid Glass — materials (LIGHT) ── */
+  --lg-glass: rgba(255, 252, 247, 0.55);
+  --lg-glass-clear: rgba(255, 252, 247, 0.40);
+  --lg-glass-strong: rgba(255, 253, 250, 0.82);
+  --lg-border: rgba(255, 255, 255, 0.72);
+  --lg-highlight: rgba(255, 255, 255, 0.92);
+  --lg-shadow-1: 0 2px 10px -6px rgba(150, 90, 30, 0.22);
+  --lg-shadow-2: 0 16px 36px -20px rgba(150, 90, 30, 0.28);
+  --lg-shadow-3: 0 34px 70px -26px rgba(150, 90, 30, 0.34);
+}
+
+/* ── Liquid Glass — reusable material utilities ── */
+.lg-glass {
+  background: var(--lg-glass);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
+  border: 1px solid var(--lg-border);
+  border-radius: var(--lg-r-card);
+  box-shadow: inset 0 1px 0 var(--lg-highlight), var(--lg-shadow-2);
+}
+.lg-glass-clear {
+  background: var(--lg-glass-clear);
+  -webkit-backdrop-filter: blur(calc(var(--lg-blur) - 8px)) saturate(var(--lg-sat));
+  backdrop-filter: blur(calc(var(--lg-blur) - 8px)) saturate(var(--lg-sat));
+  border: 1px solid var(--lg-border);
+}
+
+/* ── Motion & polish ── */
+:root:where(.light, .dark) .card,
+:root:where(.light, .dark) .tv-metric-card,
+:root:where(.light, .dark) .career-metric-card,
+:root:where(.light, .dark) .coupon-card,
+:root:where(.light, .dark) .ww-card {
+  transition: transform 0.22s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.22s ease;
+}
+:root:where(.light, .dark) .card:hover,
+:root:where(.light, .dark) .tv-metric-card:hover,
+:root:where(.light, .dark) .career-metric-card:hover,
+:root:where(.light, .dark) .coupon-card:hover,
+:root:where(.light, .dark) .ww-card:hover {
+  transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 var(--lg-highlight), var(--lg-shadow-3);
+}
+
+/* Thin Apple-style scrollbars everywhere */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 42%, transparent) transparent;
+}
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 34%, transparent);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-muted) 56%, transparent);
+  background-clip: content-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 * {
@@ -58,7 +145,7 @@
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-ui);
   background-color: var(--bg-color);
   color: var(--text-main);
   font-size: 16px;
@@ -73,6 +160,27 @@ textarea,
 select {
   font: inherit;
 }
+
+/* ── Liquid Glass fields (global default — inline/class styles still win) ── */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="submit"]):not([type="button"]),
+select,
+textarea {
+  color: var(--text-main);
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--lg-r-control);
+  padding: 0.55rem 0.8rem;
+  transition: border-color 0.16s ease, box-shadow 0.2s ease, background 0.16s ease;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="submit"]):not([type="button"]):focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary) 58%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
+  background: var(--surface);
+}
+::placeholder { color: var(--text-muted); opacity: 0.62; }
 
 button:focus-visible,
 a:focus-visible {
@@ -222,6 +330,12 @@ a {
 .table-container {
   width: 100%;
   overflow-x: auto;
+  border: 1px solid var(--lg-border);
+  border-radius: var(--lg-r-card);
+  background: var(--lg-glass);
+  -webkit-backdrop-filter: blur(calc(var(--lg-blur) - 8px)) saturate(var(--lg-sat));
+  backdrop-filter: blur(calc(var(--lg-blur) - 8px)) saturate(var(--lg-sat));
+  box-shadow: inset 0 1px 0 var(--lg-highlight), var(--lg-shadow-1);
 }
 
 table {
@@ -230,45 +344,88 @@ table {
 }
 
 th, td {
-  padding: 1rem;
+  padding: 0.85rem 1rem;
   text-align: left;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 
 th {
+  position: sticky;
+  top: 0;
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  font-size: 0.8125rem;
-  letter-spacing: 0.05em;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  background: color-mix(in srgb, var(--surface-hover) 82%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
+tbody tr:last-child td { border-bottom: none; }
+
 tr:hover td {
-  background: var(--surface-hover);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
 }
 
 /* Buttons */
+/* ── Liquid Glass button system ── */
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius);
+  padding: 0.58rem 1.15rem;
+  border-radius: var(--lg-r-control);
   border: none;
-  font-weight: 500;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   cursor: pointer;
-  transition: var(--transition);
+  transition: transform 0.15s cubic-bezier(0.2, 0.7, 0.2, 1), filter 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
+.btn:active:not(:disabled) { transform: scale(0.97); }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* Primary — the one loud orange capsule (login style) */
 .btn-primary {
-  background: var(--primary);
-  color: white;
+  background: var(--accent-grad);
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(150, 62, 0, 0.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), var(--lg-glow);
+}
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 12px 28px -8px rgba(254, 122, 0, 0.62);
 }
 
-.btn-primary:hover {
-  background: var(--primary-hover);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+/* Secondary — glass */
+.btn-secondary {
+  background: var(--lg-glass);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid var(--lg-border);
+  color: var(--text-main);
+  box-shadow: inset 0 1px 0 var(--lg-highlight), var(--lg-shadow-1);
 }
+.btn-secondary:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+
+/* Ghost — quiet */
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.btn-ghost:hover:not(:disabled) { background: var(--surface-hover); color: var(--text-main); }
+
+/* Destructive */
+.btn-danger {
+  background: linear-gradient(180deg, #ff7a6b 0%, #ef4444 58%, #dc2626 100%);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 8px 20px -8px rgba(239, 68, 68, 0.5);
+}
+.btn-danger:hover:not(:disabled) { filter: brightness(1.05); }
 
 /* --- PREMIUM DASHBOARD SYSTEM --- */
 .dashboard-container {
@@ -479,6 +636,84 @@ tr:hover td {
   background: var(--bg-color);
 }
 
+/* ============================================================================
+   LIQUID GLASS — applied across BOTH themes (tokens adapt light/dark).
+   Canvas: warm organic ground.  Shell: strong glass.  Cards: lighter glass.
+   ========================================================================== */
+
+/* Canvas — warm ground + soft light blooms (light) */
+:root.light .admin-shell,
+:root.light .admin-page {
+  background:
+    radial-gradient(38% 30% at 92% 6%, rgba(254, 122, 0, 0.13), transparent 60%),
+    radial-gradient(36% 34% at 6% 96%, rgba(255, 160, 74, 0.15), transparent 60%),
+    radial-gradient(30% 26% at 64% 70%, rgba(255, 202, 142, 0.11), transparent 66%),
+    radial-gradient(28% 24% at 30% 22%, rgba(255, 236, 214, 0.6), transparent 64%),
+    var(--bg-color);
+}
+/* Canvas — warm charcoal + deep-orange embers (dark) */
+:root.dark .admin-shell,
+:root.dark .admin-page {
+  background:
+    radial-gradient(40% 32% at 92% 6%, rgba(254, 122, 0, 0.12), transparent 62%),
+    radial-gradient(38% 34% at 6% 96%, rgba(255, 140, 50, 0.08), transparent 62%),
+    radial-gradient(30% 26% at 60% 74%, rgba(120, 70, 30, 0.14), transparent 66%),
+    var(--bg-color);
+}
+
+/* Shell — strong (regular) glass, both themes */
+:root:where(.light, .dark) .portal-sidebar {
+  background: var(--lg-glass-strong);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
+  border-right: 1px solid var(--lg-border);
+  box-shadow: inset -1px 0 0 var(--lg-highlight), var(--lg-shadow-2);
+}
+:root:where(.light, .dark) .portal-topbar {
+  background: var(--lg-glass-strong);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
+  border-bottom: 1px solid var(--lg-border);
+}
+
+/* Cards — lighter glass so content leads, both themes */
+:root:where(.light, .dark) .card,
+:root:where(.light, .dark) .tv-metric-card,
+:root:where(.light, .dark) .tv-panel,
+:root:where(.light, .dark) .tv-chart-panel,
+:root:where(.light, .dark) .tv-registrations-panel,
+:root:where(.light, .dark) .tv-focus-card,
+:root:where(.light, .dark) .career-metric-card,
+:root:where(.light, .dark) .career-table-card,
+:root:where(.light, .dark) .coupon-card,
+:root:where(.light, .dark) .coupon-metrics article,
+:root:where(.light, .dark) .registration-metric,
+:root:where(.light, .dark) .registration-panel,
+:root:where(.light, .dark) .ww-card,
+:root:where(.light, .dark) .ww-detail,
+:root:where(.light, .dark) .ww-q-card,
+:root:where(.light, .dark) .metric-card,
+:root:where(.light, .dark) .chart-card {
+  background: var(--lg-glass);
+  -webkit-backdrop-filter: blur(calc(var(--lg-blur) - 6px)) saturate(var(--lg-sat));
+  backdrop-filter: blur(calc(var(--lg-blur) - 6px)) saturate(var(--lg-sat));
+  border: 1px solid var(--lg-border);
+  border-radius: var(--lg-r-card);
+  box-shadow: inset 0 1px 0 var(--lg-highlight), var(--lg-shadow-2);
+}
+
+/* Dashboard primary buttons — orange gradient, both themes */
+:root:where(.light, .dark) .tv-primary-button,
+:root:where(.light, .dark) .tv-focus-card button {
+  background: var(--accent-grad);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 20px -8px rgba(254, 122, 0, 0.5);
+}
+:root:where(.light, .dark) .tv-primary-button:hover,
+:root:where(.light, .dark) .tv-focus-card button:hover {
+  filter: brightness(1.04);
+}
+
 .portal-sidebar {
   position: relative;
   z-index: 50;
@@ -516,7 +751,7 @@ tr:hover td {
 
 .portal-sidebar-brand span {
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.09em;
@@ -558,7 +793,7 @@ tr:hover td {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -604,7 +839,7 @@ tr:hover td {
   padding: 0 12px;
   border-radius: 8px;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.015em;
@@ -618,9 +853,9 @@ tr:hover td {
 }
 
 .portal-sidebar-link.is-active {
-  background: var(--primary-container);
+  background: var(--accent-grad);
   color: #fff;
-  box-shadow: 0 6px 14px color-mix(in srgb, var(--primary) 18%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), var(--lg-glow);
 }
 
 .portal-sidebar-link.is-active::before {
@@ -641,7 +876,7 @@ tr:hover td {
   padding: 0 24px;
   border-top: 1px solid var(--outline-variant);
   color: var(--tertiary);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -736,8 +971,11 @@ tr:hover td {
   display: grid;
   width: 34px;
   height: 34px;
+  min-width: 34px;
+  flex-shrink: 0;
   margin: 0 4px 0 6px;
   place-items: center;
+  overflow: hidden;
   border: 1px solid var(--outline-variant);
   border-radius: 50%;
   background: var(--primary-fixed);
@@ -822,8 +1060,9 @@ tr:hover td {
   align-items: center !important;
   justify-content: center !important;
   padding: 20px !important;
-  background: rgba(12, 15, 22, 0.62) !important;
-  backdrop-filter: blur(8px) !important;
+  background: rgba(22, 15, 8, 0.5) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  backdrop-filter: blur(12px) !important;
   animation: app-modal-overlay-in 160ms ease both;
 }
 
@@ -837,10 +1076,12 @@ tr:hover td {
   max-height: min(90vh, 860px);
   overflow-y: auto;
   padding: 30px !important;
-  border: 1px solid var(--outline-variant) !important;
-  border-radius: 18px !important;
-  background: var(--surface-container-lowest) !important;
-  box-shadow: 0 34px 80px rgba(5, 8, 15, 0.28) !important;
+  border: 1px solid var(--lg-border) !important;
+  border-radius: var(--lg-r-sheet) !important;
+  background: var(--lg-glass-strong) !important;
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) !important;
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) !important;
+  box-shadow: inset 0 1px 0 var(--lg-highlight), var(--lg-shadow-3) !important;
   color: var(--text-main) !important;
   animation: app-modal-up 230ms cubic-bezier(.2, .82, .25, 1) both !important;
 }
@@ -884,7 +1125,7 @@ tr:hover td {
 
 .app-modal-header small {
   color: var(--primary);
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Hanken Grotesk", sans-serif;
   font-size: 8px;
   font-weight: 800;
   letter-spacing: .09em;
@@ -966,7 +1207,7 @@ tr:hover td {
 .content-modal-panel label,
 .career-admin-modal label {
   color: var(--text-muted) !important;
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Hanken Grotesk", sans-serif;
   font-size: 9px !important;
   font-weight: 700 !important;
   letter-spacing: .075em;
@@ -1125,10 +1366,34 @@ tr:hover td {
   }
 }
 
+/* Command-palette trigger: keep the pill shape, don't let the circular
+   .portal-topbar-actions > button rule override its hover background. */
+.portal-topbar-actions > button.palette-trigger:hover {
+  background: var(--surface-container-high);
+  color: var(--primary);
+}
+
+@media (max-width: 640px) {
+  /* Collapse the trigger to just its icon on small screens. */
+  .palette-trigger-label {
+    display: none;
+  }
+}
+
 @media (max-width: 460px) {
-  .portal-topbar-actions > button:first-child,
+  .portal-topbar-actions > button.hide-narrow,
   .portal-user-avatar {
     display: none;
   }
 }
 
+
+/* Dark Reader guard toast entrance (drops in from the top-right) */
+@keyframes drg-in {
+  from { opacity: 0; transform: translateY(-14px) scale(.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Mail Automation certificate-generation spinner */
+@keyframes ma-spin { to { transform: rotate(360deg); } }
+.ma-spin { animation: ma-spin 1s linear infinite; }

@@ -1,6 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getHRDepartments, createHRDepartment, updateHRDepartment, deleteHRDepartment, getOnboardingList } from '../../apiClient';
-import { Building2, Plus, Edit2, Trash2, X, Crown, Users } from 'lucide-react';
+import { Building2, Plus, Edit2, Trash2, X, Crown, Users, Lock } from 'lucide-react';
+import { usePermissions } from '../../context/PermissionContext';
+
+// Only HR/Admin (write access) may manage departments — Team Leads etc. cannot.
+function NoAccess({ title }) {
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '64px 24px', color: 'var(--text-muted)', textAlign: 'center' }}>
+            <Lock size={30} />
+            <h2 style={{ margin: 0, color: 'var(--text-main)', fontSize: '1.1rem' }}>{title}</h2>
+            <p style={{ margin: 0, maxWidth: 380, fontSize: '0.9rem' }}>You don’t have permission to view this page. Ask an admin if you think this is a mistake.</p>
+        </div>
+    );
+}
 
 const fieldStyle = {
     width: '100%', padding: '10px 13px', borderRadius: 8,
@@ -27,6 +39,8 @@ function MemberSelect({ value, onChange, members, placeholder }) {
 }
 
 export default function HRDepartments() {
+    const { hasAnyPermission, isSuperuser } = usePermissions();
+    const canManage = isSuperuser || hasAnyPermission(['add_hrdepartment', 'change_hrdepartment', 'delete_hrdepartment']);
     const [departments, setDepartments] = useState([]);
     const [teamMembers, setTeamMembers] = useState([]);   // verified onboarding submissions
     const [loading, setLoading] = useState(true);
@@ -88,6 +102,8 @@ export default function HRDepartments() {
         setDepartments(prev => prev.filter(d => d.id !== dept.id));
         showNotice('Department deleted.');
     };
+
+    if (!canManage) return <NoAccess title="HR Departments" />;
 
     return (
         <div style={{ padding: '32px 28px', minHeight: '100%' }}>

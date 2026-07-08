@@ -289,7 +289,7 @@
 
 .form-gate-detailed-heading > span {
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -357,7 +357,7 @@
 
 .form-gate-open-count span {
   color: var(--text-main);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.06em;

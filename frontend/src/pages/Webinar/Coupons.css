@@ -1,6 +1,6 @@
 .coupons-page { width: 100%; max-width: 1440px; margin: 0 auto; }
 .coupons-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
-.coupons-eyebrow { color: var(--primary); font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
+.coupons-eyebrow { color: var(--primary); font-family: "Hanken Grotesk", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
 .coupons-header h1 { margin: 4px 0; color: var(--text-main); font-family: "Hanken Grotesk", sans-serif; font-size: clamp(34px, 4vw, 48px); letter-spacing: -.035em; line-height: 1.08; }
 .coupons-header p { max-width: 760px; color: var(--text-muted); }
 .coupons-create { display: inline-flex; min-height: 46px; flex: 0 0 auto; align-items: center; gap: 8px; padding: 0 20px; border: 0; border-radius: 11px; background: var(--primary); box-shadow: 0 8px 20px color-mix(in srgb, var(--primary) 22%, transparent); color: #fff; cursor: pointer; font-weight: 700; }
@@ -18,8 +18,8 @@
 .coupon-card:hover { transform: translateY(-3px); box-shadow: 0 15px 30px rgba(15, 23, 42, .1); }
 .coupon-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .coupon-card-top > div { display: flex; flex-direction: column; }
-.coupon-card-top small { color: var(--text-muted); font-family: "JetBrains Mono", monospace; font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
-.coupon-card-top strong { color: var(--text-main); font-family: "JetBrains Mono", monospace; font-size: 18px; letter-spacing: .04em; }
+.coupon-card-top small { color: var(--text-muted); font-family: "Hanken Grotesk", sans-serif; font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
+.coupon-card-top strong { color: var(--text-main); font-family: "Hanken Grotesk", sans-serif; font-size: 18px; letter-spacing: .04em; }
 .coupon-state { padding: 5px 9px; border-radius: 999px; font-size: 9px; font-weight: 800; text-transform: uppercase; }
 .coupon-state.is-active { background: #dff7ea; color: #087f5b; }
 .coupon-state.is-scheduled { background: #e4e5ff; color: #3930b4; }
@@ -29,7 +29,7 @@
 .coupon-discount strong { color: var(--primary); font-family: "Hanken Grotesk", sans-serif; font-size: 39px; line-height: 1; }
 .coupon-discount span { color: var(--text-muted); font-weight: 700; }
 .coupon-target { display: flex; flex-direction: column; gap: 4px; padding: 13px; border-radius: 10px; background: var(--surface-container-low); }
-.coupon-target span { color: var(--primary); font-family: "JetBrains Mono", monospace; font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.coupon-target span { color: var(--primary); font-family: "Hanken Grotesk", sans-serif; font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .coupon-target strong { overflow: hidden; color: var(--text-main); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .coupon-schedule { display: flex; flex-direction: column; gap: 7px; margin: 16px 0; }
 .coupon-schedule p { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 11px; }

@@ -16,7 +16,7 @@
   display: block;
   margin-bottom: 5px;
   color: var(--primary);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -46,7 +46,7 @@
   background: var(--surface-container-lowest);
   color: var(--text-muted);
   cursor: pointer;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
@@ -107,7 +107,7 @@
 
 .career-metric-card.tone-indigo .career-metric-topline > span {
   background: #ecebff;
-  color: #4f46e5;
+  color: #fe7a00;
 }
 
 .career-metric-card.tone-purple .career-metric-topline > span {
@@ -125,7 +125,7 @@
   border-radius: 999px;
   background: var(--surface-container-low);
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
@@ -133,7 +133,7 @@
 
 .career-metric-card > p {
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.07em;
@@ -177,7 +177,7 @@
   background: var(--surface-container-lowest);
   color: var(--text-muted);
   cursor: pointer;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 9px;
   font-weight: 700;
   transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
@@ -257,7 +257,7 @@
 .career-table-card th {
   padding: 13px 17px;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.09em;
@@ -309,7 +309,7 @@
 .career-email {
   max-width: 210px;
   overflow: hidden;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -356,7 +356,7 @@
 }
 
 .career-date {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   white-space: nowrap;
 }
 

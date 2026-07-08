@@ -1,6 +1,6 @@
 import { useContext, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, LoaderCircle, Lock, User } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, LoaderCircle, Lock, User } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import './Login.css';
 
@@ -36,6 +36,7 @@ const Login = () => {
   return (
     <main className="login-page">
       <div className="login-ambient" aria-hidden="true" />
+
       <section className="login-shell" aria-labelledby="login-title">
         <header className="login-brand">
           <img src="/favicon.svg" alt="Tiesverse logo" />
@@ -55,11 +56,11 @@ const Login = () => {
             <label className="login-field">
               <span>Username</span>
               <div className="login-input">
-                <User size={19} aria-hidden="true" />
+                <User size={18} aria-hidden="true" />
                 <input
                   type="text"
                   autoComplete="username"
-                  placeholder="your username"
+                  placeholder="e-mail address"
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
                   required
@@ -70,11 +71,11 @@ const Login = () => {
             <label className="login-field">
               <span>Password</span>
               <div className="login-input">
-                <Lock size={19} aria-hidden="true" />
+                <Lock size={18} aria-hidden="true" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
-                  placeholder="••••••••"
+                  placeholder="password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
@@ -85,14 +86,18 @@ const Login = () => {
                   onClick={() => setShowPassword((current) => !current)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </label>
 
             <button className="login-submit" type="submit" disabled={submitting}>
-              {submitting && <LoaderCircle size={19} className="login-spinner" aria-hidden="true" />}
-              {submitting ? 'Authenticating…' : 'Log In'}
+              <span className="login-submit-label">{submitting ? 'Authenticating…' : 'Log in'}</span>
+              <span className="login-submit-arrow">
+                {submitting
+                  ? <LoaderCircle size={18} className="login-spinner" aria-hidden="true" />
+                  : <ArrowRight size={18} aria-hidden="true" />}
+              </span>
             </button>
 
             <Link to="/forgot-password" className="login-forgot">Forgot password?</Link>

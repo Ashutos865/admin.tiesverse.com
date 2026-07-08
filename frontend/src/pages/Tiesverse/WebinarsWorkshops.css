@@ -115,7 +115,7 @@
   border-radius: 5px;
   background: var(--surface-container-high);
   color: var(--text-muted);
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Hanken Grotesk", sans-serif;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: .075em;
@@ -132,7 +132,7 @@
   padding: 5px 12px;
   border: 1px solid transparent;
   border-radius: 999px;
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Hanken Grotesk", sans-serif;
   font-size: 10px;
   font-weight: 600;
   line-height: 1.2;

@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   CheckCircle2,
+  Database,
   Download,
   FileSpreadsheet,
   LoaderCircle,
@@ -11,6 +12,7 @@ import {
   Sparkles,
   UserRound,
 } from 'lucide-react';
+import { getDataSources, getDataSourceRows } from '../../apiClient';
 import {
   downloadCertificateAsset,
   downloadCertificateRecordsCsv,
@@ -23,7 +25,7 @@ import {
   importCertificateRecords,
   markCertificateRecordsEmailed,
 } from './certificateApi';
-import { readCsvHeaders } from './certificateUtils';
+import { readCsvHeaders, buildCertificateData, parseCsvRows, toCsv } from './certificateUtils';
 import './Certificates.css';
 
 const defaultMailTemplate = {
@@ -48,6 +50,10 @@ const defaultMailTemplate = {
   attachment_filename: 'certificate-{{participant_name}}.pdf',
 };
 
+const connTabOn = { borderColor: '#fe7a00', color: '#fe7a00', background: 'rgba(254,122,0,.08)' };
+const connFieldStyle = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, fontWeight: 600, color: '#6b7280' };
+const connInputStyle = { padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: '#fff', color: '#111827', minWidth: 180 };
+
 const CertificateGenerate = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -69,6 +75,15 @@ const CertificateGenerate = () => {
   const [eventKey, setEventKey] = useState(presetEventKey);
   const [sourceRows, setSourceRows] = useState([]);
   const [sourceLoading, setSourceLoading] = useState(false);
+  // Unified data-source connector (table OR CSV) with variable->column mapping
+  const [dsList, setDsList] = useState([]);
+  const [connKind, setConnKind] = useState('table');   // 'table' | 'csv'
+  const [dsId, setDsId] = useState('');
+  const [dsEvent, setDsEvent] = useState('');
+  const [dsLoading, setDsLoading] = useState(false);
+  const [connHeaders, setConnHeaders] = useState([]);
+  const [connRows, setConnRows] = useState([]);
+  const [connMapping, setConnMapping] = useState({});
 
   useEffect(() => {
     getCertificateTemplate(id)
@@ -88,6 +103,8 @@ const CertificateGenerate = () => {
       })
       .catch((caught) => setError(caught?.message || 'Could not load generation form.'));
   }, [id]);
+
+  useEffect(() => { getDataSources().then((r) => setDsList(r?.sources || [])).catch(() => {}); }, []);
 
   useEffect(() => {
     getCertificateSources(id)
@@ -215,7 +232,8 @@ const CertificateGenerate = () => {
     setError('');
     setResult(null);
     try {
-      const generated = await generateCertificate(id, values);
+      // Fill every declared variable (value -> default -> blank) so the PDF never shows a raw token.
+      const generated = await generateCertificate(id, buildCertificateData(template?.variables, values));
       setResult({ type: 'single', ...generated });
     } catch (caught) {
       setError(caught?.message || 'Certificate generation failed.');
@@ -240,6 +258,58 @@ const CertificateGenerate = () => {
     } finally {
       setBusy(false);
     }
+  };
+
+  const dsActive = dsList.find((s) => s.id === dsId) || null;
+
+  const applyConn = (columns, rows) => {
+    setConnHeaders(columns); setConnRows(rows);
+    const norm = (x) => String(x).toLowerCase().replace(/[^a-z0-9]/g, '');
+    setConnMapping(Object.fromEntries(manualVariables.map((v) => [v.name, columns.find((h) => norm(h) === norm(v.name)) || ''])));
+  };
+
+  const loadConnTable = async () => {
+    if (!dsId) return;
+    if (dsActive?.needs_event && !dsEvent) { setError('Pick an event first.'); return; }
+    setDsLoading(true); setError('');
+    const params = dsActive?.needs_event ? { event_key: dsEvent } : {};
+    const res = await getDataSourceRows(dsId, params).catch(() => ({}));
+    setDsLoading(false);
+    if (!res?.rows?.length) { setError(res?.error || 'No rows found in that table.'); return; }
+    applyConn(res.columns?.length ? res.columns : Object.keys(res.rows[0]), res.rows);
+  };
+
+  const onConnCsv = async (file) => {
+    if (!file) return;
+    setError('');
+    try {
+      const { columns, rows } = parseCsvRows(await file.text());
+      if (!rows.length) { setError('That CSV has no data rows.'); return; }
+      applyConn(columns, rows);
+    } catch { setError('Could not read that CSV.'); }
+  };
+
+  const runConnected = async () => {
+    if (!connRows.length) return;
+    setBusy(true); setProgress(2); setError(''); setResult(null);
+    try {
+      const varNames = manualVariables.map((v) => v.name);
+      const allCols = (template?.variables || []).map((v) => v.name);
+      const cols = allCols.length ? allCols : varNames;
+      // Map each row's chosen columns to the variable names, fill defaults, then hand a
+      // normalized CSV (headers = variable names) to the batch generator.
+      const normalized = connRows.map((r) => {
+        const mapped = Object.fromEntries(varNames.map((n) => [n, r[connMapping[n]] ?? '']));
+        return buildCertificateData(template?.variables, mapped);
+      });
+      const file = new File([toCsv(cols, normalized)], 'connected-data.csv', { type: 'text/csv' });
+      const generated = await generateCertificateBatch(id, file, setProgress);
+      setResult({ type: 'batch', ...generated });
+      setProgress(100);
+    } catch (caught) {
+      setError(caught?.message || 'Generation failed.');
+      setProgress(0);
+    } finally { setBusy(false); }
   };
 
   const chooseMailFile = async (file) => {
@@ -396,6 +466,58 @@ const CertificateGenerate = () => {
       {mode === 'batch' && (
         <>
           {sourcePicker}
+          <div className="certificate-generator-card">
+            <div className="certificate-generator-title"><span><Database /></span><div><h2>Connect a data source</h2><p>Pull rows from a system table or a CSV, map each variable to a field, then generate.</p></div></div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <button type="button" className="certificate-secondary-action" style={connKind === 'table' ? connTabOn : undefined} onClick={() => setConnKind('table')}><Database size={15} /> From a table</button>
+              <button type="button" className="certificate-secondary-action" style={connKind === 'csv' ? connTabOn : undefined} onClick={() => setConnKind('csv')}><FileSpreadsheet size={15} /> Upload CSV</button>
+            </div>
+            {connKind === 'table' ? (
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <label style={connFieldStyle}>Table
+                  <select value={dsId} onChange={(e) => { setDsId(e.target.value); setDsEvent(''); }} style={connInputStyle}>
+                    <option value="">Choose a table…</option>
+                    {dsList.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </select>
+                </label>
+                {dsActive?.needs_event && (
+                  <label style={connFieldStyle}>Event
+                    <select value={dsEvent} onChange={(e) => setDsEvent(e.target.value)} style={connInputStyle}>
+                      <option value="">Choose an event…</option>
+                      {(dsActive.events || []).map((ev) => <option key={ev.key} value={ev.key}>{ev.title} ({ev.count})</option>)}
+                    </select>
+                  </label>
+                )}
+                <button type="button" className="certificate-primary-action" disabled={!dsId || dsLoading} onClick={loadConnTable}>{dsLoading ? <LoaderCircle className="certificate-spin" /> : <Database />} Load</button>
+              </div>
+            ) : (
+              <label className="certificate-file-picker">
+                <FileSpreadsheet />
+                <strong>Choose CSV file</strong>
+                <span>Any columns — you map them below.</span>
+                <input hidden type="file" accept=".csv,text/csv" onChange={(e) => onConnCsv(e.target.files?.[0] || null)} />
+              </label>
+            )}
+            {connHeaders.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}><strong style={{ color: '#111827' }}>{connRows.length}</strong> rows loaded · map each variable to a column:</div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {manualVariables.map((v) => (
+                    <div key={v.name} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <code style={{ minWidth: 150, fontSize: 12.5, color: '#fe7a00' }}>{`{{${v.name}}}`}</code>
+                      <span style={{ color: '#9ca3af' }}>←</span>
+                      <select value={connMapping[v.name] || ''} onChange={(e) => setConnMapping((m) => ({ ...m, [v.name]: e.target.value }))} style={{ ...connInputStyle, flex: 1 }}>
+                        <option value="">— {v.default_value ? `default: ${v.default_value}` : 'blank'} —</option>
+                        {connHeaders.map((h) => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                  {manualVariables.length === 0 && <p className="certificate-muted">This template has no fields to map.</p>}
+                </div>
+                <button type="button" className="certificate-primary-action" style={{ marginTop: 14 }} disabled={busy} onClick={runConnected}>{busy ? <LoaderCircle className="certificate-spin" /> : <Sparkles />} Generate {connRows.length} certificate{connRows.length === 1 ? '' : 's'}</button>
+              </div>
+            )}
+          </div>
           <div className="certificate-generator-card">
             <div className="certificate-generator-title"><span><FileSpreadsheet /></span><div><h2>Generate from CSV</h2><p>Each row becomes one certificate inside a downloadable ZIP archive.</p></div></div>
             <button type="button" className="certificate-secondary-action" onClick={downloadCsvTemplate}><Download /> Download CSV template</button>

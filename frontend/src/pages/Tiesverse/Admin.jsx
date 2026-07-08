@@ -62,7 +62,7 @@ const parseMeta = (raw) => {
 };
 
 const AVATAR_COLORS = [
-    '#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#14b8a6','#f97316',
+    '#fe7a00','#f59e0b','#f97316','#ec4899','#e11d48','#14b8a6','#10b981','#0ea5e9','#ef4444',
 ];
 const avatarColor = (name = '') => {
     let h = 0;
@@ -423,13 +423,13 @@ const Admin = ({ tab = 'articles' }) => {
         return (
             <div key={member.id} style={{
                 display: 'flex', alignItems: 'center', gap: '16px',
-                padding: '12px 18px', borderRadius: '10px',
-                background: 'var(--surface-container-low)',
-                border: '1px solid var(--outline-variant)',
-                transition: 'border-color 0.18s, background 0.18s',
+                padding: '13px 18px', borderRadius: '14px',
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                transition: 'border-color 0.18s, background 0.18s, box-shadow 0.18s',
             }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-container)'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--primary) 35%, transparent)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface-container-low)'; e.currentTarget.style.borderColor = 'var(--outline-variant)'; }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--primary) 45%, transparent)'; e.currentTarget.style.boxShadow = '0 8px 22px -14px rgba(150,90,30,0.35)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none'; }}
             >
                 {/* Avatar */}
                 <div style={{

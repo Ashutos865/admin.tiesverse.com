@@ -2,7 +2,7 @@ from django.contrib.auth.models import User, Permission
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Setting, UserProfile, EmailTemplate, EmailCampaign, FeaturedContent
+from .models import Setting, UserProfile, EmailTemplate, EmailCampaign, FeaturedContent, EmailDraft, EmailSendLog, SiteNavCategory
 
 
 class PermissionSerializer(serializers.ModelSerializer):
@@ -20,7 +20,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = UserProfile
         fields = (
             'display_name', 'bio', 'email_notifications', 'push_notifications',
-            'weekly_reports', 'two_factor_enabled', 'session_timeout', 'theme', 'accent_color'
+            'weekly_reports', 'two_factor_enabled', 'session_timeout', 'theme', 'accent_color',
+            'avatar_url',
         )
 
 
@@ -54,6 +55,13 @@ class FeaturedContentSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'created_at', 'updated_at')
 
 
+class SiteNavCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SiteNavCategory
+        fields = '__all__'
+        read_only_fields = ('id', 'created_at', 'updated_at')
+
+
 class UserSerializer(serializers.ModelSerializer):
     """
     Handles user CRUD with an optional 'permissions' field.
@@ -68,18 +76,30 @@ class UserSerializer(serializers.ModelSerializer):
         default=[]
     )
     user_permissions = serializers.SerializerMethodField(read_only=True)
+    group_permissions = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = User
         fields = (
             'id', 'username', 'email', 'is_staff', 'is_superuser',
-            'is_active', 'password', 'permissions', 'user_permissions', 'profile'
+            'is_active', 'password', 'permissions', 'user_permissions',
+            'group_permissions', 'profile'
         )
         extra_kwargs = {'password': {'write_only': True}}
 
     def get_user_permissions(self, obj):
-        """Return the list of permission codenames assigned to this user."""
+        """Direct permissions assigned to this user (editable in the matrix)."""
         return list(obj.user_permissions.values_list('codename', flat=True))
+
+    def get_group_permissions(self, obj):
+        """Permissions the user INHERITS from their role/group (e.g. a Team Lead's
+        default HR-view access). These are granted via the Django Group, so they
+        won't appear in `user_permissions` — the Permissions matrix shows them as
+        granted (from role), read-only, so 'default access' is visible/marked."""
+        return list(
+            Permission.objects.filter(group__user=obj)
+            .values_list('codename', flat=True).distinct()
+        )
 
     def create(self, validated_data):
         permission_codenames = validated_data.pop('permissions', [])
@@ -178,3 +198,20 @@ class SettingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Setting
         fields = ['key', 'value']
+
+
+class EmailDraftSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmailDraft
+        fields = ['id', 'name', 'payload', 'created_by', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+
+
+class EmailSendLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmailSendLog
+        fields = [
+            'id', 'recipient_email', 'recipient_name', 'subject', 'status', 'error',
+            'certificate_id', 'message_id', 'context', 'sent_by', 'sent_at',
+        ]
+        read_only_fields = fields

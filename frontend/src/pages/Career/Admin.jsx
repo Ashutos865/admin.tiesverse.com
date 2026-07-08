@@ -183,7 +183,7 @@ function CertCanvas({ candidate }) {
         ctx.fillRect(0, 0, W, H);
 
         // Outer border
-        ctx.strokeStyle = '#3525cd';
+        ctx.strokeStyle = '#fe7a00';
         ctx.lineWidth = 4;
         ctx.strokeRect(14, 14, W - 28, H - 28);
         // Inner border
@@ -193,12 +193,12 @@ function CertCanvas({ candidate }) {
 
         // Corner ornaments
         [[ 14, 14], [W-14, 14], [14, H-14], [W-14, H-14]].forEach(([x, y]) => {
-            ctx.fillStyle = '#3525cd';
+            ctx.fillStyle = '#fe7a00';
             ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
         });
 
         // Header block
-        ctx.fillStyle = '#3525cd';
+        ctx.fillStyle = '#fe7a00';
         ctx.fillRect(0, 0, W, 72);
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 13px "Inter", sans-serif';
@@ -235,7 +235,7 @@ function CertCanvas({ candidate }) {
         ctx.font = '13px "Inter", sans-serif';
         ctx.fillText('has been selected for the role of', W / 2, 220);
 
-        ctx.fillStyle = '#3525cd';
+        ctx.fillStyle = '#fe7a00';
         ctx.font = 'bold 22px Georgia, serif';
         ctx.fillText(candidate.roles || 'Intern / Associate', W / 2, 258);
 
@@ -251,7 +251,7 @@ function CertCanvas({ candidate }) {
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(W / 2, 375, 38, 0, Math.PI * 2); ctx.stroke();
         ctx.beginPath(); ctx.arc(W / 2, 375, 32, 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = '#3525cd';
+        ctx.fillStyle = '#fe7a00';
         ctx.font = 'bold 11px "Inter", sans-serif';
         ctx.fillText('OFFICIAL', W / 2, 371);
         ctx.fillText('SEAL', W / 2, 385);

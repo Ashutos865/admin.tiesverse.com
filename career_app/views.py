@@ -5,7 +5,7 @@ from django.contrib.auth.models import User, Group
 from django.http import HttpResponse, Http404
 from django.utils import timezone
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import DjangoModelPermissions, IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,14 +13,15 @@ from rest_framework.views import APIView
 from .models import (
     Position, Enrollment, OfferLetter, HRDepartment, OnboardingSubmission,
     MemberAccount, DocumentAuditLog, AttendanceRecord, LeaveRequest, Asset, Task,
-    OffboardingRequest, WeeklyUpdate, SelfSignup,
+    OffboardingRequest, WeeklyUpdate, SelfSignup, Policy, Form, FormResponse,
 )
 from .serializers import (
     PositionSerializer, EnrollmentSerializer, OfferLetterSerializer,
     HRDepartmentSerializer, OnboardingSubmissionSerializer,
     MemberAccountSerializer, DocumentAuditLogSerializer,
     AttendanceRecordSerializer, LeaveRequestSerializer,
-    AssetSerializer, TaskSerializer, OffboardingRequestSerializer,
+    AssetSerializer, TaskSerializer, OffboardingRequestSerializer, PolicySerializer,
+    FormSerializer, PublicFormSerializer, FormResponseSerializer,
 )
 from . import cloudflare_proxy
 from . import access
@@ -40,6 +41,26 @@ class StaffModelPermissions(DjangoModelPermissions):
     }
 
 
+def _perm_denied(request, perm):
+    """Guard for APIView methods that DjangoModelPermissions doesn't cover.
+    Returns a 403 Response if the user lacks `career_app.<perm>`, else None.
+    Superusers always pass. Use: `d = _perm_denied(request, 'add_task'); if d: return d`."""
+    u = request.user
+    if getattr(u, 'is_superuser', False) or u.has_perm(f'career_app.{perm}'):
+        return None
+    return Response({'error': 'You do not have permission to perform this action.'}, status=403)
+
+
+def _task_in_lead_scope(task, member):
+    """True if `task` is within a team lead's scope: assigned to someone on their
+    team, created by them, or targeted at one of their led departments."""
+    return (
+        task.assigned_to_id in access.team_member_ids(member)
+        or task.assigned_by_id == member.id
+        or (task.assigned_to_department in access.led_department_names(member))
+    )
+
+
 def _actor_name(user):
     return user.get_full_name() or user.username
 
@@ -54,25 +75,112 @@ def _generate_password(length=12):
             return pwd
 
 
+ROLE_LABELS = {
+    'intern': 'Intern', 'member': 'Member', 'team_lead': 'Team Lead',
+    'advisory': 'Advisory', 'hr': 'HR', 'admin': 'Admin',
+}
+
+
+def _credentials_email_html(first, role_label, username, password, login_url):
+    """Bespoke, branded credentials email: prominent login-ID + password card,
+    clear CTA, and a security note. Email-safe (table layout, inline styles)."""
+    accent = '#FE7A00'
+    return f"""\
+<!doctype html>
+<html>
+<body style="margin:0;padding:0;background:#f4f5f7;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:32px 12px;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 2px 8px rgba(16,24,40,.06);font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <tr><td style="background:linear-gradient(135deg,#FF9A3D 0%,{accent} 55%,#E85D00 100%);padding:26px 32px;">
+    <span style="font-size:19px;font-weight:800;color:#ffffff;letter-spacing:.01em;">tiesverse</span>
+  </td></tr>
+  <tr><td style="padding:32px 32px 6px;">
+    <h1 style="margin:0 0 6px;font-size:22px;font-weight:800;color:#101014;letter-spacing:-.01em;">Your account is ready</h1>
+    <p style="margin:0;font-size:15px;line-height:1.6;color:#4b5563;">Hi {first}, your Tiesverse portal access has been approved and created. Here are your login details.</p>
+    <p style="margin:14px 0 0;"><span style="display:inline-block;background:#FFE9D3;color:#c2410c;font-size:12px;font-weight:700;padding:5px 12px;border-radius:999px;letter-spacing:.02em;">Role &middot; {role_label}</span></p>
+  </td></tr>
+  <tr><td style="padding:20px 32px 4px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eceef2;border-radius:14px;overflow:hidden;">
+      <tr><td style="padding:16px 20px;background:#fafafa;">
+        <div style="font-size:11px;font-weight:700;color:#8a94a6;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Login ID</div>
+        <div style="font-size:17px;font-weight:700;color:#101014;font-family:Menlo,Consolas,monospace;word-break:break-all;">{username}</div>
+      </td></tr>
+      <tr><td style="padding:16px 20px;border-top:1px solid #eceef2;">
+        <div style="font-size:11px;font-weight:700;color:#8a94a6;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Temporary password</div>
+        <div style="font-size:17px;font-weight:700;color:{accent};font-family:Menlo,Consolas,monospace;letter-spacing:.5px;word-break:break-all;">{password}</div>
+      </td></tr>
+    </table>
+  </td></tr>
+  <tr><td style="padding:22px 32px 6px;">
+    <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+      <td style="border-radius:12px;background:{accent};">
+        <a href="{login_url}" target="_blank" style="display:inline-block;padding:13px 30px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:12px;">Log in to the portal &rarr;</a>
+      </td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="padding:12px 32px 4px;">
+    <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;background:#fff7ed;border:1px solid #ffedd5;border-radius:10px;padding:12px 14px;">
+      <strong style="color:#c2410c;">Keep this safe.</strong> For your security, please change your password right after your first login.
+    </p>
+  </td></tr>
+  <tr><td style="padding:18px 32px 30px;">
+    <p style="margin:0;font-size:14px;line-height:1.6;color:#374151;">Warm regards,<br><strong>Tiesverse HR Team</strong></p>
+  </td></tr>
+  <tr><td style="padding:18px 32px;background:#fafafa;border-top:1px solid #eef0f3;">
+    <p style="margin:0;font-size:12px;color:#9ca3af;">&copy; Tiesverse. This is an automated message, please do not reply.</p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
+
+
 def _send_credentials_email(email, name, username, password, portal_role):
-    """Send login credentials to a newly verified member via the managed
-    'onboarding_credentials' template."""
+    """Send a member their portal login ID + temporary password in the bespoke
+    branded format. Sent directly via SES (enabled=True) so the layout is
+    guaranteed regardless of the managed-template row's state."""
     from django.conf import settings as dj_settings
-    from config.email_templates import send_template_email
+    from config.email_utils import send_email
 
-    role_label = dict([
-        ('intern', 'Intern'), ('member', 'Member'), ('team_lead', 'Team Lead'),
-        ('advisory', 'Advisory'), ('hr', 'HR'), ('admin', 'Admin'),
-    ]).get(portal_role, (portal_role or 'Member').title())
+    role_label = ROLE_LABELS.get(portal_role, (portal_role or 'Member').title())
+    login_url = f"{getattr(dj_settings, 'ADMIN_PORTAL_URL', 'https://admin.tiesverse.com').rstrip('/')}/login"
+    first = (name or 'there').split()[0] if name else 'there'
 
-    login_url = f"{getattr(dj_settings, 'ADMIN_PORTAL_URL', '').rstrip('/')}/login"
-    send_template_email('onboarding_credentials', email, {
-        'name': name or 'there',
-        'role': role_label,
-        'username': username,
-        'password': password,
-        'login_url': login_url,
-    })
+    html = _credentials_email_html(first, role_label, username, password, login_url)
+    text = (
+        f"Hi {first},\n\n"
+        f"Your Tiesverse portal account is ready.\n\n"
+        f"Login ID: {username}\n"
+        f"Temporary password: {password}\n"
+        f"Role: {role_label}\n\n"
+        f"Sign in: {login_url}\n\n"
+        f"For your security, please change your password after your first login.\n\n"
+        f"Tiesverse HR Team"
+    )
+    return send_email(email, 'Your Tiesverse portal login', html, text_body=text, enabled=True)
+
+
+def _reset_password_and_send(account):
+    """Reset a provisioned member's password to a fresh temp one and email it.
+    Stored passwords are one-way hashed, so re-sending means re-issuing. Returns
+    the username on success, or None if skipped (staff/superuser or no email)."""
+    user = getattr(account, 'user', None)
+    sub = getattr(account, 'submission', None)
+    if not user or not sub or user.is_staff or user.is_superuser:
+        return None
+    to_email = sub.candidate_email or user.email
+    if not to_email:
+        return None
+    new_pwd = _generate_password()
+    user.set_password(new_pwd)
+    user.save(update_fields=['password'])
+    _send_credentials_email(
+        to_email, sub.candidate_name or user.get_full_name(),
+        user.username, new_pwd, sub.portal_role or 'intern',
+    )
+    return user.username
 
 
 GROUP_NAME_MAP = {
@@ -256,7 +364,11 @@ class OfferLetterViewSet(viewsets.ModelViewSet):
 class HRDepartmentViewSet(viewsets.ModelViewSet):
     queryset = HRDepartment.objects.all()
     serializer_class = HRDepartmentSerializer
-    permission_classes = [IsAuthenticated]
+    # Was IsAuthenticated only (any logged-in user could create/edit/delete
+    # departments). Now: read needs view_hrdepartment, and create/edit/delete
+    # need add/change/delete_hrdepartment — i.e. HR/Admin only. Team Leads (view
+    # only) can't manage departments, and the page is hidden from them.
+    permission_classes = [IsAuthenticated, StaffModelPermissions]
 
 
 # ── Onboarding — email helper ─────────────────────────────────────────────────
@@ -634,6 +746,7 @@ class MeView(APIView):
             'scope': scope,                       # 'all' | 'team' | 'self'
             'is_lead': scope == 'team',
             'is_advisory': _is_advisory(request.user),
+            'is_developer': _is_developer(request.user),
             'is_member': member is not None,
             'member': OnboardingSubmissionSerializer(member).data if member else None,
             'led_departments': sorted(access.led_department_names(member)) if member else [],
@@ -771,6 +884,9 @@ class AttendanceListView(APIView):
 
     def post(self, request):
         """HR/admin manually creates an attendance record."""
+        denied = _perm_denied(request, 'add_attendancerecord')   # HR/Admin only
+        if denied:
+            return denied
         ser = AttendanceRecordSerializer(data=request.data)
         if ser.is_valid():
             ser.save()
@@ -835,7 +951,14 @@ class AttendanceCheckOutView(APIView):
 
         record.check_out = timezone.now()
         record.work_report = work_report
-        record.approval_status = AttendanceRecord.APPROVAL_PENDING
+        # Team leads / advisory mark their own attendance without needing review.
+        from .work_sessions import member_self_approves
+        if member_self_approves(sub):
+            record.approval_status = AttendanceRecord.APPROVAL_APPROVED
+            record.approved_by_name = 'Auto (team lead / advisory)'
+            record.approved_at = timezone.now()
+        else:
+            record.approval_status = AttendanceRecord.APPROVAL_PENDING
         record.save()
         return Response(AttendanceRecordSerializer(record).data)
 
@@ -885,6 +1008,14 @@ class AttendanceDetailView(APIView):
             record = AttendanceRecord.objects.get(pk=pk)
         except AttendanceRecord.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
+        # Editing an attendance record needs change_attendancerecord, and a
+        # team-scoped lead may only edit their OWN team's records.
+        denied = _perm_denied(request, 'change_attendancerecord')
+        if denied:
+            return denied
+        scope, me = access.get_access_scope(request.user)
+        if scope == 'team' and (me is None or record.member_id not in access.team_member_ids(me)):
+            return Response({'error': 'You can only edit your own team.'}, status=403)
         ser = AttendanceRecordSerializer(record, data=request.data, partial=True)
         if ser.is_valid():
             ser.save()
@@ -1264,6 +1395,7 @@ class TaskListView(APIView):
         dept = request.query_params.get('dept')
         task_status = request.query_params.get('status')
         assigned_by = request.query_params.get('assigned_by')
+        project_id = request.query_params.get('project')
 
         if member_id:
             qs = qs.filter(assigned_to_id=member_id)
@@ -1273,6 +1405,21 @@ class TaskListView(APIView):
             qs = qs.filter(status=task_status)
         if assigned_by:
             qs = qs.filter(assigned_by_id=assigned_by)
+        if project_id:
+            qs = qs.filter(project_id=project_id)
+        project_team_id = request.query_params.get('project_team')
+        if project_team_id:
+            qs = qs.filter(project_team_id=project_team_id)
+
+        # A project's board shows the whole board to every participant (project
+        # visibility is already scoped), so sub-team-assigned tasks are visible.
+        if project_id:
+            from .project_views import visible_project_ids
+            try:
+                if int(project_id) in visible_project_ids(request.user):
+                    return Response(TaskSerializer(qs, many=True).data)
+            except (TypeError, ValueError):
+                pass
 
         # Scope: a task belongs to you if it's assigned to you, to one of your
         # departments, or (for leads) to anyone on your team or created by you.
@@ -1293,7 +1440,28 @@ class TaskListView(APIView):
         return Response(TaskSerializer(qs, many=True).data)
 
     def post(self, request):
+        # Assigning tasks needs add_task (members can't). A team-scoped lead may
+        # only assign to their OWN team members / their led departments.
+        denied = _perm_denied(request, 'add_task')
+        if denied:
+            return denied
         data = request.data.copy()
+        scope, me = access.get_access_scope(request.user)
+        if scope == 'team' and me is not None:
+            led = access.led_department_names(me)
+            team_ids = access.team_member_ids(me)
+            to_raw = data.get('assigned_to')
+            to_dept = data.get('assigned_to_department')
+            ok = False
+            try:
+                if to_raw and int(to_raw) in team_ids:
+                    ok = True
+            except (TypeError, ValueError):
+                pass
+            if to_dept and to_dept in led:
+                ok = True
+            if not ok:
+                return Response({'error': 'You can only assign tasks to your own team.'}, status=403)
         # Tag which admin created this task
         ser = TaskSerializer(data=data)
         if ser.is_valid():
@@ -1318,7 +1486,8 @@ class TaskDetailView(APIView):
         except Task.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
 
-        # A self-scope member may only update their own (or their dept's) tasks.
+        # A self-scope member may only update their own (or their dept's) tasks;
+        # a team-scoped lead may only touch their own team's tasks.
         scope, me = access.get_access_scope(request.user)
         if scope == 'self':
             own = me and (
@@ -1327,6 +1496,8 @@ class TaskDetailView(APIView):
             )
             if not own:
                 return Response({'error': 'You can only update your own tasks.'}, status=403)
+        elif scope == 'team' and me is not None and not _task_in_lead_scope(task, me):
+            return Response({'error': "You can only update your own team's tasks."}, status=403)
 
         data = request.data.copy()
         if data.get('status') == 'done' and not task.completed_at:
@@ -1343,10 +1514,12 @@ class TaskDetailView(APIView):
             task = Task.objects.get(pk=pk)
         except Task.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
-        # Members can't delete tasks — only leads / org-wide roles.
-        scope, _ = access.get_access_scope(request.user)
+        # Members can't delete tasks; leads only their own team's; org-wide any.
+        scope, me = access.get_access_scope(request.user)
         if scope == 'self':
             return Response({'error': 'You are not allowed to delete tasks.'}, status=403)
+        if scope == 'team' and me is not None and not _task_in_lead_scope(task, me):
+            return Response({'error': "You can only delete your own team's tasks."}, status=403)
         task.delete()
         return Response(status=204)
 
@@ -1559,6 +1732,12 @@ def _is_advisory(user):
     return bool(m and (m.portal_role or '') in ('advisory', 'admin'))
 
 
+def _is_developer(user):
+    """True for the developer account(s) + superusers (see DEVELOPER_EMAILS)."""
+    from config.tech_stats import is_developer
+    return is_developer(user)
+
+
 class AdvisoryTaskOversightView(APIView):
     """Advisory-only: every completed task with its team lead + completer + detail."""
     permission_classes = [IsAuthenticated]
@@ -1760,6 +1939,9 @@ class SignupListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        denied = _perm_denied(request, 'add_onboardingsubmission')   # HR/Admin only
+        if denied:
+            return denied
         qs = SelfSignup.objects.exclude(
             status__in=[SelfSignup.STATUS_APPROVED, SelfSignup.STATUS_REJECTED]
         ).order_by('-created_at')[:500]
@@ -1780,6 +1962,11 @@ class ApproveSignupView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
+        # Approving provisions a login and assigns a role (incl. possibly admin),
+        # so it must be HR/Admin only — never a Team Lead or ordinary member.
+        denied = _perm_denied(request, 'add_onboardingsubmission')
+        if denied:
+            return denied
         try:
             signup = SelfSignup.objects.get(pk=pk)
         except SelfSignup.DoesNotExist:
@@ -1803,6 +1990,17 @@ class ApproveSignupView(APIView):
         )
         _ensure_hr_departments(departments)
         _provision_member_account(sub, request.user)
+        # Carry the photo they uploaded at signup into their portal avatar.
+        if signup.photo_url:
+            try:
+                from accounts_app.models import UserProfile
+                acc = MemberAccount.objects.filter(submission=sub).first()
+                if acc and acc.user_id:
+                    prof, _ = UserProfile.objects.get_or_create(user_id=acc.user_id)
+                    prof.avatar_url = signup.photo_url
+                    prof.save(update_fields=['avatar_url'])
+            except Exception:  # noqa: BLE001
+                pass
 
         signup.status = SelfSignup.STATUS_APPROVED
         signup.reviewed_by_user = request.user
@@ -1815,6 +2013,9 @@ class RejectSignupView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
+        denied = _perm_denied(request, 'add_onboardingsubmission')   # HR/Admin only
+        if denied:
+            return denied
         try:
             signup = SelfSignup.objects.get(pk=pk)
         except SelfSignup.DoesNotExist:
@@ -1824,3 +2025,386 @@ class RejectSignupView(APIView):
         signup.reviewed_at = timezone.now()
         signup.save(update_fields=['status', 'reviewed_by_user', 'reviewed_at'])
         return Response({'status': 'rejected'})
+
+
+class ResendCredentialsView(APIView):
+    """HR/admin: (re)send portal login details to provisioned members. Because
+    stored passwords are one-way hashed and cannot be read back, this RESETS the
+    password to a fresh one and emails it in the new branded format.
+    POST {submission_id: N} for one member, or {all: true} for every member."""
+    permission_classes = [IsAuthenticated]
+
+    def _allowed(self, user):
+        return (
+            user.is_superuser
+            or user.has_perm('career_app.add_onboardingsubmission')
+            or user.has_perm('career_app.change_onboardingsubmission')
+            or _is_advisory(user)
+        )
+
+    def get(self, request):
+        """List the provisioned members eligible to receive login details, so the
+        UI can offer a per-person picker. Staff/superusers are omitted (they are
+        never reset here). `.user` is fetched lazily (cross-DB), never joined."""
+        if not self._allowed(request.user):
+            return Response({'error': 'You do not have permission to do this.'}, status=403)
+        members = []
+        for acc in MemberAccount.objects.select_related('submission').filter(is_active=True):
+            user = acc.user
+            if user.is_staff or user.is_superuser:
+                continue
+            sub = acc.submission
+            members.append({
+                'submission_id': sub.id,
+                'name': sub.candidate_name,
+                'email': sub.candidate_email or user.email,
+                'role': ROLE_LABELS.get(sub.portal_role, (sub.portal_role or 'Member').title()),
+            })
+        members.sort(key=lambda m: (m['name'] or '').lower())
+        return Response({'members': members})
+
+    def post(self, request):
+        if not self._allowed(request.user):
+            return Response({'error': 'You do not have permission to do this.'}, status=403)
+
+        # NOTE: never select_related('user') — User lives in the `default` DB and
+        # MemberAccount in turso_db, so a join would fail. Fetch `.user` lazily.
+        if request.data.get('all'):
+            accounts = MemberAccount.objects.select_related('submission').filter(is_active=True)
+            sent, skipped = 0, 0
+            for acc in accounts:
+                if _reset_password_and_send(acc):
+                    sent += 1
+                else:
+                    skipped += 1
+            return Response({'status': 'ok', 'sent': sent, 'skipped': skipped, 'total': sent + skipped})
+
+        sub_id = request.data.get('submission_id')
+        if not sub_id:
+            return Response({'error': 'submission_id or all is required.'}, status=400)
+        acc = MemberAccount.objects.select_related('submission').filter(submission_id=sub_id).first()
+        if not acc:
+            return Response({'error': 'No portal account exists for this member yet.'}, status=404)
+        username = _reset_password_and_send(acc)
+        if not username:
+            return Response({'error': 'Skipped (staff/superuser accounts are not reset here).'}, status=400)
+        return Response({'status': 'ok', 'sent': 1, 'username': username})
+
+
+class PolicyViewSet(viewsets.ModelViewSet):
+    """Company policies. Everyone (authenticated) can read published policies;
+    only org-wide roles (HR / admin / advisory / superuser) can create/edit."""
+    serializer_class = PolicySerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post', 'patch', 'put', 'delete', 'head', 'options']
+
+    def _can_manage(self):
+        return access.get_access_scope(self.request.user)[0] == 'all'
+
+    def get_queryset(self):
+        qs = Policy.objects.all().order_by('order', '-updated_at')
+        if not self._can_manage():
+            qs = qs.filter(is_published=True)   # members only see published
+        return qs
+
+    def _deny_if_reader(self):
+        if not self._can_manage():
+            return Response({'error': 'Only HR can manage policies.'}, status=403)
+        return None
+
+    def create(self, request, *args, **kwargs):
+        denied = self._deny_if_reader()
+        if denied:
+            return denied
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        denied = self._deny_if_reader()
+        if denied:
+            return denied
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        denied = self._deny_if_reader()
+        if denied:
+            return denied
+        return super().destroy(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        serializer.save(created_by_user=self.request.user)
+
+
+# ---------------------------------------------------------------------------
+# Custom form builder (Google-Forms / Tally style)
+# ---------------------------------------------------------------------------
+import csv as _csv
+import html as _html
+
+
+def _resolve_confirmation_email(form, request, user):
+    """Pick the address to send a submission confirmation to:
+    the identity email supplied on the form, else the logged-in user's email,
+    else the answer to the first Email question in the form."""
+    supplied = (request.data.get('submitter_email') or '').strip()
+    if supplied:
+        return supplied
+    if user and getattr(user, 'email', ''):
+        return user.email
+    answers = request.data.get('answers') or {}
+    if isinstance(answers, dict):
+        for field in (form.schema or []):
+            if field.get('type') == 'email':
+                val = answers.get(str(field.get('id')))
+                if val:
+                    return str(val).strip()
+    return ''
+
+
+def _send_form_confirmation(form, to_email, name, answers):
+    """Email the submitter a branded receipt confirming their response.
+    Never raises — email failures must not break the submission."""
+    try:
+        from config.email_utils import render_email, send_email, verified_sender_domains
+    except Exception:
+        return
+
+    settings_json = form.settings or {}
+    title = form.title or 'our form'
+
+    # Which alias to send from — only honour a custom address under a verified
+    # domain, otherwise fall back to the system default (prevents silent SES
+    # rejections from a typo'd sender).
+    from_addr = None
+    chosen = (settings_json.get('from_email') or '').strip()
+    if chosen and '@' in chosen and chosen.split('@', 1)[1].lower() in verified_sender_domains():
+        from_name = (settings_json.get('from_name') or '').strip()
+        from_addr = f'"{from_name}" <{chosen}>' if from_name else chosen
+    greeting = f"Thanks, {name}!" if name else "Thanks for your response!"
+    paragraphs = [f"We’ve received your response to <strong>{_html.escape(title)}</strong>."]
+    thank_you = settings_json.get('thank_you')
+    if thank_you:
+        paragraphs.append(_html.escape(str(thank_you)))
+
+    # A short receipt of what they submitted.
+    rows = []
+    if isinstance(answers, dict):
+        for field in (form.schema or []):
+            if field.get('type') in ('heading', 'section', 'paragraph'):
+                continue
+            val = answers.get(str(field.get('id')))
+            if val in (None, '', []):
+                continue
+            if isinstance(val, list):
+                val = ', '.join(str(v) for v in val)
+            label = _html.escape(str(field.get('label') or 'Question'))[:80]
+            rows.append((label, _html.escape(str(val))[:200]))
+
+    html_body, text_body = render_email(
+        heading=greeting,
+        paragraphs=paragraphs,
+        info_rows=rows or None,
+        footer_note='If you did not submit this form, you can safely ignore this email.',
+        preheader=f'We received your response to {title}',
+    )
+    send_email(
+        to=to_email,
+        subject=f'We received your response — {title}',
+        html_body=html_body,
+        text_body=text_body,
+        from_email=from_addr,
+    )
+
+
+def _accept_form_response(request, form, is_public):
+    """Shared validation + persistence for both internal and public submissions."""
+    settings_json = form.settings or {}
+
+    if not form.is_published:
+        return Response({'error': 'This form is not accepting responses.'}, status=400)
+    if settings_json.get('accepting') is False:
+        return Response({'error': 'This form is no longer accepting responses.'}, status=400)
+
+    close_date = settings_json.get('close_date')
+    if close_date:
+        try:
+            cd = datetime.date.fromisoformat(str(close_date)[:10])
+            if timezone.now().date() > cd:
+                return Response({'error': 'This form is closed.'}, status=400)
+        except (ValueError, TypeError):
+            pass
+
+    user = request.user if request.user and request.user.is_authenticated else None
+    if settings_json.get('require_login') and not user:
+        return Response({'error': 'You must be logged in to submit this form.'}, status=401)
+
+    # One-response-per-person (only enforceable for logged-in submitters).
+    if settings_json.get('one_response') and user:
+        if FormResponse.objects.filter(form=form, submitted_by_user=user).exists():
+            return Response({'error': 'You have already submitted this form.'}, status=409)
+
+    answers = request.data.get('answers') or {}
+    if not isinstance(answers, dict):
+        return Response({'error': 'Invalid answers payload.'}, status=400)
+
+    # Validate required fields from the schema.
+    missing = []
+    for field in (form.schema or []):
+        if field.get('type') in ('heading', 'section', 'paragraph'):
+            continue
+        if field.get('required'):
+            val = answers.get(str(field.get('id')))
+            if val in (None, '', []) or (isinstance(val, list) and not val):
+                missing.append(field.get('label') or 'Untitled question')
+    if missing:
+        return Response({'error': 'Please answer all required questions.', 'missing': missing}, status=400)
+
+    resp = FormResponse.objects.create(
+        form=form,
+        answers=answers,
+        submitted_by_user=user,
+        submitter_name=(request.data.get('submitter_name') or '')[:255],
+        submitter_email=(request.data.get('submitter_email') or '')[:254],
+    )
+
+    # Send the submitter a confirmation receipt (opt-out via settings).
+    if settings_json.get('send_confirmation', True):
+        to_email = _resolve_confirmation_email(form, request, user)
+        if to_email:
+            _send_form_confirmation(form, to_email, resp.submitter_name, answers)
+
+    return Response({'ok': True, 'id': resp.id,
+                     'thank_you': settings_json.get('thank_you') or ''}, status=201)
+
+
+class FormViewSet(viewsets.ModelViewSet):
+    """Custom forms. HR / advisory / admin build & manage them; published forms
+    can be filled internally (logged-in) or via a public hashed link."""
+    serializer_class = FormSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post', 'patch', 'put', 'delete', 'head', 'options']
+
+    def _can_manage(self):
+        return access.get_access_scope(self.request.user)[0] == 'all'
+
+    def get_queryset(self):
+        return Form.objects.all().order_by('-updated_at')
+
+    def _deny_if_reader(self):
+        if not self._can_manage():
+            return Response({'error': 'Only HR / Advisory can manage forms.'}, status=403)
+        return None
+
+    def list(self, request, *args, **kwargs):
+        denied = self._deny_if_reader()
+        if denied:
+            return denied
+        return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        form = self.get_object()
+        if self._can_manage():
+            return Response(FormSerializer(form).data)
+        # A logged-in member filling an internal form: only if published + internal.
+        if form.is_published and form.visibility == Form.VIS_INTERNAL:
+            return Response(PublicFormSerializer(form).data)
+        return Response({'error': 'This form is not available.'}, status=404)
+
+    def create(self, request, *args, **kwargs):
+        denied = self._deny_if_reader()
+        if denied:
+            return denied
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        denied = self._deny_if_reader()
+        if denied:
+            return denied
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        denied = self._deny_if_reader()
+        if denied:
+            return denied
+        return super().destroy(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        serializer.save(created_by_user=self.request.user)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def submit(self, request, pk=None):
+        """Internal submission by a logged-in member."""
+        form = self.get_object()
+        if not (form.is_published and form.visibility == Form.VIS_INTERNAL) and not self._can_manage():
+            return Response({'error': 'This form is not available.'}, status=404)
+        return _accept_form_response(request, form, is_public=False)
+
+    @action(detail=False, methods=['get'])
+    def senders(self, request):
+        """SES-verified 'from' aliases a form manager can pick for confirmations."""
+        if not self._can_manage():
+            return Response({'error': 'Only HR / Advisory can manage forms.'}, status=403)
+        from config.email_utils import list_ses_senders
+        return Response(list_ses_senders())
+
+    @action(detail=True, methods=['get'])
+    def responses(self, request, pk=None):
+        if not self._can_manage():
+            return Response({'error': 'Only HR / Advisory can view responses.'}, status=403)
+        form = self.get_object()
+        qs = form.responses.all().order_by('-submitted_at')
+        data = FormResponseSerializer(qs, many=True).data
+        return Response({'form': FormSerializer(form).data, 'responses': data})
+
+    @action(detail=True, methods=['get'], url_path='responses-csv')
+    def responses_csv(self, request, pk=None):
+        if not self._can_manage():
+            return Response({'error': 'Only HR / Advisory can export responses.'}, status=403)
+        form = self.get_object()
+        fields = [f for f in (form.schema or [])
+                  if f.get('type') not in ('heading', 'section', 'paragraph')]
+
+        response = HttpResponse(content_type='text/csv')
+        safe_title = ''.join(c for c in (form.title or 'form') if c.isalnum() or c in ' -_').strip() or 'form'
+        response['Content-Disposition'] = 'attachment; filename="' + safe_title + '-responses.csv"'
+        writer = _csv.writer(response)
+
+        header = ['Submitted at', 'Name', 'Email'] + [f.get('label') or 'Untitled' for f in fields]
+        writer.writerow(header)
+        for r in form.responses.all().order_by('submitted_at'):
+            row = [
+                r.submitted_at.strftime('%Y-%m-%d %H:%M') if r.submitted_at else '',
+                r.submitter_name or '',
+                r.submitter_email or '',
+            ]
+            for f in fields:
+                val = (r.answers or {}).get(str(f.get('id')))
+                if isinstance(val, list):
+                    val = ', '.join(str(v) for v in val)
+                row.append('' if val is None else str(val))
+            writer.writerow(row)
+        return response
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_form_view(request, token):
+    """Fetch a published PUBLIC form by its hashed token (no login required)."""
+    form = Form.objects.filter(token=token, is_published=True,
+                               visibility=Form.VIS_PUBLIC).first()
+    if not form:
+        return Response({'error': 'This form is not available.'}, status=404)
+    if (form.settings or {}).get('accepting') is False:
+        return Response({'error': 'This form is no longer accepting responses.',
+                         'closed': True}, status=200)
+    return Response(PublicFormSerializer(form).data)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def public_form_submit(request, token):
+    """Accept a submission for a published PUBLIC form (no login required)."""
+    form = Form.objects.filter(token=token, is_published=True,
+                               visibility=Form.VIS_PUBLIC).first()
+    if not form:
+        return Response({'error': 'This form is not available.'}, status=404)
+    return _accept_form_response(request, form, is_public=True)

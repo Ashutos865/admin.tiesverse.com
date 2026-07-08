@@ -14,7 +14,7 @@
 
 .registration-eyebrow {
   color: var(--primary);
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Hanken Grotesk", sans-serif;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .11em;
@@ -189,7 +189,7 @@
   padding: 12px 18px;
   border-bottom: 1px solid var(--outline-variant);
   color: var(--text-muted);
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Hanken Grotesk", sans-serif;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .06em;

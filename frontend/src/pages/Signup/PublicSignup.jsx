@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { publicSignup, verifySignupOtp } from '../../apiClient';
+import ImageCropper from '../../components/ImageCropper.jsx';
 
 const OTP_LEN = 6;
 const RESEND_SECS = 45;
@@ -54,6 +55,7 @@ export default function PublicSignup() {
   const [email, setEmail] = useState('');
   const [photo, setPhoto] = useState(null);
   const [preview, setPreview] = useState('');
+  const [cropFile, setCropFile] = useState(null);   // raw file awaiting crop
   const [otp, setOtp] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -69,7 +71,13 @@ export default function PublicSignup() {
   const pickPhoto = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    setPhoto(f); setPreview(URL.createObjectURL(f));
+    setCropFile(f);        // open the cropper first
+    e.target.value = '';
+  };
+  const onCropped = (croppedFile) => {
+    setPhoto(croppedFile);
+    setPreview(URL.createObjectURL(croppedFile));
+    setCropFile(null);
   };
 
   const sendCode = useCallback(async () => {
@@ -172,6 +180,7 @@ export default function PublicSignup() {
           )}
         </div>
       </div>
+      {cropFile && <ImageCropper file={cropFile} onCancel={() => setCropFile(null)} onCrop={onCropped} />}
     </div>
   );
 }

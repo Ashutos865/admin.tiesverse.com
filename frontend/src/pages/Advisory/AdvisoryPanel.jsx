@@ -108,10 +108,24 @@ export default function AdvisoryPanel() {
   );
 }
 
+// ISO date of this week's Sunday (weeks run Mon–Sun).
+function thisSundayISO() {
+  const d = new Date();
+  const dow = d.getDay();               // 0=Sun … 6=Sat
+  const add = dow === 0 ? 0 : 7 - dow;  // days until Sunday
+  d.setDate(d.getDate() + add);
+  return d.toISOString().slice(0, 10);
+}
+
 function WeeklyTab({ isAdvisory, isLead, weekly, reload }) {
-  const [form, setForm] = useState({ week_ending: '', summary: '', wins: '', blockers: '' });
+  const sunday = thisSundayISO();
+  const [form, setForm] = useState({ week_ending: sunday, summary: '', wins: '', blockers: '' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+
+  const submittedThisWeek = (weekly || []).some(w => String(w.week_ending) === sunday);
+  const isWeekend = [0, 6].includes(new Date().getDay());   // Sat or Sun
+  const showReminder = isLead && !submittedThisWeek;
 
   const submit = async () => {
     if (!form.week_ending || !form.summary.trim()) { setMsg('Week-ending date and summary are required.'); return; }
@@ -129,6 +143,14 @@ function WeeklyTab({ isAdvisory, isLead, weekly, reload }) {
 
   return (
     <div>
+      {showReminder && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 12, marginBottom: 14, background: isWeekend ? '#fef2f2' : '#fff7ed', border: `1px solid ${isWeekend ? '#fecaca' : '#fed7aa'}`, color: isWeekend ? '#b91c1c' : '#9a3412', fontSize: 13.5, fontWeight: 600 }}>
+          <span style={{ fontSize: 18 }}>{isWeekend ? '🗓️' : '⏳'}</span>
+          {isWeekend
+            ? "It's the weekend — please submit this week's update (week ending " + sunday + ") before Sunday ends."
+            : "You haven't submitted this week's update yet (due Sunday, week ending " + sunday + ")."}
+        </div>
+      )}
       {(isLead || isAdvisory) && (
         <div style={S.card}>
           <div style={S.formTitle}>Submit a weekly update</div>

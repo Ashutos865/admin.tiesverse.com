@@ -16,7 +16,7 @@
   display: block;
   margin-bottom: 6px;
   color: var(--primary);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -134,7 +134,7 @@
   background: color-mix(in srgb, var(--primary) 88%, transparent);
   backdrop-filter: blur(7px);
   color: #fff;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -163,7 +163,7 @@
 .article-kind {
   margin-bottom: 7px;
   color: var(--primary);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -240,7 +240,7 @@
 .article-meta-author strong {
   overflow: hidden;
   color: var(--text-main);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -392,7 +392,7 @@
 .article-overview-metrics small {
   display: block;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 8px;
   font-weight: 600;
   letter-spacing: 0.07em;

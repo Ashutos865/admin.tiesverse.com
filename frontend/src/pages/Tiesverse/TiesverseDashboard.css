@@ -20,7 +20,7 @@
   display: block;
   margin-bottom: 6px;
   color: var(--primary);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.09em;
@@ -48,7 +48,7 @@
 
 .tv-updated {
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 11px;
   text-transform: uppercase;
 }
@@ -146,7 +146,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--tertiary) 10%, transparent);
   color: var(--tertiary);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
@@ -154,7 +154,7 @@
 
 .tv-metric-card p {
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -261,7 +261,7 @@
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 10px;
   text-align: center;
 }
@@ -311,14 +311,14 @@
   top: -21px;
   left: 50%;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 10px;
   transform: translateX(-50%);
 }
 
 .tv-bar-column small {
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 10px;
 }
 
@@ -351,7 +351,7 @@
 .tv-registration-table th {
   padding: 11px 12px;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 10px;
   font-weight: 600;
 }
@@ -408,7 +408,7 @@
   display: inline-flex;
   padding: 4px 8px;
   border-radius: 999px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-size: 9px;
   font-weight: 800;
   text-transform: uppercase;

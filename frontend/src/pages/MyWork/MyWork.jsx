@@ -8,6 +8,8 @@ import {
     getAssets,
 } from '../../apiClient';
 import { useMe } from '../../context/MeContext';
+import WorkSessionsPanel from './WorkSessionsPanel.jsx';
+import LeaderboardWidget from './LeaderboardWidget.jsx';
 
 const TABS = [
     { key: 'attendance', label: 'Attendance', path: '/me/attendance' },
@@ -86,7 +88,15 @@ export default function MyWork({ tab = 'attendance' }) {
                 ))}
             </div>
 
-            {tab === 'attendance' && <AttendancePanel memberId={memberId} showToast={showToast} />}
+            {tab === 'attendance' && (
+                <>
+                    <WorkSessionsPanel memberId={memberId} showToast={showToast} />
+                    <div style={{ height: 20 }} />
+                    <LeaderboardWidget />
+                    <div style={{ height: 20 }} />
+                    <AttendancePanel memberId={memberId} showToast={showToast} />
+                </>
+            )}
             {tab === 'leave' && <LeavePanel showToast={showToast} />}
             {tab === 'offboarding' && <OffboardingPanel showToast={showToast} />}
             {tab === 'tasks' && <TasksPanel showToast={showToast} />}

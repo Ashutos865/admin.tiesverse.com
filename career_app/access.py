@@ -105,6 +105,24 @@ def get_access_scope(user):
     return ('self', member)
 
 
+def can_manage_project(user, project):
+    """True if `user` may manage (edit/close/extend/assign-teams on) `project`:
+    a superuser/advisory (org-wide), the creator, or a team lead over one of the
+    project's departments. Requires the change_project permission."""
+    if getattr(user, 'is_superuser', False):
+        return True
+    if not user.has_perm('career_app.change_project'):
+        return False
+    scope, member = get_access_scope(user)
+    if scope == 'all':
+        return True
+    if member and getattr(project, 'created_by_id', None) == member.id:
+        return True
+    if scope == 'team' and member and (set(getattr(project, 'departments', None) or []) & led_department_names(member)):
+        return True
+    return False
+
+
 def scope_member_queryset(qs, user, field='member'):
     """Restrict a queryset that has a FK to OnboardingSubmission (`field`) to the
     rows the user is allowed to see."""

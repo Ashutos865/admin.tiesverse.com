@@ -23,6 +23,15 @@ VIEW_HR = [
     'view_asset',
     'view_task',
     'view_hrdepartment',
+    'view_project',              # everyone with HR view can see projects (row-scoped)
+]
+
+# Team Lead: view their team (scoped) + manage their team's attendance & tasks,
+# and create/manage projects for their OWN team.
+TEAM_LEAD = VIEW_HR + [
+    'change_attendancerecord',   # approve / correct their OWN team's attendance
+    'add_task', 'change_task',   # assign & manage tasks for their OWN team only
+    'add_project', 'change_project',   # create/manage projects for their OWN team only
 ]
 
 # Full HR: manage members + approve leave/offboarding.
@@ -36,16 +45,22 @@ HR_FULL = VIEW_HR + [
     'add_hrdepartment', 'change_hrdepartment', 'delete_hrdepartment',
 ]
 
+# Advisory = full HR PLUS org-wide project ownership. (Kept separate from HR so
+# only Advisory + Team Leads can create projects, per the product rule.)
+ADVISORY = HR_FULL + [
+    'add_project', 'change_project', 'delete_project',
+]
+
 GROUP_PERMISSIONS = {
-    'Interns':    [],          # self-service only
-    'Members':    [],          # self-service only
-    'Team Leads': VIEW_HR,     # view their team (scoped), no approve
-    'Advisory':   HR_FULL,     # FULL access, org-wide (scope 'all'); advisory-only
-                               # oversight (task review, weekly updates, revenue) is
-                               # additionally gated to the 'advisory' role in views
+    'Interns':    ['view_project'],   # see projects they participate in (row-scoped)
+    'Members':    ['view_project'],   # see projects they participate in (row-scoped)
+    'Team Leads': TEAM_LEAD,   # view their team + manage team attendance/tasks + own projects
+    'Advisory':   ADVISORY,    # FULL access, org-wide (scope 'all') + org-wide projects;
+                               # advisory-only oversight (task review, weekly updates,
+                               # revenue) is additionally gated to the 'advisory' role in views
     'HR':         HR_FULL,     # HR panel + career + cert/mail; org-wide view, but
-                               # NOT the advisory-only oversight/revenue views
-    'Admins':     HR_FULL,     # superuser is set separately if needed
+                               # NOT project creation nor the advisory-only oversight/revenue views
+    'Admins':     ADVISORY,    # superuser is set separately if needed
 }
 
 

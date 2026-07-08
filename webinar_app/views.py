@@ -1019,9 +1019,10 @@ def webinar_broadcast(request):
     include_id = bool(data.get('include_id'))
     cert_fields = data.get('certificate_fields') or {}    # {var: {source, value}} explicit mapping
     cert_name_var = cert_id_var = None
-    if include_certificate and not cert_fields:
+    cert_all_vars = []
+    if include_certificate:
         try:
-            cert_name_var, cert_id_var = _cert_template_vars(cert_template_id)
+            cert_name_var, cert_id_var, cert_all_vars = _cert_template_vars(cert_template_id)
         except Exception:  # noqa: BLE001
             return Response({'error': 'Could not read the certificate template — check it still exists.'}, status=502)
 
@@ -1034,7 +1035,11 @@ def webinar_broadcast(request):
     actor = (request.user.get_full_name() or request.user.get_username() or '')[:200]
 
     def _context_for(name, row=None):
+        from config.email_templates import variable_defaults
         ctx = {
+            # declared-variable defaults first, so any {{token}} the admin defined
+            # a default for is filled even when not supplied here (no leaks).
+            **variable_defaults(getattr(tpl, 'variables', None)),
             'name': name or 'there',
             'topic': event_title,
             'event_title': event_title,
@@ -1061,7 +1066,7 @@ def webinar_broadcast(request):
             return None, ''
         cert_id = _make_cert_id(event_title) if include_id else ''
         try:
-            gen_data = _build_cert_data(cert_fields, row, name, cert_id, cert_name_var, cert_id_var)
+            gen_data = _build_cert_data(cert_fields, row, name, cert_id, cert_name_var, cert_id_var, cert_all_vars)
             pdf = _generate_certificate_pdf(cert_template_id, gen_data)
             fname = f"certificate-{(name or 'participant').replace(' ', '_')[:40]}.pdf"
             return [(fname, pdf, 'pdf')], cert_id
@@ -1276,10 +1281,11 @@ def _cert_template_vars(template_id):
     req = urllib.request.Request(f"{base}/api/templates/{template_id}", headers={'Accept': 'application/json'})
     with urllib.request.urlopen(req, timeout=30) as r:
         data = json.loads(r.read().decode())
-    names = [str(v.get('name', '')) for v in (data.get('variables') or [])]
+    variables = data.get('variables') or []
+    names = [str(v.get('name', '')) for v in variables]
     name_var = next((n for n in names if 'name' in n.lower()), 'name')
     id_var = next((n for n in names if 'id' in n.lower() and 'email' not in n.lower()), None)
-    return name_var, id_var
+    return name_var, id_var, variables
 
 
 def _generate_certificate_pdf(template_id, data):
@@ -1298,7 +1304,7 @@ def _generate_certificate_pdf(template_id, data):
         return r.read()
 
 
-def _build_cert_data(fields, row, name, cert_id, auto_name_var=None, auto_id_var=None):
+def _build_cert_data(fields, row, name, cert_id, auto_name_var=None, auto_id_var=None, template_vars=None):
     """Build the {variable: value} dict for a recipient. `fields` is an explicit
     mapping {var: {source, value}} where source is a registrant column key
     ('name', 'organization', 'role', …), 'id' (verification id), 'custom', or
@@ -1317,10 +1323,17 @@ def _build_cert_data(fields, row, name, cert_id, auto_name_var=None, auto_id_var
                 continue
             else:  # a registrant column
                 out[var] = str(lookup.get(src, '') or '')
-        return out
-    out = {(auto_name_var or 'name'): lookup['name']}
-    if auto_id_var and cert_id:
-        out[auto_id_var] = cert_id
+    else:
+        out = {(auto_name_var or 'name'): lookup['name']}
+        if auto_id_var and cert_id:
+            out[auto_id_var] = cert_id
+    # No-conflict guarantee: make sure EVERY declared template variable is present
+    # so the generator never prints a missing token as its humanized name. Anything
+    # not otherwise set falls back to the variable's default_value (or blank).
+    for v in (template_vars or []):
+        vn = str(v.get('name') or '').strip()
+        if vn and vn not in out:
+            out[vn] = str(v.get('default_value') or '')
     return out
 
 

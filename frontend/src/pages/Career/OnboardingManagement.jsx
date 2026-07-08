@@ -207,9 +207,11 @@ export default function OnboardingManagement() {
                             <button key={sub.id} onClick={() => openProfile(sub)} style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '16px 18px', borderRadius: 13, cursor: 'pointer', textAlign: 'left', background: 'var(--surface-container-lowest)', border: '1px solid var(--outline-variant)', transition: 'border-color 150ms ease, transform 150ms ease', ':hover': { borderColor: 'var(--primary)' } }}>
                                 {/* Card top */}
                                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                                    <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--primary-fixed)', display: 'grid', placeItems: 'center', fontSize: '1rem', fontWeight: 800, color: 'var(--primary)', fontFamily: 'Hanken Grotesk, sans-serif', flexShrink: 0 }}>
-                                        {sub.candidate_name?.split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase()}
-                                    </div>
+                                    {sub.avatar_url
+                                        ? <img src={sub.avatar_url} alt={sub.candidate_name} style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--outline-variant)' }} />
+                                        : <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--primary-fixed)', display: 'grid', placeItems: 'center', fontSize: '1rem', fontWeight: 800, color: 'var(--primary)', fontFamily: 'Hanken Grotesk, sans-serif', flexShrink: 0 }}>
+                                            {sub.candidate_name?.split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase()}
+                                        </div>}
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
                                             <span style={{ color: 'var(--text-main)', fontWeight: 700, fontSize: '0.9375rem', fontFamily: 'Hanken Grotesk, sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub.candidate_name}</span>
@@ -232,7 +234,7 @@ export default function OnboardingManagement() {
                                 </div>
 
                                 {/* Footer */}
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid var(--outline-variant)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: 10, borderTop: '1px solid var(--outline-variant)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                     <span>{docsCount}/3 docs {docsCount === 3 ? '✓' : 'received'}</span>
                                     <span style={{ color: 'var(--primary)', fontWeight: 700 }}>Open Profile →</span>
                                 </div>
@@ -249,9 +251,11 @@ export default function OnboardingManagement() {
 
                         {/* Modal header */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 24px', borderBottom: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', borderRadius: '16px 16px 0 0', flexShrink: 0 }}>
-                            <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'var(--primary-fixed)', display: 'grid', placeItems: 'center', fontSize: '1.125rem', fontWeight: 800, color: 'var(--primary)', fontFamily: 'Hanken Grotesk, sans-serif', flexShrink: 0 }}>
-                                {profileModal.candidate_name?.split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase()}
-                            </div>
+                            {profileModal.avatar_url
+                                ? <img src={profileModal.avatar_url} alt={profileModal.candidate_name} style={{ width: 50, height: 50, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--outline-variant)' }} />
+                                : <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'var(--primary-fixed)', display: 'grid', placeItems: 'center', fontSize: '1.125rem', fontWeight: 800, color: 'var(--primary)', fontFamily: 'Hanken Grotesk, sans-serif', flexShrink: 0 }}>
+                                    {profileModal.candidate_name?.split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase()}
+                                </div>}
                             <div style={{ flex: 1 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                     <strong style={{ fontSize: '1.0625rem', color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>{profileModal.candidate_name}</strong>

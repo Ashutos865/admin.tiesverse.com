@@ -27,7 +27,7 @@ const CERTS = [
     { key: 'noc',             label: 'No Objection Certificate', short: 'NOC', icon: Shield },
 ];
 
-const AVATAR_COLORS = ['#6f67f0','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316'];
+const AVATAR_COLORS = ['#fe7a00','#f59e0b','#f97316','#0ea5e9','#10b981','#ec4899','#e11d48','#14b8a6','#ef4444'];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -52,21 +52,23 @@ function fmtDate(iso) {
 // ── Photo Avatar (loads with JWT, falls back to initials) ──────────────────────
 
 function PhotoAvatar({ member, size = 44, textSize = '0.9375rem' }) {
-    const [imgUrl, setImgUrl] = useState(null);
+    const [imgUrl, setImgUrl] = useState(member.avatar_url || null);
     const color = avatarColor(member.candidate_name);
     const mounted = useRef(true);
 
     useEffect(() => {
+        // Prefer the member's profile picture (public Cloudinary URL, set in Profile).
+        if (member.avatar_url) { setImgUrl(member.avatar_url); return; }
         mounted.current = true;
         if (!member.has_photo) return;
-        // Uses the real in-memory JWT (not a stale localStorage key) so the
-        // authenticated photo endpoint returns the image instead of 401.
+        // Fallback: the authenticated onboarding photo endpoint (returns the image).
         fetchDocBlobUrl(`/api/career/onboarding/${member.id}/doc/photo/`)
             .then(url => { if (mounted.current && url) setImgUrl(url); });
         return () => { mounted.current = false; };
-    }, [member.id, member.has_photo]);
+    }, [member.id, member.has_photo, member.avatar_url]);
 
-    useEffect(() => () => { if (imgUrl) URL.revokeObjectURL(imgUrl); }, [imgUrl]);
+    // Only revoke blob: URLs we created (never the public avatar_url).
+    useEffect(() => () => { if (imgUrl && imgUrl.startsWith('blob:')) URL.revokeObjectURL(imgUrl); }, [imgUrl]);
 
     if (imgUrl) return (
         <img src={imgUrl} alt={member.candidate_name} style={{

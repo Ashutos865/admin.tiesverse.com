@@ -5,6 +5,7 @@ import { MeProvider } from './context/MeContext';
 import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 import AdminLayout from './components/layout/AdminLayout';
+import DarkReaderGuard from './components/DarkReaderGuard';
 
 // Auth & Accounts
 import Login from './pages/Login';
@@ -39,10 +40,22 @@ import LeavePage from './pages/Career/LeavePage.jsx';
 import OffboardingPage from './pages/Career/OffboardingPage.jsx';
 import AssetsPage from './pages/Career/AssetsPage.jsx';
 import TasksPage from './pages/Career/TasksPage.jsx';
+import ProjectsPage from './pages/Career/ProjectsPage.jsx';
+import ProjectDetail from './pages/Career/ProjectDetail.jsx';
 import MyWork from './pages/MyWork/MyWork.jsx';
 import AdvisoryPanel from './pages/Advisory/AdvisoryPanel.jsx';
+import TechnicalDashboard from './pages/Technical/TechnicalDashboard.jsx';
+import PoliciesPage from './pages/Career/PoliciesPage.jsx';
+import HelpCenter from './pages/Help/HelpCenter.jsx';
 import SignupApprovals from './pages/Career/SignupApprovals.jsx';
 import PublicSignup from './pages/Signup/PublicSignup.jsx';
+
+// Forms (custom form builder)
+import FormsListPage from './pages/Forms/FormsListPage.jsx';
+import FormBuilder from './pages/Forms/FormBuilder.jsx';
+import FormFillPage from './pages/Forms/FormFillPage.jsx';
+import FormResponsesPage from './pages/Forms/FormResponsesPage.jsx';
+import PublicFormPage from './pages/Forms/PublicFormPage.jsx';
 
 // Certificate Generator
 import CertificateTemplates from './pages/Certificates/CertificateTemplates.jsx';
@@ -55,6 +68,15 @@ import { ManagingList, UserSubmissionsReview } from './pages/Webinar/index.jsx';
 import WebinarsWorkshops from './pages/Webinar/WebinarsWorkshops.jsx';
 import Speakers from './pages/Webinar/Speakers.jsx';
 
+// Articles & Reports (WordPress) Portal
+import WPPosts from './pages/WordPress/Posts.jsx';
+import SiteNavManager from './pages/WordPress/SiteNavManager.jsx';
+import SiteMenuManager from './pages/WordPress/SiteMenuManager.jsx';
+import WPMedia from './pages/WordPress/MediaLibrary.jsx';
+import WPTaxonomies from './pages/WordPress/Taxonomies.jsx';
+import WPComments from './pages/WordPress/CommentsManager.jsx';
+import WPUsers from './pages/WordPress/Users.jsx';
+
 function App() {
   return (
     <ThemeProvider>
@@ -62,9 +84,11 @@ function App() {
         <PermissionProvider>
           <MeProvider>
           <Router>
+          <DarkReaderGuard />
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/signup/:hash" element={<PublicSignup />} />
+            <Route path="/f/:token" element={<PublicFormPage />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/" element={<Navigate to="/tiesverse/dashboard" replace />} />
@@ -126,10 +150,28 @@ function App() {
               <Route path="/hr/offboarding" element={<OffboardingPage />} />
               <Route path="/hr/assets" element={<AssetsPage />} />
               <Route path="/hr/tasks" element={<TasksPage />} />
+              <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/projects/:id" element={<ProjectDetail />} />
               <Route path="/hr/signups" element={<SignupApprovals />} />
 
               {/* Advisory oversight + weekly updates */}
               <Route path="/advisory" element={<AdvisoryPanel />} />
+
+              {/* Developer / infrastructure dashboard */}
+              <Route path="/technical" element={<TechnicalDashboard />} />
+
+              {/* Policies — HR manages at /hr, members read at /me */}
+              <Route path="/hr/policies" element={<PoliciesPage />} />
+              <Route path="/me/policies" element={<PoliciesPage />} />
+
+              {/* Built-in Help Center (everyone) */}
+              <Route path="/help" element={<HelpCenter />} />
+
+              {/* Forms — HR/Advisory build & manage; members fill internal forms */}
+              <Route path="/hr/forms" element={<FormsListPage />} />
+              <Route path="/hr/forms/:id/edit" element={<FormBuilder />} />
+              <Route path="/hr/forms/:id/responses" element={<FormResponsesPage />} />
+              <Route path="/forms/:id" element={<FormFillPage />} />
 
               {/* Certificate Generator Routes */}
               <Route path="/certificates/templates" element={<CertificateTemplates />} />
@@ -146,6 +188,17 @@ function App() {
               <Route path="/webinar/registrations" element={<Registrations />} />
               <Route path="/webinar/coupons" element={<Coupons />} />
               <Route path="/webinar/event_registrations" element={<WebinarsWorkshops />} />
+
+              {/* Articles & Reports (WordPress) Portal */}
+              <Route path="/wordpress" element={<Navigate to="/wordpress/posts" replace />} />
+              <Route path="/wordpress/posts" element={<WPPosts type="posts" label="Posts" />} />
+              <Route path="/wordpress/pages" element={<WPPosts type="pages" label="Pages" />} />
+              <Route path="/wordpress/media" element={<WPMedia />} />
+              <Route path="/wordpress/taxonomies" element={<WPTaxonomies />} />
+              <Route path="/wordpress/comments" element={<WPComments />} />
+              <Route path="/wordpress/users" element={<WPUsers />} />
+              <Route path="/wordpress/navigation" element={<SiteNavManager />} />
+              <Route path="/wordpress/blog-menu" element={<SiteMenuManager />} />
             </Route>
           </Routes>
         </Router>

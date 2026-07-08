@@ -83,10 +83,33 @@ export const mergeCertificateVariables = (variables, elements) => {
   return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 };
 
-export const fillCertificateVariables = (content, data) => String(content || '').replace(
-  /\{\{\s*([a-z][a-z0-9_]*)\s*\}\}/gi,
-  (_, name) => data[name.toLowerCase()] ?? name.replaceAll('_', ' '),
-);
+// Resolve {{tokens}}: provided value -> (preview) sample_value -> default_value -> blank.
+// Never prints the humanized variable name, so a missing value can't leak onto the PDF.
+export const fillCertificateVariables = (content, data, variables, { preview = false } = {}) => {
+  const byName = new Map((variables || []).map((v) => [String(v.name).toLowerCase(), v]));
+  return String(content || '').replace(
+    /\{\{\s*([a-z][a-z0-9_]*)\s*\}\}/gi,
+    (_, name) => {
+      const key = name.toLowerCase();
+      const provided = data?.[key];
+      if (provided != null && provided !== '') return provided;
+      const v = byName.get(key);
+      if (preview && v?.sample_value) return v.sample_value;
+      return v?.default_value ?? '';
+    },
+  );
+};
+
+// Ensure every declared variable is present (value -> default_value -> blank) before
+// sending to the generator, so the PDF never renders a missing token.
+export const buildCertificateData = (variables, data) => {
+  const out = { ...(data || {}) };
+  (variables || []).forEach((v) => {
+    const key = String(v.name).toLowerCase();
+    if (out[key] == null || out[key] === '') out[key] = v.default_value ?? '';
+  });
+  return out;
+};
 
 export const normalizeVariableName = (value) => {
   const normalized = String(value || '')
@@ -95,6 +118,38 @@ export const normalizeVariableName = (value) => {
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
   return /^[a-z]/.test(normalized) ? normalized : `field_${normalized || 'value'}`;
+};
+
+// Full CSV parse -> { columns, rows: [{col: value}] } (handles quoted fields).
+export const parseCsvRows = (text) => {
+  const raw = [];
+  let i = 0, field = '', row = [], inQ = false;
+  const pushF = () => { row.push(field); field = ''; };
+  const pushR = () => { raw.push(row); row = []; };
+  while (i < text.length) {
+    const ch = text[i];
+    if (inQ) { if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i += 1; } else inQ = false; } else field += ch; }
+    else if (ch === '"') inQ = true;
+    else if (ch === ',') pushF();
+    else if (ch === '\r') { /* skip */ }
+    else if (ch === '\n') { pushF(); pushR(); }
+    else field += ch;
+    i += 1;
+  }
+  if (field.length || row.length) { pushF(); pushR(); }
+  const clean = raw.filter((r) => r.some((c) => (c || '').trim() !== ''));
+  if (!clean.length) return { columns: [], rows: [] };
+  const columns = clean[0].map((h) => h.trim());
+  const rows = clean.slice(1).map((r) => Object.fromEntries(columns.map((h, idx) => [h, (r[idx] || '').trim()])));
+  return { columns, rows };
+};
+
+// Serialize rows back to CSV text for the batch generator (headers = column list).
+export const toCsv = (columns, rows) => {
+  const esc = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const head = columns.map(esc).join(',');
+  const body = rows.map((r) => columns.map((c) => esc(r[c])).join(',')).join('\n');
+  return `${head}\n${body}\n`;
 };
 
 export const readCsvHeaders = async (file) => {

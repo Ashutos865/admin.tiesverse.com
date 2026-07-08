@@ -439,13 +439,70 @@ def get_template(key):
     return tpl
 
 
-def render_tokens(text, context):
-    """Replace {{token}} occurrences; unknown tokens are left untouched."""
-    return re.sub(
-        r'{{\s*(\w+)\s*}}',
-        lambda m: str(context.get(m.group(1), m.group(0))),
-        text or '',
-    )
+_TOKEN_RE = r'{{\s*(\w+)\s*}}'
+
+
+def normalize_variables(variables):
+    """Accept the `variables` field in either legacy (list of names) or new
+    (list of {name, label, default}) form and always return a list of dicts:
+        [{'name': str, 'label': str, 'default': str}, ...]
+    This keeps old templates working while enabling per-variable defaults."""
+    out = []
+    seen = set()
+    for v in (variables or []):
+        if isinstance(v, str):
+            name, label, default = v, '', ''
+        elif isinstance(v, dict):
+            name = (v.get('name') or '').strip()
+            label = (v.get('label') or '').strip()
+            default = v.get('default')
+            default = '' if default is None else str(default)
+        else:
+            continue
+        name = name.strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        out.append({'name': name, 'label': label or name, 'default': default})
+    return out
+
+
+def variable_defaults(variables):
+    """{name: default} for every declared variable that has a non-empty default."""
+    return {v['name']: v['default'] for v in normalize_variables(variables) if v['default'] != ''}
+
+
+def find_tokens(*texts):
+    """Every distinct {{token}} name used across the given strings."""
+    names = []
+    for t in texts:
+        for m in re.finditer(_TOKEN_RE, t or ''):
+            if m.group(1) not in names:
+                names.append(m.group(1))
+    return names
+
+
+def unresolved_tokens(variables, provided_keys, *texts):
+    """Tokens that would render BLANK in a real send: used in the text but
+    neither declared with a default nor supplied a value. Powers the editor /
+    pre-send 'these will be empty' warning (render-blank-and-warn policy)."""
+    defaults = variable_defaults(variables)
+    provided = set(provided_keys or [])
+    return [name for name in find_tokens(*texts)
+            if name not in provided and name not in defaults]
+
+
+def render_tokens(text, context, keep_unknown=False):
+    """Replace {{token}} occurrences. A token resolves to its context value if
+    present, else '' (stripped) so a raw {{token}} is NEVER shipped to a real
+    recipient. Pass keep_unknown=True only for editor previews where showing the
+    literal placeholder is useful."""
+    def _sub(m):
+        name = m.group(1)
+        if name in context:
+            return str(context[name])
+        return m.group(0) if keep_unknown else ''
+    return re.sub(_TOKEN_RE, _sub, text or '')
 
 
 def resolve_from(tpl):
@@ -468,8 +525,11 @@ def send_template_email(key, to, context=None, attachments=None, force=False):
     if tpl is None:
         print(f"[EMAIL] No template registered for key={key!r}")
         return False
-    subject = render_tokens(tpl.subject, context)
-    body = render_tokens(tpl.body_html, context)
+    # Declared-variable defaults fill in for anything the caller didn't supply,
+    # so a {{token}} never leaks; the caller's real values always win.
+    merged = {**variable_defaults(tpl.variables), **context}
+    subject = render_tokens(tpl.subject, merged)
+    body = render_tokens(tpl.body_html, merged)
     atts = attachments if tpl.allow_attachment else None
     return send_email(
         to, subject, body,

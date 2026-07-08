@@ -259,6 +259,8 @@ export const updateSetting = (key, data) => adminFetch(`/api/settings/${key}`, '
 // PROFILE SETTINGS
 export const getProfile = () => adminFetch('/api/accounts/profile');
 export const updateProfile = (data) => adminFetch('/api/accounts/profile', 'PUT', data);
+export const requestPasswordChange = () => adminFetch('/api/accounts/password-change/request/', 'POST', {});
+export const confirmPasswordChange = (otp, new_password) => adminFetch('/api/accounts/password-change/confirm/', 'POST', { otp, new_password });
 
 // DELEGATED PERMISSIONS (team leads + superusers)
 export const getDelegatablePermissions = () =>
@@ -343,8 +345,37 @@ export const verifySignupOtp = (linkHash, email, otp) =>
 export const getSignups = () => adminFetch('/api/career/signups/');
 export const approveSignup = (id, data) => adminFetch(`/api/career/signups/${id}/approve/`, 'POST', data);
 export const rejectSignup = (id) => adminFetch(`/api/career/signups/${id}/reject/`, 'POST', {});
+export const resendCredentials = (body) => adminFetch('/api/career/signups/resend-credentials/', 'POST', body);
+// Unified data sources (connect variables to a system table)
+export const getTechnicalStats = (fresh) => adminFetch(`/api/technical/stats/${fresh ? '?fresh=1' : ''}`);
+export const getDataSources = () => adminFetch('/api/data-sources/');
+export const getDataSourceRows = (id, params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return adminFetch(`/api/data-sources/${id}/rows/${qs ? `?${qs}` : ''}`);
+};
+export const getProvisionedMembers = () => adminFetch('/api/career/signups/resend-credentials/');
+// Policies (HR publishes; everyone reads)
+export const getPolicies = () => adminFetch('/api/career/policies');
+export const createPolicy = (data) => adminFetch('/api/career/policies', 'POST', data);
+export const updatePolicy = (id, data) => adminFetch(`/api/career/policies/${id}`, 'PATCH', data);
+export const deletePolicy = (id) => adminFetch(`/api/career/policies/${id}`, 'DELETE');
 // MASTER DIRECTORY — unified people search across members, registrations, certificates
 export const searchDirectory = (q) => adminFetch(`/api/career/directory?q=${encodeURIComponent(q || '')}`);
+
+// FORMS (custom form builder — HR/Advisory build; members + public fill)
+export const getForms = () => adminFetch('/api/career/forms');
+export const getForm = (id) => adminFetch(`/api/career/forms/${id}`);
+export const createForm = (data) => adminFetch('/api/career/forms', 'POST', data);
+export const updateForm = (id, data) => adminFetch(`/api/career/forms/${id}`, 'PATCH', data);
+export const deleteForm = (id) => adminFetch(`/api/career/forms/${id}`, 'DELETE');
+export const submitForm = (id, data) => adminFetch(`/api/career/forms/${id}/submit`, 'POST', data);
+export const getFormResponses = (id) => adminFetch(`/api/career/forms/${id}/responses`);
+export const getFormSenders = () => adminFetch('/api/career/forms/senders').catch(() => ({ emails: [], domains: [], default: '' }));
+export const exportFormResponsesCsv = (id, filename) =>
+  downloadFile(`/api/career/forms/${id}/responses-csv/`, filename || 'form-responses.csv');
+// Public (no auth) — fill a form via its hashed link
+export const getPublicForm = (token) => publicFetch(`/api/career/forms/public/${token}`);
+export const submitPublicForm = (token, data) => publicPost(`/api/career/forms/public/${token}/submit`, data);
 
 // EMAIL TEMPLATES (superuser) — manage every send point's design/subject/sender
 export const getEmailTemplates = () => adminFetch('/api/accounts/email-templates');
@@ -354,8 +385,25 @@ export const deleteEmailTemplate = (id) => adminFetch(`/api/accounts/email-templ
 export const testEmailTemplate = (id, to) => adminFetch(`/api/accounts/email-templates/${id}/test`, 'POST', { to });
 // Bulk mail-merge campaigns
 export const sendCampaign = (templateId, payload) => adminFetch(`/api/accounts/email-templates/${templateId}/send-campaign`, 'POST', payload);
+// Certificate campaigns: backend generates + sends in the background; poll status.
+export const sendCampaignAsync = (templateId, payload) => adminFetch(`/api/accounts/email-templates/${templateId}/send-campaign-async`, 'POST', payload);
+// Website navigation categories (which WordPress categories appear in the site nav)
+export const getNavCategories = () => adminFetch('/api/accounts/nav-categories');
+export const createNavCategory = (b) => adminFetch('/api/accounts/nav-categories', 'POST', b);
+export const updateNavCategory = (id, b) => adminFetch(`/api/accounts/nav-categories/${id}`, 'PATCH', b);
+export const deleteNavCategory = (id) => adminFetch(`/api/accounts/nav-categories/${id}`, 'DELETE');
+
+export const getCampaignStatus = (id) => adminFetch(`/api/accounts/email-campaigns/${id}/status`);
+// Ask the worker to stop a queued/running campaign (already-sent stay sent).
+export const cancelCampaign = (id) => adminFetch(`/api/accounts/email-campaigns/${id}/cancel`, 'POST', {});
 export const getCampaigns = () => adminFetch('/api/accounts/email-campaigns');
+export const getCampaignRecipients = (id) => adminFetch(`/api/accounts/email-campaigns/${id}/recipients`);
 export const getSESSenders = () => adminFetch('/api/accounts/ses-senders');
+// Mail Automation drafts (save/resume an unsent campaign)
+export const getEmailDrafts = () => adminFetch('/api/accounts/email-drafts').catch(() => []);
+export const createEmailDraft = (data) => adminFetch('/api/accounts/email-drafts', 'POST', data);
+export const updateEmailDraft = (id, data) => adminFetch(`/api/accounts/email-drafts/${id}`, 'PATCH', data);
+export const deleteEmailDraft = (id) => adminFetch(`/api/accounts/email-drafts/${id}`, 'DELETE');
 
 // FEATURED CONTENT — homepage cards shown on the public website
 export const getFeatured = () => adminFetch('/api/accounts/featured');
@@ -382,6 +430,16 @@ export const updateAttendanceRecord = (id, data) => adminFetch(`/api/career/atte
 export const checkIn = (memberId) => adminFetch(`/api/career/attendance/member/${memberId}/checkin`, 'POST');
 export const checkOut = (memberId, data) => adminFetch(`/api/career/attendance/member/${memberId}/checkout`, 'PATCH', data);
 export const approveAttendance = (id, data) => adminFetch(`/api/career/attendance/${id}/approve`, 'PATCH', data);
+
+// Work sessions (multi check-in/out per day) + weekly leaderboard
+export const getActiveSession = (member) => adminFetch(`/api/career/work-sessions/active/${member ? `?member=${member}` : ''}`).catch(() => null);
+export const workCheckIn = (data) => adminFetch('/api/career/work-sessions/checkin/', 'POST', data);
+export const workCheckOut = (data) => adminFetch('/api/career/work-sessions/checkout/', 'POST', data);
+export const getWorkSessions = (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return adminFetch(`/api/career/work-sessions/${qs ? '?' + qs : ''}`).catch(() => ({ sessions: [], daily: [] }));
+};
+export const getWorkLeaderboard = () => adminFetch('/api/career/work-leaderboard/').catch(() => ({ leaderboard: [] }));
 
 // LEAVE MANAGEMENT
 export const getLeaveList = (params = {}) => {
@@ -425,3 +483,69 @@ export const createTask = (data) => adminFetch('/api/career/tasks', 'POST', data
 export const getTaskDetail = (id) => adminFetch(`/api/career/tasks/${id}`);
 export const updateTask = (id, data) => adminFetch(`/api/career/tasks/${id}`, 'PATCH', data);
 export const deleteTask = (id) => adminFetch(`/api/career/tasks/${id}`, 'DELETE');
+
+// Projects (Phase 1)
+export const getProjects = () => adminFetch('/api/career/projects/').catch(() => []);
+export const getProject = (id) => adminFetch(`/api/career/projects/${id}/`);
+export const createProject = (data) => adminFetch('/api/career/projects/', 'POST', data);
+export const updateProject = (id, data) => adminFetch(`/api/career/projects/${id}/`, 'PATCH', data);
+export const deleteProject = (id) => adminFetch(`/api/career/projects/${id}/`, 'DELETE');
+export const extendProjectDeadline = (id, data) => adminFetch(`/api/career/projects/${id}/extend-deadline/`, 'POST', data);
+export const setProjectStatus = (id, statusValue) => adminFetch(`/api/career/projects/${id}/set-status/`, 'POST', { status: statusValue });
+export const addProjectMember = (id, data) => adminFetch(`/api/career/projects/${id}/add-member/`, 'POST', data);
+export const removeProjectMember = (id, memberId) => adminFetch(`/api/career/projects/${id}/remove-member/`, 'POST', { member: memberId });
+export const getProjectDeadlineChanges = (id) => adminFetch(`/api/career/projects/${id}/deadline-changes/`).catch(() => []);
+export const addProjectDepartment = (id, departments) => adminFetch(`/api/career/projects/${id}/add-department/`, 'POST', { departments });
+
+// Projects — Phase 2 collaboration
+export const getChecklist = (projectId) => adminFetch(`/api/career/project-checklist/?project=${projectId}`).catch(() => []);
+export const createChecklistItem = (data) => adminFetch('/api/career/project-checklist/', 'POST', data);
+export const updateChecklistItem = (id, data) => adminFetch(`/api/career/project-checklist/${id}/`, 'PATCH', data);
+export const deleteChecklistItem = (id) => adminFetch(`/api/career/project-checklist/${id}/`, 'DELETE');
+
+export const getMessages = (projectId, after = 0, team = null) => adminFetch(`/api/career/project-messages/?project=${projectId}${team ? `&team=${team}` : ''}${after ? `&after=${after}` : ''}`).catch(() => []);
+export const sendMessage = (data) => adminFetch('/api/career/project-messages/', 'POST', data);
+export const pinMessage = (id, pinned) => adminFetch(`/api/career/project-messages/${id}/`, 'PATCH', { pinned });
+export const deleteMessage = (id) => adminFetch(`/api/career/project-messages/${id}/`, 'DELETE');
+
+export const getDmPeople = (projectId) => adminFetch(`/api/career/projects/${projectId}/dm-people/`).catch(() => ({ people: [] }));
+export const getDMs = (projectId, withKey, after = 0) => adminFetch(`/api/career/project-dms/?project=${projectId}&with=${withKey}${after ? `&after=${after}` : ''}`).catch(() => []);
+export const sendDM = (data) => adminFetch('/api/career/project-dms/', 'POST', data);
+
+export const getTaskSteps = (taskId) => adminFetch(`/api/career/task-steps/?task=${taskId}`).catch(() => []);
+export const createTaskStep = (data) => adminFetch('/api/career/task-steps/', 'POST', data);
+export const updateTaskStep = (id, data) => adminFetch(`/api/career/task-steps/${id}/`, 'PATCH', data);
+export const deleteTaskStep = (id) => adminFetch(`/api/career/task-steps/${id}/`, 'DELETE');
+
+export const getProjectNotifications = () => adminFetch('/api/career/project-notifications/').catch(() => []);
+export const markProjectNotificationsRead = (ids) => adminFetch('/api/career/project-notifications/mark-read/', 'POST', ids ? { ids } : {});
+
+// Projects — teams, milestones, attachments, assign-team, export
+export const getProjectTeams = (projectId) => adminFetch(`/api/career/project-teams/?project=${projectId}`).catch(() => []);
+export const createProjectTeam = (data) => adminFetch('/api/career/project-teams/', 'POST', data);
+export const updateProjectTeam = (id, data) => adminFetch(`/api/career/project-teams/${id}/`, 'PATCH', data);
+export const deleteProjectTeam = (id) => adminFetch(`/api/career/project-teams/${id}/`, 'DELETE');
+export const assignMemberTeam = (projectId, member, teams) => adminFetch(`/api/career/projects/${projectId}/assign-team/`, 'POST', { member, teams });
+
+export const getMilestones = (projectId) => adminFetch(`/api/career/project-milestones/?project=${projectId}`).catch(() => []);
+export const createMilestone = (data) => adminFetch('/api/career/project-milestones/', 'POST', data);
+export const updateMilestone = (id, data) => adminFetch(`/api/career/project-milestones/${id}/`, 'PATCH', data);
+export const deleteMilestone = (id) => adminFetch(`/api/career/project-milestones/${id}/`, 'DELETE');
+
+export const getAttachments = (projectId) => adminFetch(`/api/career/project-attachments/?project=${projectId}`).catch(() => []);
+export const createAttachment = (data) => adminFetch('/api/career/project-attachments/', 'POST', data);
+export const deleteAttachment = (id) => adminFetch(`/api/career/project-attachments/${id}/`, 'DELETE');
+
+// CSV export — fetch with auth and trigger a browser download.
+export const exportProjectCsv = async (projectId, title = 'project') => {
+    const res = await fetch(`${API_URL}/api/career/projects/${projectId}/export/`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error('Export failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${title.replace(/[^a-z0-9]+/gi, '-').slice(0, 40) || 'project'}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+};

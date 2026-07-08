@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getSignups, approveSignup, rejectSignup, getHRDepartments } from '../../apiClient';
+import { getSignups, approveSignup, rejectSignup, getHRDepartments, resendCredentials, getProvisionedMembers } from '../../apiClient';
+import { usePermissions } from '../../context/PermissionContext';
 
 const ROLES = [
   ['intern', 'Intern'], ['member', 'Member'], ['team_lead', 'Team Lead'],
@@ -8,6 +9,8 @@ const ROLES = [
 const STATUS_LABEL = { otp_pending: 'Awaiting email OTP', verified: 'Ready to approve' };
 
 export default function SignupApprovals() {
+  const { hasPermission, isSuperuser } = usePermissions();
+  const canManage = isSuperuser || hasPermission('add_onboardingsubmission');   // HR/Admin only
   const [signups, setSignups] = useState([]);
   const [signupUrl, setSignupUrl] = useState('');
   const [copied, setCopied] = useState(false);
@@ -15,16 +18,22 @@ export default function SignupApprovals() {
   const [draft, setDraft] = useState({}); // id -> {role, dept}
   const [busy, setBusy] = useState(null);
   const [depts, setDepts] = useState([]);
+  const [resending, setResending] = useState(false);
+  const [members, setMembers] = useState([]);
+  const [pickedMember, setPickedMember] = useState('');
+  const [sendingOne, setSendingOne] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [res, dres] = await Promise.all([
+    const [res, dres, mres] = await Promise.all([
       getSignups().catch(() => ({ signups: [] })),
       getHRDepartments().catch(() => []),
+      getProvisionedMembers().catch(() => ({ members: [] })),
     ]);
     setSignups(res?.signups || []);
     setSignupUrl(res?.signup_url || '');
     setDepts((Array.isArray(dres) ? dres : []).map(d => d.name).filter(Boolean));
+    setMembers(mres?.members || []);
     setLoading(false);
   }, []);
 
@@ -52,6 +61,45 @@ export default function SignupApprovals() {
     else alert(res?.error || 'Could not approve.');
   };
 
+  const resendAll = async () => {
+    const ok = window.confirm(
+      'Send login details to ALL members?\n\n'
+      + 'Passwords are stored encrypted and cannot be read back, so this issues a '
+      + 'FRESH password to each member and emails their login ID + new password. '
+      + 'Anyone still using an old password will need the new one.'
+    );
+    if (!ok) return;
+    setResending(true);
+    const res = await resendCredentials({ all: true }).catch(() => ({ error: 'Failed' }));
+    setResending(false);
+    if (res?.status === 'ok') {
+      const extra = res.skipped ? ` ${res.skipped} skipped (admin/staff or no email).` : '';
+      alert(`Login details sent to ${res.sent} member(s).${extra}`);
+    } else {
+      alert(res?.error || 'Could not send login details.');
+    }
+  };
+
+  const sendToOne = async () => {
+    if (!pickedMember) return;
+    const m = members.find(x => String(x.submission_id) === String(pickedMember));
+    const ok = window.confirm(
+      `Send login details to ${m?.name || 'this member'} (${m?.email || ''})?\n\n`
+      + 'This issues a FRESH password and emails their login ID + new password. '
+      + 'Their old password (if any) will stop working.'
+    );
+    if (!ok) return;
+    setSendingOne(true);
+    const res = await resendCredentials({ submission_id: Number(pickedMember) }).catch(() => ({ error: 'Failed' }));
+    setSendingOne(false);
+    if (res?.status === 'ok') {
+      alert(`Login details sent to ${m?.name || res.username}.`);
+      setPickedMember('');
+    } else {
+      alert(res?.error || 'Could not send login details.');
+    }
+  };
+
   const reject = async (s) => {
     if (!window.confirm(`Reject ${s.name}'s signup?`)) return;
     setBusy(s.id);
@@ -60,6 +108,15 @@ export default function SignupApprovals() {
     load();
   };
 
+  if (!canManage) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '64px 24px', color: 'var(--text-muted)', textAlign: 'center' }}>
+        <h2 style={{ margin: 0, color: 'var(--text-main)', fontSize: '1.1rem' }}>New Signups</h2>
+        <p style={{ margin: 0, maxWidth: 380, fontSize: '0.9rem' }}>You don’t have permission to view this page. Ask an admin if you think this is a mistake.</p>
+      </div>
+    );
+  }
+
   return (
     <div style={S.wrap}>
       <div style={S.head}>
@@ -67,7 +124,12 @@ export default function SignupApprovals() {
           <h1 style={S.title}>New Signups</h1>
           <p style={S.sub}>People who self-registered via the shared link. Verify, then assign a role + department to create their account.</p>
         </div>
-        <button style={S.refresh} onClick={load}>↻ Refresh</button>
+        <div style={S.headActions}>
+          <button style={S.sendAll} disabled={resending} onClick={resendAll}>
+            {resending ? 'Sending…' : '✉ Send login details to all'}
+          </button>
+          <button style={S.refresh} onClick={load}>↻ Refresh</button>
+        </div>
       </div>
 
       {signupUrl && (
@@ -77,6 +139,30 @@ export default function SignupApprovals() {
             <div style={S.linkUrl}>{signupUrl}</div>
           </div>
           <button style={S.copyBtn} onClick={copyUrl}>{copied ? 'Copied ✓' : 'Copy link'}</button>
+        </div>
+      )}
+
+      {members.length > 0 && (
+        <div style={S.sendBox}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={S.sendBoxLbl}>Send login details to one member</div>
+            <div style={S.sendBoxSub}>Issues a fresh password and emails it to just this person.</div>
+          </div>
+          <select style={S.memberSelect} value={pickedMember} onChange={e => setPickedMember(e.target.value)}>
+            <option value="">Choose a member…</option>
+            {members.map(m => (
+              <option key={m.submission_id} value={m.submission_id}>
+                {m.name} · {m.email} ({m.role})
+              </option>
+            ))}
+          </select>
+          <button
+            style={{ ...S.sendOne, ...(pickedMember ? {} : S.disabled) }}
+            disabled={!pickedMember || sendingOne}
+            onClick={sendToOne}
+          >
+            {sendingOne ? 'Sending…' : 'Send login'}
+          </button>
         </div>
       )}
 
@@ -141,6 +227,13 @@ const S = {
   title: { fontSize: 24, fontWeight: 800, margin: 0, color: 'var(--text,#111827)' },
   sub: { color: 'var(--text-muted,#6b7280)', fontSize: 14, marginTop: 4, maxWidth: 620 },
   refresh: { padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border,#e5e7eb)', background: 'transparent', cursor: 'pointer', flex: 'none' },
+  headActions: { display: 'flex', gap: 10, flex: 'none', flexWrap: 'wrap' },
+  sendAll: { padding: '8px 14px', borderRadius: 8, border: 'none', background: '#FE7A00', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13, flex: 'none' },
+  sendBox: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', background: 'var(--card,#fff)', border: '1px solid var(--border,#e5e7eb)', borderRadius: 12, padding: '14px 18px', marginBottom: 18 },
+  sendBoxLbl: { fontSize: 13, fontWeight: 700, color: 'var(--text,#111827)' },
+  sendBoxSub: { fontSize: 12, color: 'var(--text-muted,#6b7280)', marginTop: 2 },
+  memberSelect: { padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border,#e5e7eb)', fontSize: 13, minWidth: 220, maxWidth: '100%', flex: '1 1 220px' },
+  sendOne: { padding: '9px 16px', borderRadius: 8, border: '1px solid #FE7A00', background: 'transparent', color: '#c2410c', fontWeight: 700, cursor: 'pointer', fontSize: 13, flex: 'none' },
   linkBar: { display: 'flex', alignItems: 'center', gap: 14, background: '#FE7A0012', border: '1px solid #FE7A0033', borderRadius: 12, padding: '14px 18px', marginBottom: 18 },
   linkLbl: { fontSize: 12, fontWeight: 700, color: '#c2410c', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 },
   linkUrl: { fontSize: 14, color: 'var(--text,#111827)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },

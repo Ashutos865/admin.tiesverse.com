@@ -16,6 +16,7 @@ const PermissionsManagement = () => {
   const [users, setUsers] = useState([]);
   const [availablePermissions, setAvailablePermissions] = useState([]);
   const [userPerms, setUserPerms] = useState({});
+  const [groupPerms, setGroupPerms] = useState({});   // role/group-inherited (read-only)
   const [saving, setSaving] = useState(null);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
@@ -50,9 +51,13 @@ const PermissionsManagement = () => {
       const staffUsers = (usersRes.data || []).filter(u => !u.is_superuser);
       setUsers(staffUsers);
       setAvailablePermissions(permsRes.data || []);
-      const permMap = {};
-      staffUsers.forEach(u => { permMap[u.id] = new Set(u.user_permissions || []); });
+      const permMap = {}, groupMap = {};
+      staffUsers.forEach(u => {
+        permMap[u.id] = new Set(u.user_permissions || []);
+        groupMap[u.id] = new Set(u.group_permissions || []);   // inherited from role
+      });
       setUserPerms(permMap);
+      setGroupPerms(groupMap);
       if (staffUsers.length > 0 && !selectedUser) setSelectedUser(staffUsers[0].id);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -119,7 +124,16 @@ const PermissionsManagement = () => {
   const actionLabels = { 'view': 'View', 'add': 'Add', 'change': 'Edit', 'delete': 'Delete' };
   const actionColors = { 'view': '#3B82F6', 'add': '#10B981', 'change': '#F59E0B', 'delete': '#EF4444' };
 
+  // A permission is GRANTED if the user has it directly OR inherits it from their
+  // role/group. INHERITED = comes from the role only (shown checked but read-only,
+  // since it's managed via the role, not per-user).
+  const isGranted = (userId, codename) =>
+    !!(userPerms[userId]?.has(codename) || groupPerms[userId]?.has(codename));
+  const isInherited = (userId, codename) =>
+    !!(groupPerms[userId]?.has(codename) && !userPerms[userId]?.has(codename));
+
   const togglePermission = (userId, codename) => {
+    if (isInherited(userId, codename)) return;   // role default — can't toggle per-user
     setUserPerms(prev => {
       const updated = { ...prev };
       const set = new Set(updated[userId]);
@@ -130,18 +144,20 @@ const PermissionsManagement = () => {
   };
 
   const toggleAllForModel = (userId, perms) => {
+    const editable = perms.filter(p => !isInherited(userId, p.codename));
     setUserPerms(prev => {
       const updated = { ...prev };
       const set = new Set(updated[userId]);
-      const allChecked = perms.every(p => set.has(p.codename));
-      perms.forEach(p => allChecked ? set.delete(p.codename) : set.add(p.codename));
+      const allChecked = editable.every(p => set.has(p.codename));
+      editable.forEach(p => allChecked ? set.delete(p.codename) : set.add(p.codename));
       updated[userId] = set;
       return updated;
     });
   };
 
   const toggleAllForApp = (userId, appLabel) => {
-    const allPerms = Object.values(groupedByApp[appLabel] || {}).flat();
+    const allPerms = Object.values(groupedByApp[appLabel] || {}).flat()
+      .filter(p => !isInherited(userId, p.codename));
     setUserPerms(prev => {
       const updated = { ...prev };
       const set = new Set(updated[userId]);
@@ -168,12 +184,12 @@ const PermissionsManagement = () => {
     setSaving(null);
   };
 
-  const getPermCount = (userId) => (userPerms[userId]?.size || 0);
+  const getPermCount = (userId) => availablePermissions.filter(p => isGranted(userId, p.codename)).length;
   const getTotalPerms = () => availablePermissions.length;
   const selectedUserObj = users.find(u => u.id === selectedUser);
 
   const getModelSummary = (userId, perms) => {
-    const active = perms.filter(p => userPerms[userId]?.has(p.codename)).length;
+    const active = perms.filter(p => isGranted(userId, p.codename)).length;
     if (active === 0) return { text: 'No Access', color: 'var(--text-muted)' };
     if (active === perms.length) return { text: 'Full Access', color: '#10B981' };
     return { text: `${active}/${perms.length} Permissions`, color: '#F59E0B' };
@@ -240,23 +256,27 @@ const PermissionsManagement = () => {
               <div style={styles.modalPills}>
                 {activeModal.perms.map(perm => {
                   const action = perm.codename.split('_')[0];
-                  const isActive = userPerms[selectedUser]?.has(perm.codename) || false;
+                  const isActive = isGranted(selectedUser, perm.codename);
+                  const inherited = isInherited(selectedUser, perm.codename);
                   const ac = actionColors[action] || 'var(--primary)';
                   return (
                     <button
                       key={perm.id}
                       onClick={() => togglePermission(selectedUser, perm.codename)}
+                      title={inherited ? 'Granted by this user’s role — managed via the role, not per-user' : ''}
                       style={{
                         ...styles.modalPill,
                         background: isActive ? ac : 'transparent',
                         borderColor: isActive ? ac : 'var(--border)',
                         color: isActive ? '#fff' : 'var(--text-main)',
+                        cursor: inherited ? 'not-allowed' : 'pointer',
+                        opacity: inherited ? 0.8 : 1,
                       }}
                     >
                       <span style={styles.modalCheckWrap}>
                         {isActive && <Check size={14} />}
                       </span>
-                      {actionLabels[action] || action}
+                      {actionLabels[action] || action}{inherited ? ' · role' : ''}
                     </button>
                   );
                 })}
@@ -268,7 +288,7 @@ const PermissionsManagement = () => {
                 onClick={() => toggleAllForModel(selectedUser, activeModal.perms)} 
                 style={styles.modalAllBtn}
               >
-                {activeModal.perms.every(p => userPerms[selectedUser]?.has(p.codename)) ? 'Revoke All' : 'Grant All'}
+                {activeModal.perms.every(p => isGranted(selectedUser, p.codename)) ? 'Revoke All' : 'Grant All'}
               </button>
               <button onClick={() => setActiveModal(null)} style={styles.modalDoneBtn}>
                 Done
@@ -390,8 +410,8 @@ const PermissionsManagement = () => {
                 <div style={styles.sectionsWrap}>
                   {Object.entries(groupedByApp).map(([appLabel, models]) => {
                     const allPerms = Object.values(models).flat();
-                    const allChecked = allPerms.every(p => userPerms[selectedUser]?.has(p.codename));
-                    const someChecked = allPerms.some(p => userPerms[selectedUser]?.has(p.codename));
+                    const allChecked = allPerms.every(p => isGranted(selectedUser, p.codename));
+                    const someChecked = allPerms.some(p => isGranted(selectedUser, p.codename));
                     const color = appColors[appLabel] || 'var(--primary)';
 
                     // Split career_app into two visual subsections
@@ -438,7 +458,7 @@ const PermissionsManagement = () => {
                               {friendlyAppNames[appLabel] || appLabel}
                             </span>
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              ({allPerms.filter(p => userPerms[selectedUser]?.has(p.codename)).length}/{allPerms.length})
+                              ({allPerms.filter(p => isGranted(selectedUser, p.codename)).length}/{allPerms.length})
                             </span>
                           </div>
                           <button

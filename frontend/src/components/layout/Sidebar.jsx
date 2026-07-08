@@ -6,20 +6,28 @@ import {
   CalendarDays,
   Database,
   CheckSquare,
+  FileSpreadsheet,
+  FolderKanban,
   ChevronDown,
   ClipboardCheck,
   ClipboardList,
   FileText,
+  File,
   Globe,
   History,
+  Image,
   LayoutDashboard,
   LayoutGrid,
+  ListTree,
   LogOut,
   Mail,
   Megaphone,
+  MessageSquare,
   MonitorSmartphone,
   PackageOpen,
+  Server,
   Shield,
+  Tag,
   TicketPercent,
   UserCheck,
   Users,
@@ -29,7 +37,7 @@ import {
 import { usePermissions } from '../../context/PermissionContext';
 import { useMe } from '../../context/MeContext';
 
-const portals = [
+export const portals = [
   {
     key: 'mywork',
     label: 'My Work',
@@ -43,6 +51,7 @@ const portals = [
       { name: 'My Tasks',      path: '/me/tasks',      icon: MonitorSmartphone, perms: [] },
       { name: 'My Assets',     path: '/me/assets',     icon: PackageOpen,       perms: [] },
       { name: 'My Profile',    path: '/me/profile',    icon: UserCheck,         perms: [] },
+      { name: 'Policies',      path: '/me/policies',   icon: FileText,          perms: [] },
     ],
   },
   {
@@ -58,7 +67,6 @@ const portals = [
     links: [
       { name: 'Dashboard',          path: '/tiesverse/dashboard',    icon: LayoutDashboard, perms: [] },
       { name: 'Homepage',           path: '/tiesverse/homepage',     icon: LayoutGrid,      perms: [], superuserOnly: true },
-      { name: 'Articles & Reports', path: '/tiesverse/articles',     icon: FileText,        perms: ['view_department', 'add_department', 'change_department', 'delete_department'] },
       { name: 'Team Members',       path: '/tiesverse/team_members', icon: Users,           perms: ['view_teammember', 'add_teammember', 'change_teammember', 'delete_teammember'] },
     ],
   },
@@ -83,6 +91,16 @@ const portals = [
     ],
   },
   {
+    key: 'projects',
+    label: 'Projects',
+    icon: FolderKanban,
+    firstPath: '/projects',
+    perms: ['view_project'],   // Advisory/Team Leads/HR + members (row-scoped in the API)
+    links: [
+      { name: 'All Projects', path: '/projects', icon: FolderKanban, perms: ['view_project'] },
+    ],
+  },
+  {
     key: 'hr',
     label: 'HR Portal',
     icon: UserCheck,
@@ -99,13 +117,15 @@ const portals = [
     links: [
       { name: 'Master Directory', path: '/hr/directory',   icon: Database,          scopeAll: true },
       { name: 'Team Directory',  path: '/hr/team',        icon: Users,             perms: ['view_onboardingsubmission'] },
-      { name: 'HR Departments',  path: '/hr/departments', icon: Building2,         perms: ['view_hrdepartment'] },
+      { name: 'HR Departments',  path: '/hr/departments', icon: Building2,         perms: ['add_hrdepartment', 'change_hrdepartment', 'delete_hrdepartment'] },
       { name: 'Attendance',      path: '/hr/attendance',  icon: CalendarDays,      perms: ['view_attendancerecord', 'add_attendancerecord', 'change_attendancerecord'] },
       { name: 'Leave',           path: '/hr/leave',       icon: ClipboardList,     perms: ['view_leaverequest'] },
       { name: 'Offboarding',     path: '/hr/offboarding', icon: LogOut,            perms: ['view_offboardingrequest'] },
       { name: 'Assets',          path: '/hr/assets',      icon: PackageOpen,       perms: ['view_asset'] },
       { name: 'Tasks',           path: '/hr/tasks',       icon: MonitorSmartphone, perms: ['view_task'] },
-      { name: 'New Signups',     path: '/hr/signups',     icon: Users,             perms: ['view_onboardingsubmission', 'add_onboardingsubmission'] },
+      { name: 'New Signups',     path: '/hr/signups',     icon: Users,             perms: ['add_onboardingsubmission'] },
+      { name: 'Policies',        path: '/hr/policies',    icon: FileText,          scopeAll: true },
+      { name: 'Forms',           path: '/hr/forms',       icon: FileSpreadsheet,   scopeAll: true },
     ],
   },
   {
@@ -139,6 +159,23 @@ const portals = [
     ],
   },
   {
+    key: 'wordpress',
+    label: 'Articles & Reports',
+    icon: Globe,
+    firstPath: '/wordpress/posts',
+    perms: null,   // superuser only (the server-side WP proxy is superuser-gated)
+    links: [
+      { name: 'Posts',              path: '/wordpress/posts',      icon: FileText,         perms: [], superuserOnly: true },
+      { name: 'Pages',              path: '/wordpress/pages',      icon: File,             perms: [], superuserOnly: true },
+      { name: 'Media',              path: '/wordpress/media',      icon: Image,            perms: [], superuserOnly: true },
+      { name: 'Categories & Tags',  path: '/wordpress/taxonomies', icon: Tag,              perms: [], superuserOnly: true },
+      { name: 'Comments',           path: '/wordpress/comments',   icon: MessageSquare,    perms: [], superuserOnly: true },
+      { name: 'Users',              path: '/wordpress/users',      icon: Users,            perms: [], superuserOnly: true },
+      { name: 'Website Navigation', path: '/wordpress/navigation', icon: LayoutGrid,       perms: [], superuserOnly: true },
+      { name: 'Blog Menu',          path: '/wordpress/blog-menu',  icon: ListTree,         perms: [], superuserOnly: true },
+    ],
+  },
+  {
     key: 'certificates',
     label: 'Certificates & Email',
     icon: Award,
@@ -149,6 +186,16 @@ const portals = [
       { name: 'Generated Files',       path: '/certificates/generated', icon: History, perms: [] },
       { name: 'Email Templates',       path: '/accounts/email-templates', icon: Mail,      perms: [], superuserOnly: true },
       { name: 'Mail Automation',       path: '/accounts/mail-automation', icon: Megaphone, perms: [], superuserOnly: true },
+    ],
+  },
+  {
+    key: 'technical',
+    label: 'Technical',
+    icon: Server,
+    firstPath: '/technical',
+    developerOnly: true,
+    links: [
+      { name: 'Infrastructure', path: '/technical', icon: Server, developerOnly: true },
     ],
   },
   {
@@ -169,10 +216,11 @@ const portals = [
 
 const Sidebar = ({ activePortal, isOpen, onClose }) => {
   const { hasAnyPermission, isSuperuser } = usePermissions();
-  const { isMember, isLead, isAdvisory, scope } = useMe();
+  const { isMember, isLead, isAdvisory, isDeveloper, scope } = useMe();
   const navigate = useNavigate();
 
   const isPortalVisible = (portal) => {
+    if (portal.developerOnly) return isDeveloper;
     if (portal.memberOnly) return isMember;
     if (portal.advisoryOnly) return isSuperuser || isAdvisory;
     if (portal.advisoryOrLead) return isSuperuser || isAdvisory || isLead;
@@ -181,6 +229,7 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
   };
 
   const isLinkVisible = (link) => {
+    if (link.developerOnly) return isDeveloper;
     if (link.superuserOnly) return isSuperuser;
     if (link.advisoryOnly) return isSuperuser || isAdvisory;
     if (link.advisoryOrLead) return isSuperuser || isAdvisory || isLead;
