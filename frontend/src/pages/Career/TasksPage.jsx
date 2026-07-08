@@ -232,7 +232,7 @@ export default function TasksPage() {
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                                 <thead>
                                     <tr style={{ borderBottom: '2px solid var(--outline-variant)' }}>
-                                        {['Title', 'Assigned To', 'Priority', 'Status', 'Due', 'Actions'].map(h => (
+                                        {['Title', 'Assigned To', 'Priority', 'Status', 'Progress', 'Due', 'Actions'].map(h => (
                                             <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600 }}>{h}</th>
                                         ))}
                                     </tr>
@@ -251,6 +251,16 @@ export default function TasksPage() {
                                                 </td>
                                                 <td style={{ padding: '10px 12px' }}>
                                                     <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: ss.bg, color: ss.color }}>{cap(t.status)}</span>
+                                                </td>
+                                                <td style={{ padding: '10px 12px', minWidth: 130 }}>
+                                                    {(t.progress > 0 || t.estimated_hours) ? (
+                                                        <div>
+                                                            <div style={{ height: 5, borderRadius: 999, background: 'var(--outline-variant)', overflow: 'hidden' }}>
+                                                                <div style={{ height: '100%', width: `${Math.min(100, t.progress || 0)}%`, background: (t.progress || 0) >= 100 ? '#16a34a' : 'var(--primary)' }} />
+                                                            </div>
+                                                            <span style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{t.progress || 0}%{t.estimated_hours ? ` · ${t.actual_hours || 0}/${t.estimated_hours}h` : ''}</span>
+                                                        </div>
+                                                    ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                                                 </td>
                                                 <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>{fmtDate(t.due_date) || '—'}</td>
                                                 <td style={{ padding: '10px 12px' }}>
