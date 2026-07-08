@@ -23,10 +23,17 @@ import datetime
 
 from django.conf import settings
 
-SCOPES = [
-    'https://www.googleapis.com/auth/calendar.events',
-    'https://www.googleapis.com/auth/meetings.space.created',   # Meet API host controls (Phase C)
-]
+# The interview/webinar Meet link is created through the Calendar API's
+# conferenceData, which only needs `calendar.events`. The Meet API host-controls
+# scope (`meetings.space.created`) must be granted WHEN the refresh token is
+# generated — requesting it during refresh when the stored token was only granted
+# calendar.events makes Google reject the ENTIRE refresh with `invalid_scope`
+# (which broke all calendar ops, incl. interview Meet links). So request
+# calendar-only by default; keep the Meet scope opt-in for when the token is
+# re-generated with it (see get_google_refresh_token.py + MEET_SCOPES).
+CALENDAR_SCOPES = ['https://www.googleapis.com/auth/calendar.events']
+MEET_SCOPES = CALENDAR_SCOPES + ['https://www.googleapis.com/auth/meetings.space.created']
+SCOPES = CALENDAR_SCOPES
 
 
 def _join_access_to_meet(join_access):
