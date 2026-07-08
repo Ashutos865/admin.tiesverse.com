@@ -1379,6 +1379,9 @@ const WebinarsWorkshops = () => {
         </div>
       )}
 
+      {/* Listing header + filters: only in list view — hidden while managing one item */}
+      {!selected && (
+      <>
       {/* Page header */}
       <div className="ww-page-header">
         <div>
@@ -1401,6 +1404,8 @@ const WebinarsWorkshops = () => {
           <button type="button" onClick={() => setCalView('calendar')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: 'none', borderRadius: 6, background: calView === 'calendar' ? 'var(--accent, #6366f1)' : 'transparent', color: calView === 'calendar' ? '#fff' : 'inherit', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 }}><Award size={14} /> Calendar</button>
         </div>
       </div>
+      </>
+      )}
 
       {calView === 'calendar' ? (
         <div style={{ padding: '4px 0' }}>
@@ -1476,7 +1481,9 @@ const WebinarsWorkshops = () => {
             </div>
 
             <div className="ww-tabs">
-              {TABS.map(tab => {
+              {/* Past events don't need the registration form or a meeting link;
+                  keep Registrations for attendance + certificate distribution. */}
+              {TABS.filter(tab => !(selected.item.status === 'past' && (tab.key === 'questions' || tab.key === 'meeting'))).map(tab => {
                 const Icon = tab.icon;
                 return (
                   <button
