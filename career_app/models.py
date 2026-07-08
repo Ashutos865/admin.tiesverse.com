@@ -569,6 +569,27 @@ class WeeklyUpdate(models.Model):
         return f"{self.team_lead.candidate_name} - week of {self.week_ending}"
 
 
+class WeeklyUpdateComment(models.Model):
+    """Advisory feedback left on a team lead's weekly update."""
+    update = models.ForeignKey(
+        WeeklyUpdate, on_delete=models.CASCADE, related_name='comments',
+    )
+    author_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
+        related_name='weekly_update_comments',
+    )
+    author_name = models.CharField(max_length=200, blank=True)
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'weekly_update_comments'
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"comment on WU#{self.update_id} by {self.author_name}"
+
+
 # ── Self-service signup (hashed link -> OTP -> HR approval) ───────────────────
 
 class SelfSignup(models.Model):

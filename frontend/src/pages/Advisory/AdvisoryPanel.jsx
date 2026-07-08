@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useMe } from '../../context/MeContext';
 import {
   getAdvisoryTaskOversight, getAdvisoryDailyUpdates,
-  getWeeklyUpdates, submitWeeklyUpdate,
+  getWeeklyUpdates, submitWeeklyUpdate, addWeeklyUpdateComment,
 } from '../../apiClient';
 
 const fmt = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
@@ -180,16 +180,93 @@ function WeeklyTab({ isAdvisory, isLead, weekly, reload }) {
         {weekly.length === 0 ? <div style={S.empty}>No weekly updates yet.</div> : (
           <div style={S.feed}>
             {weekly.map(w => (
-              <div key={w.id} style={S.feedItem}>
-                <div style={S.feedTop}><strong>{w.team_lead}</strong><span style={S.dim}>{dept(w.department)} · week of {fmt(w.week_ending)}</span></div>
-                <div style={S.feedBody}>{w.summary}</div>
-                {w.wins ? <div style={S.tagRow}><b style={S.win}>Wins:</b> {w.wins}</div> : null}
-                {w.blockers ? <div style={S.tagRow}><b style={S.blk}>Blockers:</b> {w.blockers}</div> : null}
-              </div>
+              <WeeklyCard key={w.id} w={w} isAdvisory={isAdvisory} />
             ))}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// One weekly update: lead's hours, team hours (names + hours only — no work
+// details), and the Advisory comment thread (Advisory can post; leads read-only).
+function WeeklyCard({ w, isAdvisory }) {
+  const [comment, setComment] = useState('');
+  const [posting, setPosting] = useState(false);
+  const [comments, setComments] = useState(w.comments || []);
+
+  const post = async () => {
+    const text = comment.trim();
+    if (!text) return;
+    setPosting(true);
+    const res = await addWeeklyUpdateComment(w.id, text).catch(() => ({ error: 'Failed' }));
+    setPosting(false);
+    if (res && res.id) {
+      setComments(c => [...c, res]);
+      setComment('');
+    } else {
+      alert((res && (res.detail || res.error)) || 'Could not post comment.');
+    }
+  };
+
+  return (
+    <div style={S.feedItem}>
+      <div style={S.feedTop}>
+        <strong>{w.team_lead}</strong>
+        <span style={S.dim}>{dept(w.department)} · week of {fmt(w.week_ending)}</span>
+      </div>
+      <div style={S.hoursRow}>
+        <span style={S.hoursBadge}>⏱ Lead worked {w.lead_hours ?? 0} h this week</span>
+      </div>
+      <div style={S.feedBody}>{w.summary}</div>
+      {w.wins ? <div style={S.tagRow}><b style={S.win}>Wins:</b> {w.wins}</div> : null}
+      {w.blockers ? <div style={S.tagRow}><b style={S.blk}>Blockers:</b> {w.blockers}</div> : null}
+
+      {(w.team && w.team.length > 0) ? (
+        <div style={S.teamBox}>
+          <div style={S.teamHead}>Team hours this week</div>
+          <div style={S.teamGrid}>
+            {w.team.map((m, i) => (
+              <div key={i} style={S.teamPill}>
+                <span style={S.teamName}>{m.name}</span>
+                <b style={{ color: (m.hours || 0) > 0 ? '#059669' : '#9ca3af' }}>{m.hours ?? 0} h</b>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {(comments.length > 0 || isAdvisory) ? (
+        <div style={S.commentsBox}>
+          <div style={S.teamHead}>Advisory feedback</div>
+          {comments.length > 0 && (
+            <div style={S.commentsList}>
+              {comments.map((c, i) => (
+                <div key={c.id || i} style={S.comment}>
+                  <span style={S.commentAuthor}>{c.author}</span>
+                  <span style={S.commentText}>{c.text}</span>
+                  <span style={S.commentTime}>{fmtDT(c.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {isAdvisory && (
+            <div style={S.commentForm}>
+              <input
+                value={comment}
+                onChange={e => setComment(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') post(); }}
+                placeholder="Add feedback for this lead…"
+                style={S.commentInput}
+              />
+              <button onClick={post} disabled={posting || !comment.trim()} style={S.commentBtn}>
+                {posting ? '…' : 'Post'}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -216,6 +293,22 @@ const S = {
   feedBody: { fontSize: 14, color: 'var(--text,#374151)', whiteSpace: 'pre-wrap' },
   tagRow: { fontSize: 13, marginTop: 6, color: 'var(--text,#374151)' },
   win: { color: '#059669' }, blk: { color: '#dc2626' },
+  hoursRow: { margin: '2px 0 8px' },
+  hoursBadge: { display: 'inline-block', fontSize: 12.5, fontWeight: 700, color: '#9a3412', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 999, padding: '4px 12px' },
+  teamBox: { marginTop: 12, padding: 12, borderRadius: 10, background: 'var(--surface-hover,rgba(0,0,0,0.03))', border: '1px solid var(--border,#eef0f3)' },
+  teamHead: { fontSize: 11.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted,#9ca3af)', marginBottom: 8 },
+  teamGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 },
+  teamPill: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 11px', borderRadius: 8, background: 'var(--card,#fff)', border: '1px solid var(--border,#eef0f3)' },
+  teamName: { color: 'var(--text,#374151)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  commentsBox: { marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--border,#e5e7eb)' },
+  commentsList: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 },
+  comment: { display: 'flex', flexDirection: 'column', gap: 2, fontSize: 13, background: 'var(--surface-hover,rgba(0,0,0,0.03))', borderRadius: 8, padding: '8px 11px' },
+  commentAuthor: { fontWeight: 700, color: 'var(--text,#111827)', fontSize: 12.5 },
+  commentText: { color: 'var(--text,#374151)', whiteSpace: 'pre-wrap' },
+  commentTime: { fontSize: 11, color: 'var(--text-muted,#9ca3af)' },
+  commentForm: { display: 'flex', gap: 8 },
+  commentInput: { flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border,#e5e7eb)', fontSize: 13.5, fontFamily: 'inherit' },
+  commentBtn: { padding: '9px 18px', borderRadius: 8, border: 'none', background: '#fe7a00', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13.5 },
   formTitle: { fontWeight: 700, fontSize: 15, marginBottom: 12, color: 'var(--text,#111827)' },
   formGrid: { display: 'flex', flexDirection: 'column', gap: 12 },
   lbl: { display: 'flex', flexDirection: 'column', gap: 5, fontSize: 13, fontWeight: 600, color: 'var(--text-muted,#6b7280)' },

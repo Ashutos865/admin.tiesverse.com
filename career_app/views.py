@@ -13,7 +13,8 @@ from rest_framework.views import APIView
 from .models import (
     Position, Enrollment, OfferLetter, HRDepartment, OnboardingSubmission,
     MemberAccount, DocumentAuditLog, AttendanceRecord, LeaveRequest, Asset, Task,
-    OffboardingRequest, WeeklyUpdate, SelfSignup, Policy, Form, FormResponse,
+    OffboardingRequest, WeeklyUpdate, WeeklyUpdateComment, SelfSignup, Policy,
+    Form, FormResponse, WorkSession,
 )
 from .serializers import (
     PositionSerializer, EnrollmentSerializer, OfferLetterSerializer,
@@ -1780,28 +1781,84 @@ class AdvisoryDailyUpdatesView(APIView):
         return Response({'updates': data})
 
 
+def _hours_for_members(member_ids, start, end):
+    """Total worked hours per member id in [start, end] inclusive, from WorkSessions.
+    Returns {member_id: hours(float, 1dp)}. Members with no sessions are absent."""
+    ids = list(member_ids or [])
+    if not ids or not start or not end:
+        return {}
+    mins = {}
+    for s in WorkSession.objects.filter(member_id__in=ids, date__gte=start, date__lte=end):
+        mins[s.member_id] = mins.get(s.member_id, 0) + s.duration_minutes
+    return {mid: round(m / 60, 1) for mid, m in mins.items()}
+
+
 class WeeklyUpdateView(APIView):
-    """Team leads submit weekly updates (POST); Advisory sees all, a lead sees their own (GET)."""
+    """Team leads submit weekly updates (POST); Advisory sees all, a lead sees their own (GET).
+
+    Each update also carries the lead's hours that week, the team members' hours
+    (names + hours only — never their work details), and any Advisory comments.
+    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         member = access.get_member_for_user(request.user)
         if _is_advisory(request.user):
-            qs = WeeklyUpdate.objects.select_related('team_lead').all()[:500]
+            qs = WeeklyUpdate.objects.select_related('team_lead').prefetch_related('comments').all()[:500]
         elif member:
-            qs = WeeklyUpdate.objects.filter(team_lead=member).select_related('team_lead')[:500]
+            qs = (WeeklyUpdate.objects.filter(team_lead=member)
+                  .select_related('team_lead').prefetch_related('comments')[:500])
         else:
             qs = WeeklyUpdate.objects.none()
-        data = [{
-            'id': w.id,
-            'team_lead': (w.team_lead.candidate_name if w.team_lead_id else ''),
-            'department': (w.team_lead.assigned_departments if w.team_lead_id else []),
-            'week_ending': w.week_ending,
-            'summary': w.summary,
-            'wins': w.wins,
-            'blockers': w.blockers,
-            'created_at': w.created_at,
-        } for w in qs]
+
+        # Precompute verified members once — used to build each lead's team roster.
+        verified = list(OnboardingSubmission.objects.filter(status='verified'))
+
+        data = []
+        for w in qs:
+            lead = w.team_lead if w.team_lead_id else None
+            # The reported week runs Mon–Sun ending on week_ending (a Sunday).
+            monday = (w.week_ending - datetime.timedelta(days=6)) if w.week_ending else None
+
+            # Team = verified members sharing a department the lead leads (+ the lead).
+            team_ids = set()
+            if lead:
+                led = access.led_department_names(lead)
+                if led:
+                    for m in verified:
+                        if any(d in (m.assigned_departments or []) for d in led):
+                            team_ids.add(m.id)
+                team_ids.add(lead.id)
+
+            hours_map = _hours_for_members(team_ids, monday, w.week_ending)
+            lead_hours = hours_map.get(lead.id, 0.0) if lead else 0.0
+
+            team_rows = []
+            for m in verified:
+                if m.id in team_ids and not (lead and m.id == lead.id):
+                    team_rows.append({'name': m.candidate_name, 'hours': hours_map.get(m.id, 0.0)})
+            team_rows.sort(key=lambda r: (r['name'] or '').lower())
+
+            comments = [{
+                'id': c.id,
+                'author': c.author_name or (c.author_user.get_username() if c.author_user_id else 'Advisory'),
+                'text': c.text,
+                'created_at': c.created_at,
+            } for c in w.comments.all()]
+
+            data.append({
+                'id': w.id,
+                'team_lead': (lead.candidate_name if lead else ''),
+                'department': (lead.assigned_departments if lead else []),
+                'week_ending': w.week_ending,
+                'summary': w.summary,
+                'wins': w.wins,
+                'blockers': w.blockers,
+                'created_at': w.created_at,
+                'lead_hours': lead_hours,
+                'team': team_rows,
+                'comments': comments,
+            })
         return Response({'updates': data})
 
     def post(self, request):
@@ -1825,6 +1882,33 @@ class WeeklyUpdateView(APIView):
             submitted_by_user=request.user if request.user.is_authenticated else None,
         )
         return Response({'id': w.id, 'status': 'submitted'}, status=status.HTTP_201_CREATED)
+
+
+class WeeklyUpdateCommentView(APIView):
+    """Advisory posts feedback on a team lead's weekly update (POST)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        if not _is_advisory(request.user):
+            return Response({'detail': 'Only Advisory can comment on weekly updates.'},
+                            status=status.HTTP_403_FORBIDDEN)
+        w = WeeklyUpdate.objects.filter(pk=pk).first()
+        if not w:
+            return Response({'detail': 'Weekly update not found.'}, status=status.HTTP_404_NOT_FOUND)
+        text = (request.data.get('text') or '').strip()
+        if not text:
+            return Response({'detail': 'Comment text is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        member = access.get_member_for_user(request.user)
+        author_name = (member.candidate_name if member else '') or request.user.get_username() or 'Advisory'
+        c = WeeklyUpdateComment.objects.create(
+            update=w,
+            author_user=request.user if request.user.is_authenticated else None,
+            author_name=author_name,
+            text=text,
+        )
+        return Response({
+            'id': c.id, 'author': c.author_name, 'text': c.text, 'created_at': c.created_at,
+        }, status=status.HTTP_201_CREATED)
 
 
 # ── Self-service signup: hashed link -> OTP -> HR approval ────────────────────

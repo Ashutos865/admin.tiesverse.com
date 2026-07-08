@@ -27,6 +27,7 @@ from .views import (
     AssetListView, AssetDetailView, AssetAssignView,
     TaskListView, TaskDetailView,
     AdvisoryTaskOversightView, AdvisoryDailyUpdatesView, WeeklyUpdateView,
+    WeeklyUpdateCommentView,
     PublicSignupView, VerifySignupOtpView, SignupListView, ApproveSignupView, RejectSignupView,
     ResendCredentialsView,
 )
@@ -121,6 +122,7 @@ urlpatterns = [
     path('advisory/task-oversight/', AdvisoryTaskOversightView.as_view(), name='advisory-task-oversight'),
     path('advisory/daily-updates/', AdvisoryDailyUpdatesView.as_view(), name='advisory-daily-updates'),
     path('weekly-updates/', WeeklyUpdateView.as_view(), name='weekly-updates'),
+    path('weekly-updates/<int:pk>/comments/', WeeklyUpdateCommentView.as_view(), name='weekly-update-comments'),
 
     # ── Self-service signup (public hashed link -> OTP) + HR review ─────────
     path('signup/<str:link_hash>/', PublicSignupView.as_view(), name='public-signup'),

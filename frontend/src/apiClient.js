@@ -334,6 +334,7 @@ export const getAdvisoryTaskOversight = () => adminFetch('/api/career/advisory/t
 export const getAdvisoryDailyUpdates = () => adminFetch('/api/career/advisory/daily-updates/');
 export const getWeeklyUpdates = () => adminFetch('/api/career/weekly-updates/');
 export const submitWeeklyUpdate = (data) => adminFetch('/api/career/weekly-updates/', 'POST', data);
+export const addWeeklyUpdateComment = (id, text) => adminFetch(`/api/career/weekly-updates/${id}/comments/`, 'POST', { text });
 
 // Self-service signup — public (no auth) submit + OTP; HR (authed) review
 export const publicSignup = (linkHash, formData) =>
