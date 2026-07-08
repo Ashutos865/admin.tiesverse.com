@@ -61,9 +61,22 @@ export default function PersonalNotes() {
 function NoteCard({ note, rot, onPatch, onRemove }) {
   const [text, setText] = useState(note.content || '');
   const saved = useRef(note.content || '');
-  const save = () => {
+  const [items, setItems] = useState(Array.isArray(note.checklist) ? note.checklist : []);
+  const [newItem, setNewItem] = useState('');
+
+  const saveText = () => {
     if (text !== saved.current) { saved.current = text; onPatch(note.id, { content: text }); }
   };
+  const saveItems = (next) => { setItems(next); onPatch(note.id, { checklist: next }); };
+  const toggle = (i) => saveItems(items.map((it, idx) => (idx === i ? { ...it, done: !it.done } : it)));
+  const removeItem = (i) => saveItems(items.filter((_, idx) => idx !== i));
+  const addItem = () => {
+    const t = newItem.trim();
+    if (!t) return;
+    saveItems([...items, { text: t, done: false }]);
+    setNewItem('');
+  };
+
   return (
     <div style={{ position: 'relative', background: note.color, borderRadius: 4, padding: '22px 14px 12px', minHeight: 150, transform: `rotate(${rot})`, boxShadow: '0 8px 18px -8px rgba(0,0,0,.35)', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <span style={{ position: 'absolute', top: -9, left: '50%', transform: 'translateX(-50%) rotate(-2deg)', width: 60, height: 18, background: 'rgba(255,255,255,.55)', borderRadius: 2, boxShadow: '0 1px 3px rgba(0,0,0,.15)' }} />
@@ -71,9 +84,27 @@ function NoteCard({ note, rot, onPatch, onRemove }) {
         style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,.08)', border: 'none', borderRadius: '50%', width: 22, height: 22, cursor: 'pointer', display: 'grid', placeItems: 'center', color: '#555' }}>
         <X size={13} />
       </button>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} onBlur={save} placeholder="Write anything…" rows={5}
-        style={{ flex: 1, background: 'transparent', border: 'none', resize: 'vertical', outline: 'none', fontFamily: 'inherit', fontSize: 14, lineHeight: 1.45, color: '#3a3a3a', minHeight: 92 }} />
-      <div style={{ display: 'flex', gap: 5 }}>
+
+      <textarea value={text} onChange={(e) => setText(e.target.value)} onBlur={saveText} placeholder="Write anything…" rows={3}
+        style={{ background: 'transparent', border: 'none', resize: 'vertical', outline: 'none', fontFamily: 'inherit', fontSize: 14, lineHeight: 1.45, color: '#3a3a3a', minHeight: 54 }} />
+
+      {/* checklist */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {items.map((it, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13 }}>
+            <input type="checkbox" checked={!!it.done} onChange={() => toggle(i)} style={{ margin: 0, cursor: 'pointer', accentColor: '#4f46e5' }} />
+            <span style={{ flex: 1, color: '#3a3a3a', textDecoration: it.done ? 'line-through' : 'none', opacity: it.done ? 0.55 : 1 }}>{it.text}</span>
+            <button type="button" onClick={() => removeItem(i)} title="Remove" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8a8a8a', padding: 0, lineHeight: 1 }}><X size={12} /></button>
+          </div>
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Plus size={13} style={{ color: '#8a8a8a', flexShrink: 0 }} />
+          <input value={newItem} onChange={(e) => setNewItem(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addItem(); } }} onBlur={addItem} placeholder="add checklist item"
+            style={{ flex: 1, background: 'transparent', border: 'none', borderBottom: '1px dashed rgba(0,0,0,.2)', outline: 'none', fontFamily: 'inherit', fontSize: 12.5, color: '#3a3a3a', padding: '2px 0' }} />
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 5, marginTop: 'auto' }}>
         {COLORS.map((c) => (
           <button key={c} type="button" onClick={() => onPatch(note.id, { color: c })} title="Colour"
             style={{ width: 16, height: 16, borderRadius: '50%', background: c, border: note.color === c ? '2px solid #555' : '1px solid rgba(0,0,0,.15)', cursor: 'pointer', padding: 0 }} />

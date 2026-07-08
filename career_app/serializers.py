@@ -14,7 +14,7 @@ from .models import (
 class PersonalNoteSerializer(serializers.ModelSerializer):
     class Meta:
         model = PersonalNote
-        fields = ['id', 'content', 'color', 'order', 'updated_at']
+        fields = ['id', 'content', 'checklist', 'color', 'order', 'updated_at']
         read_only_fields = ['id', 'updated_at']
 
 

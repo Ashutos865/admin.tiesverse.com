@@ -987,6 +987,7 @@ class PersonalNote(models.Model):
         User, on_delete=models.CASCADE, db_constraint=False, related_name='personal_notes',
     )
     content = models.TextField(blank=True)
+    checklist = models.JSONField(default=list, blank=True)   # [{text, done}]
     color = models.CharField(max_length=16, default='#fff7cc')
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
