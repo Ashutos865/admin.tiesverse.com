@@ -530,6 +530,12 @@ class Task(models.Model):
     )
     # Lead's estimate of how many hours the task should take (actual comes from work sessions).
     estimated_hours = models.FloatField(null=True, blank=True)
+    # Completion percent 0–100 (100 = Done). Updated at checkout for assigned tasks;
+    # status is kept in sync (0 → To Do, 1–99 → In Progress, 100 → Done).
+    progress = models.PositiveSmallIntegerField(default=0)
+    # Set when the overdue-deadline escalation email has gone to Advisory, so each
+    # overdue task is escalated only once (not re-emailed every night).
+    overdue_escalated_at = models.DateTimeField(null=True, blank=True)
 
     due_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -926,8 +932,11 @@ class WorkSession(models.Model):
     task = models.ForeignKey(
         Task, on_delete=models.SET_NULL, null=True, blank=True, related_name='work_sessions',
     )
+    custom_task = models.CharField(max_length=300, blank=True)   # ad-hoc task label (not an assigned Task)
     note = models.TextField(blank=True)
     completed_task = models.BooleanField(default=False)   # marked the task done at checkout
+    progress_after = models.PositiveSmallIntegerField(null=True, blank=True)  # task progress % set at this checkout
+    auto_closed = models.BooleanField(default=False)   # system-closed at day end (member forgot to check out)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -942,6 +951,33 @@ class WorkSession(models.Model):
 
     def __str__(self):
         return f"{self.member_id} {self.date} ({self.duration_minutes}m)"
+
+
+class DailyWorkSummary(models.Model):
+    """A locked end-of-day snapshot of a member's work — total time, session count,
+    and a per-task breakdown. Written once by the nightly `finalize_work_day`
+    command so the day's numbers can't drift afterwards and the lead has a stable
+    record to review."""
+    member = models.ForeignKey(
+        OnboardingSubmission, on_delete=models.CASCADE, related_name='work_summaries',
+    )
+    date = models.DateField()
+    total_minutes = models.PositiveIntegerField(default=0)
+    session_count = models.PositiveIntegerField(default=0)
+    first_check_in = models.DateTimeField(null=True, blank=True)
+    last_check_out = models.DateTimeField(null=True, blank=True)
+    auto_closed_count = models.PositiveIntegerField(default=0)
+    # [{task_id, title, minutes, progress, custom(bool), note}]
+    tasks = models.JSONField(default=list, blank=True)
+    finalized_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'daily_work_summaries'
+        unique_together = ('member', 'date')
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.member_id} {self.date} — {self.total_minutes}m (locked)"
 
 
 class TaskStep(models.Model):

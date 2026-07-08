@@ -194,17 +194,22 @@ class TaskStepSerializer(serializers.ModelSerializer):
 
 class WorkSessionSerializer(serializers.ModelSerializer):
     task_title = serializers.SerializerMethodField(read_only=True)
+    task_progress = serializers.SerializerMethodField(read_only=True)
     member_name = serializers.SerializerMethodField(read_only=True)
     duration_minutes = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = WorkSession
         fields = ['id', 'member', 'member_name', 'date', 'check_in', 'check_out', 'task',
-                  'task_title', 'note', 'completed_task', 'duration_minutes', 'created_at']
-        read_only_fields = ['id', 'member_name', 'task_title', 'duration_minutes', 'created_at']
+                  'task_title', 'task_progress', 'custom_task', 'note', 'completed_task',
+                  'progress_after', 'auto_closed', 'duration_minutes', 'created_at']
+        read_only_fields = ['id', 'member_name', 'task_title', 'task_progress', 'duration_minutes', 'created_at']
 
     def get_task_title(self, obj):
-        return obj.task.title if obj.task else None
+        return obj.task.title if obj.task else (obj.custom_task or None)
+
+    def get_task_progress(self, obj):
+        return obj.task.progress if obj.task else None
 
     def get_member_name(self, obj):
         return obj.member.candidate_name if obj.member else None

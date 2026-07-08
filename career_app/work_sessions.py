@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import OnboardingSubmission, WorkSession, Task, AttendanceRecord, LeaveRequest
+from .models import OnboardingSubmission, WorkSession, Task, AttendanceRecord, LeaveRequest, DailyWorkSummary
 from .serializers import WorkSessionSerializer
 from . import access
 
@@ -43,7 +43,10 @@ def _resolve_member(request, member_id):
 
 
 class WorkSessionCheckInView(APIView):
-    """Start a work session (optionally on a task). Body: {member?, task?}."""
+    """Start a work session. Body: {member?, task?, custom_task?}.
+
+    `task` = an assigned Task id (its progress is tracked on the board);
+    `custom_task` = a free-text label for ad-hoc work (no board tracking)."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -58,18 +61,28 @@ class WorkSessionCheckInView(APIView):
         tid = request.data.get('task')
         if tid:
             task = Task.objects.filter(pk=tid).first()
+        custom_task = '' if task else str(request.data.get('custom_task') or '').strip()[:300]
+        # An assigned task moves to "In Progress" the moment work starts on it.
+        if task and task.status == Task.STATUS_TODO:
+            task.status = Task.STATUS_IN_PROGRESS
+            task.save(update_fields=['status'])
         # keep the day-level record in sync (first session sets its check_in)
         record, _ = AttendanceRecord.objects.get_or_create(
             member=sub, date=today, defaults={'status': AttendanceRecord.STATUS_PRESENT})
         if not record.check_in:
             record.check_in = now
             record.save(update_fields=['check_in'])
-        session = WorkSession.objects.create(member=sub, date=today, check_in=now, task=task)
+        session = WorkSession.objects.create(
+            member=sub, date=today, check_in=now, task=task, custom_task=custom_task)
         return Response(WorkSessionSerializer(session).data, status=201)
 
 
 class WorkSessionCheckOutView(APIView):
-    """Close the caller's open session. Body: {member?, note?, complete_task?}."""
+    """Close the caller's open session. Body: {member?, note?, progress?, complete_task?}.
+
+    `note` (what you did this session) is always saved. `progress` (0–100) and
+    `complete_task` apply ONLY to an assigned task and update its board status;
+    custom (ad-hoc) tasks are note-only."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -82,12 +95,31 @@ class WorkSessionCheckOutView(APIView):
         now = timezone.now()
         session.check_out = now
         session.note = (request.data.get('note') or '').strip()
-        if request.data.get('complete_task') and session.task_id:
-            session.completed_task = True
+        # Progress only for an assigned task; carries over across sessions.
+        if session.task_id:
             t = session.task
-            t.status = Task.STATUS_DONE
-            t.completed_at = now
-            t.save(update_fields=['status', 'completed_at'])
+            done = bool(request.data.get('complete_task'))
+            raw = request.data.get('progress')
+            prog = None
+            if raw is not None and str(raw) != '':
+                try:
+                    prog = max(0, min(100, int(float(raw))))
+                except (TypeError, ValueError):
+                    prog = None
+            if done:
+                prog = 100
+            if prog is not None:
+                t.progress = prog
+                session.progress_after = prog
+                fields = ['progress', 'status']
+                if prog >= 100:
+                    session.completed_task = True
+                    t.status = Task.STATUS_DONE
+                    t.completed_at = now
+                    fields.append('completed_at')
+                elif prog > 0:
+                    t.status = Task.STATUS_IN_PROGRESS
+                t.save(update_fields=fields)
         session.save()
         # day-level record: latest checkout; leads self-approve, others await review
         rec = AttendanceRecord.objects.filter(member=sub, date=session.date).first()
@@ -132,13 +164,31 @@ class WorkSessionListView(APIView):
         if d_to:
             qs = qs.filter(date__lte=d_to)
         sessions = list(qs)
-        # per-date rollup
+        # per-date rollup (live)
         daily = {}
         for s in sessions:
             key = s.date.isoformat()
-            d = daily.setdefault(key, {'date': key, 'sessions': 0, 'minutes': 0})
+            d = daily.setdefault(key, {'date': key, 'sessions': 0, 'minutes': 0,
+                                       'finalized': False, 'tasks': [], 'auto_closed': 0})
             d['sessions'] += 1
             d['minutes'] += s.duration_minutes
+        # overlay the locked end-of-day snapshots (per-task breakdown + 🔒 finalized)
+        summ = DailyWorkSummary.objects.all()
+        summ = access.scope_member_queryset(summ, request.user, field='member')
+        if mid:
+            summ = summ.filter(member_id=mid)
+        if d_from:
+            summ = summ.filter(date__gte=d_from)
+        if d_to:
+            summ = summ.filter(date__lte=d_to)
+        for su in summ:
+            key = su.date.isoformat()
+            d = daily.setdefault(key, {'date': key, 'sessions': su.session_count, 'minutes': su.total_minutes})
+            d['finalized'] = True
+            d['minutes'] = su.total_minutes
+            d['sessions'] = su.session_count
+            d['tasks'] = su.tasks or []
+            d['auto_closed'] = su.auto_closed_count
         return Response({
             'sessions': WorkSessionSerializer(sessions, many=True).data,
             'daily': sorted(daily.values(), key=lambda x: x['date'], reverse=True),

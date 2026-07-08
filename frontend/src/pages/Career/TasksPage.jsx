@@ -318,6 +318,17 @@ function TaskCard({ task, onEdit, onDelete, onMove }) {
                     → {task.assigned_to_name || task.assigned_to_department}
                 </p>
             )}
+            {(task.progress > 0 || task.estimated_hours) && (
+                <div style={{ margin: '0 0 8px' }}>
+                    <div style={{ height: 5, borderRadius: 999, background: 'var(--outline-variant)', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${Math.min(100, task.progress || 0)}%`, background: (task.progress || 0) >= 100 ? '#16a34a' : 'var(--primary)', transition: 'width .3s' }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
+                        <span>{task.progress || 0}% done</span>
+                        {task.estimated_hours ? <span>{task.actual_hours || 0}/{task.estimated_hours}h</span> : null}
+                    </div>
+                </div>
+            )}
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
                 {nextStatuses.slice(0, 2).map(s => (
                     <button key={s} onClick={() => onMove(task, s)} style={{
