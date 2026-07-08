@@ -44,7 +44,7 @@ export default function TasksPage() {
     const [taskModal, setTaskModal] = useState(null);
     const [form, setForm] = useState({
         title: '', description: '', priority: 'medium', status: 'todo',
-        assigned_to: '', assigned_to_department: '', due_date: '',
+        assigned_to: '', assigned_to_department: '', due_date: '', estimated_hours: '',
     });
 
     const showToast = (msg, err = false) => {
@@ -71,7 +71,7 @@ export default function TasksPage() {
     useEffect(() => { load(); }, [load]);
 
     const openNew = () => {
-        setForm({ title: '', description: '', priority: 'medium', status: 'todo', assigned_to: '', assigned_to_department: '', due_date: '' });
+        setForm({ title: '', description: '', priority: 'medium', status: 'todo', assigned_to: '', assigned_to_department: '', due_date: '', estimated_hours: '' });
         setTaskModal('new');
     };
 
@@ -80,7 +80,7 @@ export default function TasksPage() {
             title: task.title, description: task.description || '',
             priority: task.priority, status: task.status,
             assigned_to: task.assigned_to || '', assigned_to_department: task.assigned_to_department || '',
-            due_date: task.due_date || '',
+            due_date: task.due_date || '', estimated_hours: task.estimated_hours ?? '',
         });
         setTaskModal(task);
     };
@@ -95,6 +95,7 @@ export default function TasksPage() {
         if (!payload.assigned_to) delete payload.assigned_to;
         if (!payload.assigned_to_department) delete payload.assigned_to_department;
         if (!payload.due_date) delete payload.due_date;
+        payload.estimated_hours = (payload.estimated_hours === '' || payload.estimated_hours == null) ? null : Number(payload.estimated_hours);
 
         const res = taskModal === 'new'
             ? await createTask(payload)
@@ -282,9 +283,15 @@ export default function TasksPage() {
                                 {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
                             </select>
                         </div>
-                        <div>
-                            <label style={labelStyle}>Due Date</label>
-                            <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} style={{ ...inputStyle, width: '100%' }} />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                            <div>
+                                <label style={labelStyle}>Due Date (deadline)</label>
+                                <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} style={{ ...inputStyle, width: '100%' }} />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Estimated Hours</label>
+                                <input type="number" min="0" step="0.5" value={form.estimated_hours} onChange={e => setForm(f => ({ ...f, estimated_hours: e.target.value }))} placeholder="e.g. 2" style={{ ...inputStyle, width: '100%' }} />
+                            </div>
                         </div>
                     </div>
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
