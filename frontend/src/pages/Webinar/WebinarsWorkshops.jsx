@@ -2,7 +2,7 @@ import './WebinarsWorkshops.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Award, ChevronDown, ChevronUp, ClipboardList, Edit2, FileQuestion, Mail, Mic2,
+  ArrowLeft, Award, ChevronDown, ChevronUp, ClipboardList, Edit2, FileQuestion, Mail, Mic2,
   Plus, Save, Send, Trash2, Upload, Users, Video, X,
 } from 'lucide-react';
 import {
@@ -1417,7 +1417,7 @@ const WebinarsWorkshops = () => {
           />
         </div>
       ) : (
-      <div className="ww-layout">
+      <div className={`ww-layout ${selected ? 'is-detail' : ''}`}>
         {/* Left: cards */}
         <div className="ww-list">
           {loading ? (
@@ -1464,12 +1464,15 @@ const WebinarsWorkshops = () => {
           <div className="ww-detail">
             <div className="ww-detail-head">
               <div>
+                <button className="ww-back-btn" onClick={() => setSelected(null)} title="Back to list">
+                  <ArrowLeft size={16}/> Back to list
+                </button>
                 <h3>{selected.item.title}</h3>
                 <span className={`ww-badge ${selected.item.kind === 'webinar' ? 'ww-badge-blue' : 'ww-badge-purple'}`}>
                   {badge(selected.item.kind)}
                 </span>
               </div>
-              <button onClick={() => setSelected(null)}><X size={18}/></button>
+              <button onClick={() => setSelected(null)} title="Close"><X size={18}/></button>
             </div>
 
             <div className="ww-tabs">

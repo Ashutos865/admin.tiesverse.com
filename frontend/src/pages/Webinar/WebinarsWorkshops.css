@@ -59,6 +59,19 @@
 @media (max-width: 900px) {
   .ww-layout { grid-template-columns: 1fr; overflow: auto; }
 }
+/* When a webinar is opened, give the detail the FULL width (hide the card list)
+   so every tab has room to work — a full-page manage view, not a cramped panel. */
+.ww-layout.is-detail { grid-template-columns: 1fr; }
+.ww-layout.is-detail .ww-list { display: none; }
+.ww-back-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 8px;
+  border: 1px solid var(--border, #e5e7eb);
+  background: var(--surface-container-high, transparent);
+  color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+  margin-right: 4px;
+}
+.ww-back-btn:hover { background: var(--surface-container-highest, rgba(0,0,0,0.06)); }
 
 /* Card list */
 .ww-list {
