@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import PositionViewSet, EnrollmentViewSet, OfferLetterViewSet, HRDepartmentViewSet, PolicyViewSet
+from .views import PositionViewSet, EnrollmentViewSet, OfferLetterViewSet, HRDepartmentViewSet, PolicyViewSet, PersonalNoteViewSet
 from .views import FormViewSet, public_form_view, public_form_submit
 from .project_views import (
     ProjectViewSet, ProjectChecklistViewSet, ProjectMessageViewSet,
@@ -38,6 +38,7 @@ router.register(r'enrollments', EnrollmentViewSet, basename='enrollment')
 router.register(r'offer-letters', OfferLetterViewSet)
 router.register(r'hr-departments', HRDepartmentViewSet)
 router.register(r'policies', PolicyViewSet, basename='policy')
+router.register(r'my-notes', PersonalNoteViewSet, basename='my-note')
 router.register(r'forms', FormViewSet, basename='form')
 router.register(r'projects', ProjectViewSet, basename='project')
 router.register(r'project-checklist', ProjectChecklistViewSet, basename='project-checklist')

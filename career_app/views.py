@@ -14,7 +14,7 @@ from .models import (
     Position, Enrollment, OfferLetter, HRDepartment, OnboardingSubmission,
     MemberAccount, DocumentAuditLog, AttendanceRecord, LeaveRequest, Asset, Task,
     OffboardingRequest, WeeklyUpdate, WeeklyUpdateComment, SelfSignup, Policy,
-    Form, FormResponse, WorkSession,
+    Form, FormResponse, WorkSession, PersonalNote,
 )
 from .serializers import (
     PositionSerializer, EnrollmentSerializer, OfferLetterSerializer,
@@ -23,6 +23,7 @@ from .serializers import (
     AttendanceRecordSerializer, LeaveRequestSerializer,
     AssetSerializer, TaskSerializer, OffboardingRequestSerializer, PolicySerializer,
     FormSerializer, PublicFormSerializer, FormResponseSerializer,
+    PersonalNoteSerializer,
 )
 from . import cloudflare_proxy
 from . import access
@@ -2492,3 +2493,15 @@ def public_form_submit(request, token):
     if not form:
         return Response({'error': 'This form is not available.'}, status=404)
     return _accept_form_response(request, form, is_public=True)
+
+
+class PersonalNoteViewSet(viewsets.ModelViewSet):
+    """A member's own sticky notes — each user sees and edits only their own."""
+    serializer_class = PersonalNoteSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return PersonalNote.objects.filter(owner_user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(owner_user=self.request.user)

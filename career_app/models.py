@@ -980,6 +980,26 @@ class DailyWorkSummary(models.Model):
         return f"{self.member_id} {self.date} — {self.total_minutes}m (locked)"
 
 
+class PersonalNote(models.Model):
+    """A member's own free-text sticky note — the personal pinboard on the
+    dashboard. Each note belongs to one user; they only ever see their own."""
+    owner_user = models.ForeignKey(
+        User, on_delete=models.CASCADE, db_constraint=False, related_name='personal_notes',
+    )
+    content = models.TextField(blank=True)
+    color = models.CharField(max_length=16, default='#fff7cc')
+    order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'personal_notes'
+        ordering = ['order', 'created_at']
+
+    def __str__(self):
+        return f"note#{self.id} by user {self.owner_user_id}"
+
+
 class WebinarAccess(models.Model):
     """Per-member granular access to the Webinar portal, granted by the Webinar
     lead (or admin). Webinar-department members get 'view' by default; explicit

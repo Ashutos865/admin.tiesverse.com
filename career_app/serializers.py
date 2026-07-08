@@ -7,7 +7,15 @@ from .models import (
     Project, ProjectMember, ProjectDeadlineChange,
     ProjectChecklistItem, ProjectMessage, DirectMessage, ProjectNotification,
     ProjectTeam, ProjectMilestone, ProjectAttachment,
+    PersonalNote,
 )
+
+
+class PersonalNoteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PersonalNote
+        fields = ['id', 'content', 'color', 'order', 'updated_at']
+        read_only_fields = ['id', 'updated_at']
 
 
 class PositionSerializer(serializers.ModelSerializer):

@@ -19,6 +19,7 @@ import {
 } from '../../apiClient';
 import './TiesverseDashboard.css';
 import MyTasksNotes from '../../components/MyTasksNotes.jsx';
+import PersonalNotes from '../../components/PersonalNotes.jsx';
 
 const emptyData = {
   events: [],
@@ -187,6 +188,8 @@ const TiesverseDashboard = () => {
       {error && <div className="tv-dashboard-alert">{error}</div>}
 
       <MyTasksNotes />
+
+      <PersonalNotes />
 
       <section className="tv-metric-grid" aria-label="Tiesverse statistics">
         <MetricCard icon={CalendarDays} label="Total events" value={loading ? '—' : data.events.length} helper="Live" />

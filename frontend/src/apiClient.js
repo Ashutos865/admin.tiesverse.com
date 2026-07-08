@@ -515,6 +515,12 @@ export const getTaskDetail = (id) => adminFetch(`/api/career/tasks/${id}`);
 export const updateTask = (id, data) => adminFetch(`/api/career/tasks/${id}`, 'PATCH', data);
 export const deleteTask = (id) => adminFetch(`/api/career/tasks/${id}`, 'DELETE');
 
+// Personal sticky notes (each user's own)
+export const getMyNotes = () => adminFetch('/api/career/my-notes/').catch(() => []);
+export const createNote = (data) => adminFetch('/api/career/my-notes/', 'POST', data);
+export const updateNote = (id, data) => adminFetch(`/api/career/my-notes/${id}/`, 'PATCH', data);
+export const deleteNote = (id) => adminFetch(`/api/career/my-notes/${id}/`, 'DELETE');
+
 // Projects (Phase 1)
 export const getProjects = () => adminFetch('/api/career/projects/').catch(() => []);
 export const getProject = (id) => adminFetch(`/api/career/projects/${id}/`);
