@@ -1,13 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { getMyNotes, createNote, updateNote, deleteNote } from '../apiClient';
-import { useMe } from '../context/MeContext';
 import { Plus, X } from 'lucide-react';
 
 const COLORS = ['#fff7cc', '#d7ecff', '#d9f8e3', '#ffe0ef', '#e6e0ff', '#ffe8cc'];
 const ROT = ['-1.4deg', '1.2deg', '-0.8deg', '1.6deg', '-1deg', '0.8deg'];
 
 export default function PersonalNotes() {
-  const { memberId } = useMe();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -31,8 +29,6 @@ export default function PersonalNotes() {
     setNotes((n) => n.filter((x) => x.id !== id));
     await deleteNote(id).catch(() => {});
   };
-
-  if (!memberId) return null;   // personal notes are for members
 
   return (
     <section style={{ margin: '0 0 26px' }}>
