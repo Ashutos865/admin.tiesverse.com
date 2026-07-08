@@ -97,6 +97,28 @@ export const uploadImage = async (file) => {
         return { error: `Upload failed (${res.status}).` };
     }
 };
+// Upload a document/PDF (email attachment) — keeps the original file (no WebP
+// conversion), returns { url, filename, bytes }.
+export const uploadFile = async (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_URL}/api/media/upload-file/`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+        body: form,
+    });
+    if (res.status === 401) {
+        setApiToken(null);
+        window.location.href = '/login';
+        return { error: 'Session expired. Please log in again.' };
+    }
+    const text = await res.text();
+    try {
+        return JSON.parse(text);
+    } catch {
+        return { error: `Upload failed (${res.status}).` };
+    }
+};
 export const listCloudinaryImages = () =>
     adminFetch('/api/media/images').catch(() => ({ images: [] }));
 

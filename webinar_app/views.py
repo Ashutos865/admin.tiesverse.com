@@ -984,6 +984,34 @@ def _load_event_registrants(event_key, audience='all'):
     return rows
 
 
+def _fetch_url_attachments(metas):
+    """Download admin-uploaded files ({url, filename}) into email attachment
+    tuples. The same files go to every recipient, so this runs once per send.
+    Skips anything that fails; caps combined size to keep emails deliverable."""
+    from urllib.request import urlopen
+    import os
+    out, total = [], 0
+    for m in (metas or []):
+        url = str((m or {}).get('url') or '').strip()
+        if not url:
+            continue
+        fname = str((m or {}).get('filename') or '').strip() or os.path.basename(url.split('?')[0]) or 'attachment'
+        try:
+            with urlopen(url, timeout=25) as resp:
+                blob = resp.read()
+        except Exception:  # noqa: BLE001
+            continue
+        if not blob:
+            continue
+        total += len(blob)
+        if total > 20 * 1024 * 1024:   # ~20 MB combined cap
+            break
+        ext = (fname.rsplit('.', 1)[-1] if '.' in fname else '').lower()
+        subtype = 'pdf' if ext == 'pdf' else 'octet-stream'
+        out.append((fname, blob, subtype))
+    return out
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def webinar_broadcast(request):
@@ -1073,10 +1101,14 @@ def webinar_broadcast(request):
         except Exception:  # noqa: BLE001
             return None, ''
 
+    # Admin-uploaded documents/PDFs — same set attached to every recipient.
+    doc_attachments = _fetch_url_attachments(data.get('attachments'))
+
     # ---- test send: one email, not logged as a campaign ----
     if test_email:
-        att, _cid = _cert_attachment('Preview Name')
-        ok, subject = _send_one(test_email, 'Preview', attachments=att)
+        cert_att, _cid = _cert_attachment('Preview Name')
+        att = (cert_att or []) + doc_attachments
+        ok, subject = _send_one(test_email, 'Preview', attachments=(att or None))
         return Response({'test': True, 'sent': bool(ok), 'stubbed': not ok, 'to': test_email, 'subject': subject})
 
     if not event_key:
@@ -1117,8 +1149,9 @@ def webinar_broadcast(request):
             skipped += 1
             continue
         seen.add(email)
-        attachments, cert_id = _cert_attachment(name, item.get('row'))
-        ok, subject = _send_one(email, name, item.get('row'), attachments=attachments)
+        cert_att, cert_id = _cert_attachment(name, item.get('row'))
+        attachments = (cert_att or []) + doc_attachments
+        ok, subject = _send_one(email, name, item.get('row'), attachments=(attachments or None))
         status_str = 'sent' if ok else 'stubbed'
         if ok:
             sent += 1
@@ -1128,9 +1161,9 @@ def webinar_broadcast(request):
             recipient_email=email, recipient_name=name,
             template_key=template_key, template_name=tpl.name, subject=subject[:300],
             context='webinar_broadcast', event_key=event_key, event_type=event_type,
-            status=status_str, certificate_id=(cert_id if attachments else ''), sent_by=actor,
+            status=status_str, certificate_id=(cert_id if cert_att else ''), sent_by=actor,
         )
-        results.append({'email': email, 'name': name, 'status': status_str, 'certificate_id': cert_id if attachments else ''})
+        results.append({'email': email, 'name': name, 'status': status_str, 'certificate_id': cert_id if cert_att else ''})
 
     EmailCampaign.objects.create(
         name=f'{tpl.name} · {event_title} ({list_source})'[:200],

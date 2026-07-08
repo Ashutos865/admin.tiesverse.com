@@ -20,7 +20,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from accounts_app.views import (
     CustomTokenObtainPairView, SettingViewSet, PublicFeaturedView, PublicEmailTemplateView,
 )
-from tiesverse_app.media_views import MediaUploadView, CloudinaryImageListView
+from tiesverse_app.media_views import MediaUploadView, CloudinaryImageListView, DocumentUploadView
 from config.certificate_proxy import certificate_generator_proxy
 from config.wordpress_proxy import wordpress_proxy
 from config.newsroom import (
@@ -58,6 +58,7 @@ urlpatterns = [
     path('api/career/', include('career_app.urls')),
     path('api/webinar/', include('webinar_app.urls')),
     path('api/media/upload/', MediaUploadView.as_view(), name='media_upload'),
+    path('api/media/upload-file/', DocumentUploadView.as_view(), name='media_upload_file'),
     path('api/media/images/', CloudinaryImageListView.as_view(), name='media_images'),
     path('api/certificates/proxy/<path:remote_path>', certificate_generator_proxy, name='certificate_generator_proxy'),
     path('api/wordpress/<path:remote_path>', wordpress_proxy, name='wordpress_proxy'),

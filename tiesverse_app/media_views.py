@@ -75,6 +75,54 @@ class MediaUploadView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
+_DOC_MAX = 15 * 1024 * 1024   # 15 MB per file
+_ALLOWED_DOC_EXT = {
+    'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx',
+    'txt', 'csv', 'png', 'jpg', 'jpeg', 'webp',
+}
+
+
+class DocumentUploadView(APIView):
+    """POST a multipart `file` (PDF / doc / etc.) → Cloudinary (raw) → {url, filename}.
+
+    Used for email attachments in the webinar broadcast composer. Unlike
+    MediaUploadView this keeps the original file (no WebP conversion) and allows
+    document types, not just images.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        upload = request.FILES.get('file')
+        if not upload:
+            return Response({'error': 'No file provided (field name: file).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        name = upload.name or 'attachment'
+        ext = (name.rsplit('.', 1)[-1] if '.' in name else '').lower()
+        if ext not in _ALLOWED_DOC_EXT:
+            return Response({'error': f'Unsupported file type “.{ext}”. Allowed: PDF, Word, PowerPoint, Excel, images.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if upload.size and upload.size > _DOC_MAX:
+            return Response({'error': 'File too large (max 15 MB per file).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            result = cloudinary.uploader.upload(
+                upload,
+                resource_type='raw',
+                folder=f'{settings.CLOUDINARY_UPLOAD_FOLDER}/attachments',
+                use_filename=True,
+                unique_filename=True,
+            )
+        except Exception as e:  # noqa: BLE001
+            return Response({'error': f'Upload failed: {e}'}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({
+            'url': result.get('secure_url'),
+            'filename': name,
+            'bytes': result.get('bytes'),
+            'public_id': result.get('public_id'),
+        }, status=status.HTTP_201_CREATED)
+
+
 class CloudinaryImageListView(APIView):
     """GET previously-uploaded images so the picker can show a gallery."""
     permission_classes = [IsAuthenticated]

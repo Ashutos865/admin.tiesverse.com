@@ -15,9 +15,10 @@ import {
   webinarBroadcast, getWebinarSendHistory,
   generateWebinarMeeting, getWebinarMeetingGuests,
   getEmailTemplates, getSESSenders,
-  uploadImage,
+  uploadImage, uploadFile,
 } from '../../apiClient';
 import { listCertificateTemplates, getCertificateTemplate, generateCertificate } from '../Certificates/certificateApi';
+import { variableNamesFromElements } from '../Certificates/certificateUtils';
 import ScheduleCalendar from '../../components/ScheduleCalendar.jsx';
 
 /* ─── constants ─────────────────────────────────────────────── */
@@ -718,7 +719,14 @@ function EmailsTab({ item, showToast }) {
   const [certMap, setCertMap]       = useState({});       // { varName: { source, value } }
   const [certPreviewUrl, setCertPreviewUrl] = useState('');
   const [certPreviewBusy, setCertPreviewBusy] = useState(false);
-  const [showCertMap, setShowCertMap] = useState(false);
+  const [showCertMap, setShowCertMap] = useState(true);   // matching visible by default (parity with Mail Automation)
+
+  // Extra file attachments (PDFs / docs) — the same set is sent to every recipient.
+  const [attachFiles, setAttachFiles] = useState([]);     // [{ url, filename, bytes }]
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const attachInputRef = useRef(null);
+  const fmtSize = (n) => { n = Number(n) || 0; return n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`; };
+  const totalAttachBytes = attachFiles.reduce((s, f) => s + (Number(f.bytes) || 0), 0);
 
   const sourceLabel = (spec) => {
     const s = spec?.source;
@@ -735,7 +743,13 @@ function EmailsTab({ item, showToast }) {
     let alive = true;
     getCertificateTemplate(certTplId).then((tpl) => {
       if (!alive) return;
-      const vars = (tpl?.variables || []).filter((v) => !v.generator_enabled);
+      let vars = (tpl?.variables || []).filter((v) => !v.generator_enabled);
+      if (!vars.length) {
+        // Fall back to variables actually PLACED on the design ({{token}} in text
+        // elements) — the same detection Mail Automation uses — so the matching
+        // table shows even when a template has no separately-declared variables.
+        vars = variableNamesFromElements(tpl?.text_elements || []).map((name) => ({ name }));
+      }
       setCertVars(vars);
       setCertMap((prev) => {
         const m = {};
@@ -884,6 +898,24 @@ function EmailsTab({ item, showToast }) {
   };
   const removeRecip = (idx) => setCustomList(prev => prev.filter((_, i) => i !== idx));
 
+  const pickAttachments = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (e.target) e.target.value = '';
+    if (!files.length) return;
+    setUploadingFile(true);
+    for (const f of files) {
+      const res = await uploadFile(f).catch(() => ({ error: 'Upload failed' }));
+      if (res && res.url) {
+        setAttachFiles(prev => [...prev, { url: res.url, filename: res.filename || f.name, bytes: res.bytes || f.size }]);
+      } else {
+        showToast?.(res?.error || `Could not upload ${f.name}`, 'error');
+      }
+    }
+    setUploadingFile(false);
+  };
+  const removeAttachment = (idx) => setAttachFiles(prev => prev.filter((_, i) => i !== idx));
+  const attachmentsPayload = () => attachFiles.map(f => ({ url: f.url, filename: f.filename }));
+
   const certPayload = () => (attachCert && certTplId
     ? { certificate_template_id: certTplId, include_certificate: true, include_id: hasIdField, certificate_fields: certMap }
     : {});
@@ -895,6 +927,7 @@ function EmailsTab({ item, showToast }) {
     const res = await webinarBroadcast({
       event_key: eKey, event_type: eType, event_title: item.title,
       template_key: tplKey, subject, extra_context: extraCtx(), test_email: testEmail.trim(),
+      attachments: attachmentsPayload(),
       ...certPayload(),
     });
     setBusy(false);
@@ -911,6 +944,7 @@ function EmailsTab({ item, showToast }) {
     const payload = {
       event_key: eKey, event_type: eType, event_title: item.title,
       template_key: tplKey, subject, extra_context: extraCtx(),
+      attachments: attachmentsPayload(),
     };
     if (recipMode === 'custom') payload.recipients = validCustom;
     else payload.audience = audience;
@@ -1075,6 +1109,34 @@ function EmailsTab({ item, showToast }) {
               <iframe title="Email preview" srcDoc={previewHtml} style={{ width: '100%', height: 460, border: 'none', background: '#fff' }} />
             </div>
           )}
+        </div>
+
+        {/* file attachments (PDFs / docs) — same set to every recipient */}
+        <div style={{ borderTop: '1px solid #f0f0f5', paddingTop: 14, marginTop: 4 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>📎 Attach files (PDF / documents)</div>
+          <p className="ww-tab-hint" style={{ margin: '4px 0 8px' }}>
+            The same file(s) go to every recipient — mix and match freely with the certificate below.
+          </p>
+          {attachFiles.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+              {attachFiles.map((f, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '7px 11px', border: '1px solid var(--rule, #e6e6ef)', borderRadius: 8, fontSize: 13 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📄 {f.filename}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                    <span style={{ color: 'var(--soft, #8a8aa0)', fontSize: 12 }}>{fmtSize(f.bytes)}</span>
+                    <button type="button" className="ww-btn-danger-sm" onClick={() => removeAttachment(i)}>Remove</button>
+                  </span>
+                </div>
+              ))}
+              <div style={{ fontSize: 12, color: totalAttachBytes > 20 * 1048576 ? '#dc2626' : 'var(--soft, #8a8aa0)' }}>
+                Total: {fmtSize(totalAttachBytes)}{totalAttachBytes > 20 * 1048576 ? ' — over the ~20 MB email limit; some files may be dropped' : ''}
+              </div>
+            </div>
+          )}
+          <input ref={attachInputRef} type="file" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,image/*" style={{ display: 'none' }} onChange={pickAttachments} />
+          <button type="button" className="ww-btn ww-btn-ghost" onClick={() => attachInputRef.current?.click()} disabled={uploadingFile}>
+            <Upload size={14} /> {uploadingFile ? 'Uploading…' : (attachFiles.length ? 'Add more files' : 'Add files')}
+          </button>
         </div>
 
         {/* certificate attachment */}
