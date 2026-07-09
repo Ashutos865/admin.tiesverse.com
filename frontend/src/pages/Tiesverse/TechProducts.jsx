@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getTechProducts, createTechProduct, updateTechProduct, deleteTechProduct, uploadImage } from '../../apiClient';
 import { Plus, Trash2, Edit2, Upload, X } from 'lucide-react';
+import RectCropper from '../../components/RectCropper.jsx';
 
 const EMPTY = { name: '', tag: '', description: '', image_url: '', cta_label: 'Learn more', cta_url: '/contact', order: 0, is_active: true };
 
@@ -17,6 +18,7 @@ export default function TechProducts() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState('');
+  const [cropFile, setCropFile] = useState(null);   // raw file awaiting crop
 
   const load = () => { setLoading(true); getTechProducts().then((r) => setItems(Array.isArray(r) ? r : [])).finally(() => setLoading(false)); };
   useEffect(load, []);
@@ -25,10 +27,14 @@ export default function TechProducts() {
   const openNew = () => { setForm({ ...EMPTY, order: items.length }); setModal('new'); };
   const openEdit = (it) => { setForm({ ...it }); setModal(it); };
 
-  const pickImage = async (e) => {
+  const pickImage = (e) => {
     const f = e.target.files?.[0]; if (!f) return; e.target.value = '';
+    setCropFile(f);   // open the cropper first
+  };
+  const onCropped = async (croppedFile) => {
+    setCropFile(null);
     setUploading(true);
-    const res = await uploadImage(f);   // converts to WebP on the server
+    const res = await uploadImage(croppedFile);   // server converts to WebP
     if (res?.secure_url) setForm((fm) => ({ ...fm, image_url: res.secure_url }));
     else showToast(res?.error || 'Image upload failed');
     setUploading(false);
@@ -120,6 +126,16 @@ export default function TechProducts() {
             </div>
           </div>
         </div>
+      )}
+
+      {cropFile && (
+        <RectCropper
+          file={cropFile}
+          aspect={16 / 10}
+          label="Crop product image (16:10)"
+          onCancel={() => setCropFile(null)}
+          onCrop={onCropped}
+        />
       )}
     </div>
   );
