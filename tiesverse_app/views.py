@@ -85,3 +85,38 @@ class TechProductViewSet(viewsets.ModelViewSet):
     queryset = TechProduct.objects.all().order_by('order', 'id')
     serializer_class = TechProductSerializer
     permission_classes = [IsAuthenticated]
+
+
+# ── Website image slots (per-slot manual override / auto toggle) ───────────────
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from django.core.cache import cache
+from .models import SiteImage
+from .site_image_slots import SLOTS, SLOT_KEYS
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def site_images_admin(request):
+    """GET: the full slot catalog merged with any stored overrides.
+    POST {key, image_url?, mode?}: set a slot's image / mode."""
+    if request.method == 'GET':
+        stored = {s.key: s for s in SiteImage.objects.all()}
+        rows = [{
+            **slot,
+            'image_url': (stored[slot['key']].image_url if slot['key'] in stored else ''),
+            'mode': (stored[slot['key']].mode if slot['key'] in stored else 'manual'),
+        } for slot in SLOTS]
+        return Response({'slots': rows})
+
+    key = str(request.data.get('key') or '').strip()
+    if key not in SLOT_KEYS:
+        return Response({'error': 'Unknown slot.'}, status=400)
+    defaults = {}
+    if 'image_url' in request.data:
+        defaults['image_url'] = str(request.data.get('image_url') or '')
+    if 'mode' in request.data:
+        defaults['mode'] = 'auto' if request.data.get('mode') == 'auto' else 'manual'
+    si, _ = SiteImage.objects.update_or_create(key=key, defaults=defaults)
+    cache.delete('public_site_images')   # push the change to the website promptly
+    return Response({'key': si.key, 'image_url': si.image_url, 'mode': si.mode})

@@ -329,3 +329,18 @@ class TechProduct(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class SiteImage(models.Model):
+    """A per-slot override for a website image (see site_image_slots.SLOTS).
+    mode='manual' uses image_url; mode='auto' lets the website pull from a feed."""
+    key = models.CharField(max_length=120, unique=True)
+    image_url = models.CharField(max_length=500, blank=True)   # Cloudinary WebP override
+    mode = models.CharField(max_length=8, default='manual')    # 'manual' | 'auto'
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'site_images'
+
+    def __str__(self):
+        return f"{self.key} ({self.mode})"

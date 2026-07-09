@@ -166,3 +166,22 @@ def public_tech_products(request):
             cached = []
         cache.set('public_tech_products', cached, 120)
     return JsonResponse({'products': cached})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_site_images(request):
+    """Per-slot website image overrides {key: {url, mode}}. Cached ~2 min."""
+    cached = cache.get('public_site_images')
+    if cached is None:
+        try:
+            from tiesverse_app.models import SiteImage
+            cached = {
+                si.key: {'url': si.image_url, 'mode': si.mode}
+                for si in SiteImage.objects.using('turso_db').all()
+                if si.image_url or si.mode == 'auto'
+            }
+        except Exception:  # noqa: BLE001
+            cached = {}
+        cache.set('public_site_images', cached, 120)
+    return JsonResponse({'images': cached})

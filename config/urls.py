@@ -25,7 +25,7 @@ from config.certificate_proxy import certificate_generator_proxy
 from config.wordpress_proxy import wordpress_proxy
 from config.newsroom import (
     public_newsroom_nav, public_newsroom_articles,
-    public_events_feed, public_guests_feed, public_tech_products,
+    public_events_feed, public_guests_feed, public_tech_products, public_site_images,
 )
 from config.certificate_workflow import (
     certificate_import_records,
@@ -51,6 +51,7 @@ urlpatterns = [
     path('api/public/events/', public_events_feed, name='public-events-feed'),
     path('api/public/guests/', public_guests_feed, name='public-guests-feed'),
     path('api/public/tech-products/', public_tech_products, name='public-tech-products'),
+    path('api/public/site-images/', public_site_images, name='public-site-images'),
     path('api/public/email-template/<str:key>/', PublicEmailTemplateView.as_view(), name='public-email-template'),
     path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),

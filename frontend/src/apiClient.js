@@ -170,6 +170,10 @@ export const createEvent = (data) => adminFetch('/api/landing/events', 'POST', d
 export const updateEvent = (id, data) => adminFetch(`/api/landing/events/${id}`, 'PATCH', data);
 export const deleteEvent = (id) => adminFetch(`/api/landing/events/${id}`, 'DELETE');
 
+// Website image slots (per-slot override / auto-manual)
+export const getSiteImages = () => adminFetch('/api/landing/site-images/').catch(() => ({ slots: [] }));
+export const setSiteImage = (data) => adminFetch('/api/landing/site-images/', 'POST', data);
+
 // Tech products (website Technology section)
 export const getTechProducts = () => adminFetch('/api/landing/tech-products/').catch(() => []);
 export const createTechProduct = (data) => adminFetch('/api/landing/tech-products/', 'POST', data);

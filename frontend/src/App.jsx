@@ -29,6 +29,7 @@ import EventsManagement from './pages/Tiesverse/EventsManagement';
 import TiesverseAdminPanel from './pages/Tiesverse/Admin.jsx';
 import FeaturedContent from './pages/Tiesverse/FeaturedContent.jsx';
 import TechProducts from './pages/Tiesverse/TechProducts.jsx';
+import WebsiteImages from './pages/Tiesverse/WebsiteImages.jsx';
 
 // Career
 import CareerAdmin from './pages/Career/Admin.jsx';
@@ -126,6 +127,7 @@ function App() {
               <Route path="/tiesverse/team_members" element={<TiesverseAdminPanel tab="team_members" />} />
               <Route path="/tiesverse/homepage" element={<FeaturedContent />} />
               <Route path="/tiesverse/tech-products" element={<TechProducts />} />
+              <Route path="/tiesverse/website-images" element={<WebsiteImages />} />
 
               {/* Career Routes */}
               <Route path="/career/positions" element={<CareerAdmin tab="positions" />} />
