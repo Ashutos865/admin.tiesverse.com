@@ -19,6 +19,7 @@ import {
 } from '../../apiClient';
 import './TiesverseDashboard.css';
 import MyTasksNotes from '../../components/MyTasksNotes.jsx';
+import AssignedByMe from '../../components/AssignedByMe.jsx';
 import PersonalNotes from '../../components/PersonalNotes.jsx';
 
 const emptyData = {
@@ -188,6 +189,8 @@ const TiesverseDashboard = () => {
       {error && <div className="tv-dashboard-alert">{error}</div>}
 
       <MyTasksNotes />
+
+      <AssignedByMe />
 
       <PersonalNotes />
 
