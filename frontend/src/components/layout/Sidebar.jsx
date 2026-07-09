@@ -67,10 +67,9 @@ export const portals = [
     ],
     links: [
       { name: 'Dashboard',          path: '/tiesverse/dashboard',    icon: LayoutDashboard, perms: [] },
-      { name: 'Homepage',           path: '/tiesverse/homepage',     icon: LayoutGrid,      perms: [], superuserOnly: true },
       { name: 'Team Members',       path: '/tiesverse/team_members', icon: Users,           perms: ['view_teammember', 'add_teammember', 'change_teammember', 'delete_teammember'] },
       { name: 'Tech Products',      path: '/tiesverse/tech-products', icon: LayoutGrid,     perms: [] },
-      { name: 'Website Images',     path: '/tiesverse/website-images', icon: ImageIcon,     perms: [] },
+      { name: 'Website Content',    path: '/tiesverse/website-images', icon: ImageIcon,     perms: [] },
     ],
   },
   {

@@ -10,7 +10,7 @@ const SECTIONS = [
 const KINDS = ['report', 'insight', 'webinar', 'workshop', 'event', 'podcast'];
 const blank = (section) => ({ section, kind: 'report', title: '', subtitle: '', image_url: '', link_url: '', cta_label: '', date_label: '', order: 0, is_active: true });
 
-export default function FeaturedContent() {
+export function FeaturedCards() {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState(null);
@@ -40,15 +40,15 @@ export default function FeaturedContent() {
     };
 
     return (
-        <div style={{ padding: '32px 36px', maxWidth: 1080 }}>
+        <div>
             {toast && <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, background: toast.err ? '#ef4444' : 'var(--primary)', color: '#fff', borderRadius: 10, padding: '10px 18px', fontSize: 13, boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}>{toast.msg}</div>}
 
-            <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 11 }}>
-                <LayoutGrid size={22} color="var(--primary)" />
-                <h1 style={{ fontSize: 23, fontWeight: 700, color: 'var(--text-main)', margin: 0, letterSpacing: '-0.02em' }}>Homepage</h1>
+            <div style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <LayoutGrid size={18} color="var(--primary)" />
+                <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-main)', margin: 0, letterSpacing: '-0.01em' }}>Featured cards</h2>
             </div>
-            <p style={{ color: 'var(--text-muted)', fontSize: 13.5, margin: '0 0 32px', maxWidth: 560 }}>
-                Curate the cards on the public website. Changes go live instantly — no redeploy.
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '0 0 24px', maxWidth: 560 }}>
+                Curate the homepage Spotlight &amp; rows. Changes go live instantly — no redeploy.
             </p>
 
             {loading ? <p style={{ color: 'var(--text-muted)' }}>Loading…</p> : SECTIONS.map(sec => {

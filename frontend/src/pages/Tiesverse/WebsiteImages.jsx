@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getSiteImages, setSiteImage, uploadSiteImage } from '../../apiClient';
 import { Upload, Image as ImageIcon } from 'lucide-react';
 import RectCropper from '../../components/RectCropper.jsx';
+import { FeaturedCards } from './FeaturedContent.jsx';
 
 const card = { background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', borderRadius: 12, padding: 14 };
 
@@ -46,9 +47,21 @@ export default function WebsiteImages() {
   return (
     <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
       {toast && <div style={{ position: 'fixed', top: 70, right: 24, background: 'var(--primary)', color: '#fff', padding: '10px 16px', borderRadius: 8, zIndex: 4000, fontSize: 13, fontWeight: 600 }}>{toast}</div>}
-      <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--text-main)' }}>Website Images</h1>
-      <p style={{ margin: '4px 0 20px', color: 'var(--text-muted)', fontSize: 14 }}>
-        Manage every image slot on tiesverse.com. Upload a replacement (auto-cropped &amp; converted to WebP), or set data-driven slots to Auto. Empty slots use the site's bundled default.
+      <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--text-main)' }}>Website Content</h1>
+      <p style={{ margin: '4px 0 28px', color: 'var(--text-muted)', fontSize: 14 }}>
+        Curate the homepage cards and manage every image slot on tiesverse.com in one place.
+      </p>
+
+      <FeaturedCards />
+
+      <div style={{ height: 1, background: 'var(--outline-variant)', margin: '8px 0 28px' }} />
+
+      <div style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <ImageIcon size={18} color="var(--primary)" />
+        <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-main)', margin: 0, letterSpacing: '-0.01em' }}>Image slots</h2>
+      </div>
+      <p style={{ margin: '0 0 22px', color: 'var(--text-muted)', fontSize: 13, maxWidth: 560 }}>
+        Upload a replacement (auto-cropped &amp; converted to WebP), or set data-driven slots to Auto. Empty slots use the site's bundled default.
       </p>
 
       {loading ? <p style={{ color: 'var(--text-muted)' }}>Loading…</p> : Object.entries(groups).map(([group, its]) => (

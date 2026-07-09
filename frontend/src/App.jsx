@@ -27,7 +27,6 @@ import Coupons from './pages/Webinar/Coupons.jsx';
 // Tiesverse
 import EventsManagement from './pages/Tiesverse/EventsManagement';
 import TiesverseAdminPanel from './pages/Tiesverse/Admin.jsx';
-import FeaturedContent from './pages/Tiesverse/FeaturedContent.jsx';
 import TechProducts from './pages/Tiesverse/TechProducts.jsx';
 import WebsiteImages from './pages/Tiesverse/WebsiteImages.jsx';
 
@@ -125,7 +124,7 @@ function App() {
               <Route path="/tiesverse/articles" element={<TiesverseAdminPanel tab="departments" />} />
               <Route path="/tiesverse/departments" element={<Navigate to="/tiesverse/articles" replace />} />
               <Route path="/tiesverse/team_members" element={<TiesverseAdminPanel tab="team_members" />} />
-              <Route path="/tiesverse/homepage" element={<FeaturedContent />} />
+              <Route path="/tiesverse/homepage" element={<Navigate to="/tiesverse/website-images" replace />} />
               <Route path="/tiesverse/tech-products" element={<TechProducts />} />
               <Route path="/tiesverse/website-images" element={<WebsiteImages />} />
 
