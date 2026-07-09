@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import PositionViewSet, EnrollmentViewSet, OfferLetterViewSet, HRDepartmentViewSet, PolicyViewSet, PersonalNoteViewSet
 from .views import FormViewSet, public_form_view, public_form_submit
+from .form_api import form_keys, form_key_detail
 from .project_views import (
     ProjectViewSet, ProjectChecklistViewSet, ProjectMessageViewSet,
     DirectMessageViewSet, ProjectNotificationViewSet,
@@ -55,6 +56,11 @@ urlpatterns = [
     # is not swallowed by the `forms/<pk>/` detail route.
     path('forms/public/<str:token>/', public_form_view, name='public-form'),
     path('forms/public/<str:token>/submit/', public_form_submit, name='public-form-submit'),
+
+    # Form API-key management (Advisory only) — before the router so it isn't
+    # swallowed by the forms/<pk>/ detail route.
+    path('forms/<int:pk>/keys/', form_keys, name='form-keys'),
+    path('forms/<int:pk>/keys/<int:key_pk>/', form_key_detail, name='form-key-detail'),
 
     path('', include(router.urls)),
     # Current member identity + scope

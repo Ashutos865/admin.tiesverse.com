@@ -44,8 +44,14 @@ from rest_framework.routers import DefaultRouter
 router = DefaultRouter()
 router.register(r'settings', SettingViewSet, basename='setting')
 
+from career_app.form_api import form_api_schema, form_api_submissions, form_api_upload
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # ── Headless Form API (cross-domain, API-key auth) ──
+    path('api/forms/v1/<int:pk>/schema/', form_api_schema, name='form-api-schema'),
+    path('api/forms/v1/<int:pk>/submissions/', form_api_submissions, name='form-api-submissions'),
+    path('api/forms/v1/uploads/<int:form_id>/<str:name>/', form_api_upload, name='form-api-upload'),
     path('api/public/featured/', PublicFeaturedView.as_view(), name='public-featured'),
     path('api/public/newsroom/nav/', public_newsroom_nav, name='public-newsroom-nav'),
     path('api/public/newsroom/articles/', public_newsroom_articles, name='public-newsroom-articles'),

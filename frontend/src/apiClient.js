@@ -431,6 +431,12 @@ export const exportFormResponsesCsv = (id, filename) =>
 export const getPublicForm = (token) => publicFetch(`/api/career/forms/public/${token}`);
 export const submitPublicForm = (token, data) => publicPost(`/api/career/forms/public/${token}/submit`, data);
 
+// FORM API KEYS (Advisory only) — headless /api/forms/v1/ access from other domains
+export const getFormKeys = (formId) => adminFetch(`/api/career/forms/${formId}/keys`);
+export const createFormKey = (formId, data) => adminFetch(`/api/career/forms/${formId}/keys`, 'POST', data);
+export const revokeFormKey = (formId, keyId, password) => adminFetch(`/api/career/forms/${formId}/keys/${keyId}`, 'POST', { password });
+export const deleteFormKey = (formId, keyId, password) => adminFetch(`/api/career/forms/${formId}/keys/${keyId}`, 'DELETE', { password });
+
 // EMAIL TEMPLATES (superuser) — manage every send point's design/subject/sender
 export const getEmailTemplates = () => adminFetch('/api/accounts/email-templates');
 export const createEmailTemplate = (data) => adminFetch('/api/accounts/email-templates', 'POST', data);

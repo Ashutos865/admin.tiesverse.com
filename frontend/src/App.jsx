@@ -56,6 +56,7 @@ import FormsListPage from './pages/Forms/FormsListPage.jsx';
 import FormBuilder from './pages/Forms/FormBuilder.jsx';
 import FormFillPage from './pages/Forms/FormFillPage.jsx';
 import FormResponsesPage from './pages/Forms/FormResponsesPage.jsx';
+import FormApiPage from './pages/Forms/FormApiPage.jsx';
 import PublicFormPage from './pages/Forms/PublicFormPage.jsx';
 
 // Certificate Generator
@@ -174,6 +175,7 @@ function App() {
               <Route path="/hr/forms" element={<FormsListPage />} />
               <Route path="/hr/forms/:id/edit" element={<FormBuilder />} />
               <Route path="/hr/forms/:id/responses" element={<FormResponsesPage />} />
+              <Route path="/hr/forms/:id/api" element={<FormApiPage />} />
               <Route path="/forms/:id" element={<FormFillPage />} />
 
               {/* Certificate Generator Routes */}
