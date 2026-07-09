@@ -79,6 +79,30 @@ def _rows2(mapping, group, auto=False):
     return [{'key': k, 'label': v[0], 'group': group, 'aspect': v[1], 'auto': auto} for k, v in mapping.items()]
 
 
+# Nav mega-menu feature cards (3 per menu). "What we do" & "Company" are static
+# → manual only (the upload always shows). "Insights" & "Engagements" are live
+# "Latest in…" rows → auto by default (newest articles/events), with a Manual
+# toggle to pin an uploaded image. Each entry: (key, label, auto, seed_file) —
+# seed_file is the bundled /work/ image the seed_nav_images command imports.
+_NAV = [
+    ('nav-whatwedo-1', 'Nav · What we do: AI Wars',    False, 'insight-ai-wars.png'),
+    ('nav-whatwedo-2', 'Nav · What we do: Media',      False, 'feat-media.png'),
+    ('nav-whatwedo-3', 'Nav · What we do: Technology', False, 'tech-tabloid.png'),
+    ('nav-insights-1', 'Nav · Insights: card 1',       True,  'insight-budget-2026.png'),
+    ('nav-insights-2', 'Nav · Insights: card 2',       True,  'map-hormuz.png'),
+    ('nav-insights-3', 'Nav · Insights: card 3',       True,  'poster-witte.png'),
+    ('nav-engagements-1', 'Nav · Engagements: card 1', True,  'event-india-ai.jpg'),
+    ('nav-engagements-2', 'Nav · Engagements: card 2', True,  'poster-bhanushali.png'),
+    ('nav-engagements-3', 'Nav · Engagements: card 3', True,  'guest-tharoor.png'),
+    ('nav-company-1', 'Nav · Company: Brand',    False, 'Moodboard.png'),
+    ('nav-company-2', 'Nav · Company: About',    False, 'rmt-visual.png'),
+    ('nav-company-3', 'Nav · Company: Careers',  False, 'cta-backdrop.png'),
+]
+
+# key → bundled /work/ filename, used by the seed command.
+NAV_SEED = {k: f for (k, _l, _a, f) in _NAV}
+
+
 SLOTS = (
     [
         {'key': 'hero', 'label': 'Homepage hero', 'group': 'Hero & backdrops', 'aspect': 16 / 9, 'auto': False},
@@ -87,10 +111,7 @@ SLOTS = (
         {'key': 'team-group', 'label': 'About: team group photo', 'group': 'About', 'aspect': 16 / 9, 'auto': False},
     ]
     + _rows2(_BRAND_PAGE, 'Brand page')
-    + [
-        {'key': 'nav-insights', 'label': 'Nav: Insights featured card', 'group': 'Nav feature cards', 'aspect': 4 / 3, 'auto': True},
-        {'key': 'nav-engagements', 'label': 'Nav: Engagements featured card', 'group': 'Nav feature cards', 'aspect': 4 / 3, 'auto': True},
-    ]
+    + [{'key': k, 'label': l, 'group': 'Nav feature cards', 'aspect': 4 / 3, 'auto': a} for (k, l, a, _f) in _NAV]
 )
 
 SLOT_KEYS = {s['key'] for s in SLOTS}
