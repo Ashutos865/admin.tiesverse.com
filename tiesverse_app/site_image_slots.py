@@ -65,7 +65,7 @@ _BRAND_PAGE = {
     'brand-arch-pattern': ('Architecture pattern strip', 1200 / 140),
     'brand-one-light': ('Imagery: one light, one grade', 16 / 10),
     'brand-scale-stillness': ('Imagery: scale & stillness', 16 / 10),
-    'brand-atlas': ('Civilization atlas plate', 16 / 9),
+    'brand-atlas': ('Civilization atlas plate', 3 / 1),
     'brand-source-portrait': ('Source portrait (before grade)', 4 / 5),
     'sign-observatory': ('Signature: Observatory', 1 / 1),
     'sign-river': ('Signature: River', 1 / 1),
