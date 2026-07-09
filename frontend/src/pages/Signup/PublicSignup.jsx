@@ -67,7 +67,7 @@ function OtpBoxes({ value, onChange }) {
     <div style={S.otpRow} onPaste={onPaste}>
       {slots.map((c, i) => (
         <input
-          key={i} ref={el => (refs.current[i] = el)} value={c}
+          key={i} ref={el => (refs.current[i] = el)} value={c} className="ps-fld"
           onChange={e => setDigit(i, e.target.value)}
           onKeyDown={e => onKey(i, e)} inputMode="numeric" maxLength={1}
           style={{ ...S.otpCell, ...(c ? S.otpCellOn : {}) }} aria-label={`Digit ${i + 1}`}
@@ -119,7 +119,9 @@ export default function PublicSignup() {
   }, [hash, name, email, photo]);
 
   const submit = async () => {
-    if (!name.trim() || !email.trim()) return setErr('Name and email are required.');
+    if (!photo) return setErr('Add a profile photo to continue.');
+    if (!name.trim()) return setErr('Your full name is required.');
+    if (!email.trim()) return setErr('Your email is required.');
     setBusy(true); setErr('');
     const res = await sendCode();
     setBusy(false);
@@ -148,6 +150,10 @@ export default function PublicSignup() {
 
   return (
     <div style={S.page}>
+      <style>{`
+        .ps-fld:focus{border-color:#FE7A00 !important;box-shadow:0 0 0 3px rgba(254,122,0,.16) !important;background:#fff !important}
+        .ps-fld::placeholder{color:rgba(29,22,13,.34)}
+      `}</style>
       <div style={S.shell}>
         <div style={S.hero}>
           <div style={S.sheen} />
@@ -166,16 +172,16 @@ export default function PublicSignup() {
                   {preview ? <img src={preview} alt="" style={S.avatarImg} /> : <span style={S.plus}>+</span>}
                 </div>
                 <div>
-                  <button style={S.ghost} onClick={() => fileRef.current?.click()}>Upload photo</button>
-                  <p style={S.hint}>PNG / JPG, stored as WebP</p>
+                  <button style={S.ghost} onClick={() => fileRef.current?.click()}>Upload photo<span style={S.req}> *</span></button>
+                  <p style={S.hint}>Required · PNG / JPG, stored as WebP</p>
                 </div>
                 <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickPhoto} />
               </div>
-              <label style={S.lbl}>Full name
-                <input style={S.input} value={name} onChange={e => { setName(e.target.value); setErr(''); }} placeholder="Your name" />
+              <label style={S.lbl}><span>Full name<span style={S.req}> *</span></span>
+                <input className="ps-fld" style={S.input} value={name} onChange={e => { setName(e.target.value); setErr(''); }} placeholder="Your name" />
               </label>
-              <label style={S.lbl}>Email
-                <input style={S.input} type="email" value={email} onChange={e => { setEmail(e.target.value); setErr(''); }} placeholder="you@example.com" />
+              <label style={S.lbl}><span>Email<span style={S.req}> *</span></span>
+                <input className="ps-fld" style={S.input} type="email" value={email} onChange={e => { setEmail(e.target.value); setErr(''); }} placeholder="you@example.com" />
               </label>
               {err && <p style={S.err}>{err}</p>}
               <button style={S.cta} onClick={submit} disabled={busy}>{busy ? 'Sending code…' : 'Continue'}</button>
@@ -230,46 +236,62 @@ export default function PublicSignup() {
   );
 }
 
+// Warm "sandstone glass" (light): the brand's paper/cream/saffron palette as
+// liquid glassmorphism — a sunlit paper backdrop washed with soft saffron
+// light, frosted translucent surfaces over it, saffron as the one raised voice.
+const GLASS = 'rgba(255,255,255,.66)';
+const GLASS_BORDER = 'rgba(29,22,13,.12)';
+const TXT = '#1D160D';
+const TXT_MUTE = 'rgba(29,22,13,.58)';
 const S = {
-  page: { minHeight: '100vh', background: '#0A0A0B', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 16, boxSizing: 'border-box', overflowX: 'hidden' },
-  shell: { width: '100%', maxWidth: 440, boxSizing: 'border-box' },
-  hero: {
-    position: 'relative', overflow: 'hidden', borderRadius: 28, padding: 24, width: '100%', boxSizing: 'border-box',
-    minHeight: '36vh', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
-    background: 'radial-gradient(120% 120% at 30% 0%, #FF9A3D 0%, #FE7A00 42%, #E85D00 100%)',
+  page: {
+    minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    padding: 16, boxSizing: 'border-box', overflowX: 'hidden',
+    background: 'radial-gradient(56% 44% at 12% 6%, rgba(254,122,0,.18), transparent 60%), radial-gradient(42% 32% at 82% 40%, rgba(254,150,40,.16), transparent 64%), radial-gradient(46% 34% at 28% 74%, rgba(254,122,0,.12), transparent 68%), radial-gradient(95% 60% at 50% 126%, rgba(254,122,0,.16), transparent 70%), #FFF6EA',
   },
-  sheen: { position: 'absolute', inset: 0, background: 'linear-gradient(115deg, rgba(255,255,255,.28) 0%, rgba(255,255,255,0) 38%)', pointerEvents: 'none' },
+  shell: {
+    width: '100%', maxWidth: 440, boxSizing: 'border-box', borderRadius: 30, overflow: 'hidden',
+    background: 'rgba(255,252,246,.62)', backdropFilter: 'blur(26px) saturate(1.3)', WebkitBackdropFilter: 'blur(26px) saturate(1.3)',
+    border: '1px solid rgba(255,255,255,.85)', boxShadow: '0 40px 90px -34px rgba(120,68,18,.30), 0 2px 6px rgba(120,68,18,.06), inset 0 1px 0 rgba(255,255,255,.9)',
+  },
+  hero: {
+    position: 'relative', overflow: 'hidden', padding: 26, width: '100%', boxSizing: 'border-box',
+    minHeight: '31vh', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+    background: 'radial-gradient(135% 130% at 26% -12%, #FFB459 0%, #FE7A00 46%, #D6520A 100%)',
+  },
+  sheen: { position: 'absolute', inset: 0, background: 'linear-gradient(120deg, rgba(255,255,255,.32) 0%, rgba(255,255,255,0) 42%)', pointerEvents: 'none' },
   wm: { position: 'absolute', top: 22, left: 26, color: '#fff', fontWeight: 800, fontSize: 20, letterSpacing: '-.02em' },
-  display: { color: '#fff', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', fontWeight: 800, fontSize: 'clamp(30px,8vw,42px)', lineHeight: .98, letterSpacing: '-.03em', margin: '0 0 10px', textWrap: 'balance' },
-  heroSub: { color: 'rgba(255,255,255,.9)', fontSize: 14, lineHeight: 1.45, margin: 0, maxWidth: 300 },
-  body: { padding: '24px 22px 10px', boxSizing: 'border-box' },
-  h2: { color: '#fff', fontSize: 22, fontWeight: 700, margin: '0 0 6px', letterSpacing: '-.01em' },
-  sub: { color: 'rgba(255,255,255,.55)', fontSize: 14.5, lineHeight: 1.5, margin: '0 0 18px' },
+  display: { color: '#fff', fontFamily: 'Georgia, "Times New Roman", serif', fontWeight: 600, fontSize: 'clamp(32px,8.4vw,46px)', lineHeight: .96, letterSpacing: '-.02em', margin: '0 0 10px', textWrap: 'balance' },
+  heroSub: { color: 'rgba(255,248,240,.94)', fontSize: 14, lineHeight: 1.45, margin: 0, maxWidth: 300 },
+  body: { padding: '26px 24px 16px', boxSizing: 'border-box' },
+  h2: { color: TXT, fontSize: 22, fontWeight: 700, margin: '0 0 6px', letterSpacing: '-.01em' },
+  sub: { color: TXT_MUTE, fontSize: 14.5, lineHeight: 1.5, margin: '0 0 18px' },
+  req: { color: '#E56D00', fontWeight: 700 },
   photoRow: { display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 },
-  avatar: { width: 72, height: 72, borderRadius: '50%', background: '#1C1C20', border: '1px dashed rgba(255,255,255,.16)', display: 'grid', placeItems: 'center', cursor: 'pointer', overflow: 'hidden', flex: 'none' },
+  avatar: { width: 72, height: 72, borderRadius: '50%', background: 'rgba(255,255,255,.6)', border: '1px dashed rgba(29,22,13,.22)', display: 'grid', placeItems: 'center', cursor: 'pointer', overflow: 'hidden', flex: 'none' },
   avatarImg: { width: '100%', height: '100%', objectFit: 'cover' },
-  plus: { fontSize: 28, color: 'rgba(255,255,255,.35)' },
-  ghost: { background: '#141416', border: '1px solid rgba(255,255,255,.16)', color: '#fff', borderRadius: 12, padding: '9px 15px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
-  hint: { color: 'rgba(255,255,255,.38)', fontSize: 12, margin: '7px 0 0' },
-  lbl: { display: 'flex', flexDirection: 'column', gap: 7, fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.55)', marginBottom: 14, letterSpacing: '.02em' },
-  input: { padding: '13px 15px', borderRadius: 14, border: '1px solid rgba(255,255,255,.08)', background: '#141416', color: '#fff', fontSize: 15, outline: 'none' },
-  emailChip: { display: 'inline-block', background: '#1C1C20', border: '1px solid rgba(255,255,255,.08)', color: 'rgba(255,255,255,.72)', borderRadius: 999, padding: '10px 18px', fontSize: 14, letterSpacing: '.02em', marginBottom: 14 },
-  helper: { color: 'rgba(255,255,255,.38)', fontSize: 12.5, lineHeight: 1.5, margin: '0 0 20px' },
+  plus: { fontSize: 28, color: 'rgba(29,22,13,.32)' },
+  ghost: { background: GLASS, border: `1px solid ${GLASS_BORDER}`, color: TXT, borderRadius: 12, padding: '9px 15px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+  hint: { color: 'rgba(29,22,13,.46)', fontSize: 12, margin: '7px 0 0' },
+  lbl: { display: 'flex', flexDirection: 'column', gap: 7, fontSize: 13, fontWeight: 600, color: TXT_MUTE, marginBottom: 14, letterSpacing: '.02em' },
+  input: { padding: '13px 15px', borderRadius: 14, border: `1px solid ${GLASS_BORDER}`, background: 'rgba(255,255,255,.72)', color: TXT, fontSize: 15, outline: 'none', transition: 'border-color .18s, box-shadow .18s, background .18s' },
+  emailChip: { display: 'inline-block', background: 'rgba(254,122,0,.10)', border: '1px solid rgba(254,122,0,.30)', color: '#B4560A', borderRadius: 999, padding: '10px 18px', fontSize: 14, letterSpacing: '.02em', marginBottom: 14 },
+  helper: { color: 'rgba(29,22,13,.46)', fontSize: 12.5, lineHeight: 1.5, margin: '0 0 20px' },
   otpRow: { display: 'flex', gap: 8, marginBottom: 14, width: '100%' },
-  otpCell: { flex: '1 1 0', minWidth: 0, width: '100%', boxSizing: 'border-box', padding: 0, height: 56, textAlign: 'center', fontSize: 22, fontWeight: 700, color: '#fff', background: '#1C1C20', border: '1px solid rgba(255,255,255,.08)', borderRadius: 16, outline: 'none', caretColor: '#FE7A00' },
-  otpCellOn: { borderColor: '#FE7A00', boxShadow: '0 0 0 2px rgba(254,122,0,.18)' },
+  otpCell: { flex: '1 1 0', minWidth: 0, width: '100%', boxSizing: 'border-box', padding: 0, height: 56, textAlign: 'center', fontSize: 22, fontWeight: 700, color: TXT, background: 'rgba(255,255,255,.7)', border: `1px solid ${GLASS_BORDER}`, borderRadius: 16, outline: 'none', caretColor: '#FE7A00', transition: 'border-color .18s, box-shadow .18s, background .18s' },
+  otpCellOn: { borderColor: '#FE7A00', background: 'rgba(254,122,0,.09)', boxShadow: '0 0 0 3px rgba(254,122,0,.16)' },
   timerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  timer: { background: '#1C1C20', color: 'rgba(255,255,255,.5)', borderRadius: 999, padding: '4px 12px', fontSize: 13, fontWeight: 600, fontVariantNumeric: 'tabular-nums' },
-  resendWrap: { color: 'rgba(255,255,255,.45)', fontSize: 13 },
-  resend: { background: 'none', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13, padding: 0 },
-  resendOff: { color: 'rgba(255,255,255,.3)', cursor: 'not-allowed' },
-  err: { color: '#F87171', fontSize: 13, margin: '0 0 12px' },
-  cta: { width: '100%', height: 56, borderRadius: 999, border: 'none', background: '#fff', color: '#0A0A0B', fontWeight: 700, fontSize: 15.5, cursor: 'pointer', marginTop: 4, transition: 'transform .1s, opacity .2s' },
-  back: { width: '100%', background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', marginTop: 14, fontSize: 13 },
-  check: { width: 60, height: 60, borderRadius: '50%', background: 'rgba(34,197,94,.15)', color: '#22C55E', display: 'grid', placeItems: 'center', fontSize: 30, margin: '0 auto 18px' },
-  modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(6,6,8,.72)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 3000 },
-  modalCard: { width: '100%', maxWidth: 380, boxSizing: 'border-box', background: '#141418', border: '1px solid rgba(255,255,255,.08)', borderRadius: 24, padding: '32px 26px 26px', textAlign: 'center', boxShadow: '0 30px 80px rgba(0,0,0,.55)' },
-  modalIcon: { width: 60, height: 60, borderRadius: '50%', background: 'rgba(34,197,94,.15)', color: '#22C55E', display: 'grid', placeItems: 'center', fontSize: 30, margin: '0 auto 18px' },
-  modalTitle: { color: '#fff', fontSize: 21, fontWeight: 700, margin: '0 0 10px', letterSpacing: '-.01em' },
-  modalText: { color: 'rgba(255,255,255,.6)', fontSize: 14.5, lineHeight: 1.6, margin: '0 0 22px' },
+  timer: { background: 'rgba(29,22,13,.05)', color: TXT_MUTE, borderRadius: 999, padding: '4px 12px', fontSize: 13, fontWeight: 600, fontVariantNumeric: 'tabular-nums' },
+  resendWrap: { color: 'rgba(29,22,13,.5)', fontSize: 13 },
+  resend: { background: 'none', border: 'none', color: '#E56D00', fontWeight: 700, cursor: 'pointer', fontSize: 13, padding: 0 },
+  resendOff: { color: 'rgba(29,22,13,.3)', cursor: 'not-allowed' },
+  err: { color: '#C0392B', fontSize: 13, margin: '0 0 12px' },
+  cta: { width: '100%', height: 56, borderRadius: 999, border: 'none', background: '#1D160D', color: '#FFF3E3', fontWeight: 700, fontSize: 15.5, cursor: 'pointer', marginTop: 4, transition: 'transform .1s, opacity .2s, box-shadow .2s', boxShadow: '0 14px 30px -12px rgba(29,22,13,.5)' },
+  back: { width: '100%', background: 'none', border: 'none', color: 'rgba(29,22,13,.5)', cursor: 'pointer', marginTop: 14, fontSize: 13 },
+  check: { width: 60, height: 60, borderRadius: '50%', background: 'rgba(22,163,74,.12)', color: '#16A34A', display: 'grid', placeItems: 'center', fontSize: 30, margin: '0 auto 18px', border: '1px solid rgba(22,163,74,.26)' },
+  modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(70,42,12,.28)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 3000 },
+  modalCard: { width: '100%', maxWidth: 380, boxSizing: 'border-box', background: 'rgba(255,252,246,.82)', backdropFilter: 'blur(30px) saturate(1.4)', WebkitBackdropFilter: 'blur(30px) saturate(1.4)', border: '1px solid rgba(255,255,255,.9)', borderRadius: 26, padding: '32px 26px 26px', textAlign: 'center', boxShadow: '0 44px 90px -30px rgba(120,68,18,.42), inset 0 1px 0 rgba(255,255,255,.95)' },
+  modalIcon: { width: 60, height: 60, borderRadius: '50%', background: 'rgba(254,122,0,.14)', color: '#E56D00', display: 'grid', placeItems: 'center', fontSize: 28, margin: '0 auto 18px', border: '1px solid rgba(254,122,0,.30)' },
+  modalTitle: { color: TXT, fontSize: 21, fontWeight: 700, margin: '0 0 10px', letterSpacing: '-.01em' },
+  modalText: { color: TXT_MUTE, fontSize: 14.5, lineHeight: 1.6, margin: '0 0 22px' },
 };
