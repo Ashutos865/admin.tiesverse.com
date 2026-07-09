@@ -14,34 +14,63 @@ const maskEmail = (e) => {
   return `${head}${'*'.repeat(Math.max(3, u.length - 4))}${tail}@${d}`;
 };
 
-// Segmented OTP: auto-advance, backspace-back, full paste, numeric keypad.
+// Segmented OTP: auto-advance, single-press backspace (delete + retreat), full
+// paste, numeric keypad. Slots are held at fixed positions (empty = ' ') so a
+// mid-code delete never shifts the later digits. The parent strips the spaces.
 function OtpBoxes({ value, onChange }) {
   const refs = useRef([]);
-  const setAt = (i, v) => {
-    const d = (value + ' '.repeat(OTP_LEN)).slice(0, OTP_LEN).split('');
-    d[i] = v;
-    const next = d.join('').replace(/\s/g, '');
-    onChange(next.slice(0, OTP_LEN));
-    if (v && i < OTP_LEN - 1) refs.current[i + 1]?.focus();
+  // Fixed-length view of the code; '' marks an empty slot.
+  const slots = Array.from({ length: OTP_LEN }, (_, i) => {
+    const c = value[i];
+    return c && c !== ' ' ? c : '';
+  });
+  const emit = (arr) => onChange(arr.map((c) => c || ' ').join(''));
+
+  const setDigit = (i, raw) => {
+    const v = raw.replace(/\D/g, '');
+    if (!v) return;                       // deletions are handled in onKey
+    const arr = slots.slice();
+    arr[i] = v.slice(-1);
+    emit(arr);
+    if (i < OTP_LEN - 1) refs.current[i + 1]?.focus();
   };
+
   const onKey = (i, e) => {
-    if (e.key === 'Backspace' && !value[i] && i > 0) refs.current[i - 1]?.focus();
+    if (e.key === 'Backspace') {
+      e.preventDefault();               // take full control (mobile keydown is reliable on filled numeric inputs)
+      const arr = slots.slice();
+      if (arr[i]) {                     // clear this box, then retreat
+        arr[i] = '';
+        emit(arr);
+        if (i > 0) refs.current[i - 1]?.focus();
+      } else if (i > 0) {               // empty box: delete the previous digit in one press
+        arr[i - 1] = '';
+        emit(arr);
+        refs.current[i - 1]?.focus();
+      }
+    } else if (e.key === 'ArrowLeft' && i > 0) {
+      refs.current[i - 1]?.focus();
+    } else if (e.key === 'ArrowRight' && i < OTP_LEN - 1) {
+      refs.current[i + 1]?.focus();
+    }
   };
+
   const onPaste = (e) => {
     const t = (e.clipboardData.getData('text') || '').replace(/\D/g, '').slice(0, OTP_LEN);
     if (!t) return;
     e.preventDefault();
-    onChange(t);
+    emit(Array.from({ length: OTP_LEN }, (_, k) => t[k] || ''));
     refs.current[Math.min(t.length, OTP_LEN - 1)]?.focus();
   };
+
   return (
     <div style={S.otpRow} onPaste={onPaste}>
-      {Array.from({ length: OTP_LEN }).map((_, i) => (
+      {slots.map((c, i) => (
         <input
-          key={i} ref={el => (refs.current[i] = el)} value={value[i] || ''}
-          onChange={e => setAt(i, e.target.value.replace(/\D/g, '').slice(-1))}
+          key={i} ref={el => (refs.current[i] = el)} value={c}
+          onChange={e => setDigit(i, e.target.value)}
           onKeyDown={e => onKey(i, e)} inputMode="numeric" maxLength={1}
-          style={{ ...S.otpCell, ...(value[i] ? S.otpCellOn : {}) }} aria-label={`Digit ${i + 1}`}
+          style={{ ...S.otpCell, ...(c ? S.otpCellOn : {}) }} aria-label={`Digit ${i + 1}`}
         />
       ))}
     </div>
@@ -60,6 +89,7 @@ export default function PublicSignup() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [left, setLeft] = useState(0);
+  const [popup, setPopup] = useState(false);   // "check your mail" modal after OTP success
   const fileRef = useRef();
 
   useEffect(() => {
@@ -107,11 +137,12 @@ export default function PublicSignup() {
   };
 
   const verify = async () => {
-    if (otp.length < OTP_LEN) return setErr(`Enter the ${OTP_LEN}-digit code.`);
+    const code = otp.replace(/\s/g, '');
+    if (code.length < OTP_LEN) return setErr(`Enter the ${OTP_LEN}-digit code.`);
     setBusy(true); setErr('');
-    const res = await verifySignupOtp(hash, email.trim(), otp).catch(() => ({ error: 'Network error.' }));
+    const res = await verifySignupOtp(hash, email.trim(), code).catch(() => ({ error: 'Network error.' }));
     setBusy(false);
-    if (res?.status === 'verified') setStep('done');
+    if (res?.status === 'verified') { setStep('done'); setPopup(true); }
     else setErr(res?.error || 'Incorrect or expired code.');
   };
 
@@ -122,7 +153,7 @@ export default function PublicSignup() {
           <div style={S.sheen} />
           <div style={S.wm}>.ties</div>
           <h1 style={S.display}>Join the<br />movement.</h1>
-          <p style={S.heroSub}>Research, Media &amp; Technology — built by the youth, for Bharat.</p>
+          <p style={S.heroSub}>Research, Media &amp; Technology, built by the youth, for Bharat.</p>
         </div>
 
         <div style={S.body}>
@@ -136,7 +167,7 @@ export default function PublicSignup() {
                 </div>
                 <div>
                   <button style={S.ghost} onClick={() => fileRef.current?.click()}>Upload photo</button>
-                  <p style={S.hint}>PNG / JPG — stored as WebP</p>
+                  <p style={S.hint}>PNG / JPG, stored as WebP</p>
                 </div>
                 <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickPhoto} />
               </div>
@@ -175,12 +206,26 @@ export default function PublicSignup() {
             <div style={{ textAlign: 'center', padding: '8px 0' }}>
               <div style={S.check}>✓</div>
               <h2 style={S.h2}>You're on the list</h2>
-              <p style={S.sub}>Email verified. HR will review your request and set up your access — you'll get login details by email once approved.</p>
+              <p style={S.sub}>Email verified. HR will review your request and set up your access. You'll get login details by email once approved.</p>
             </div>
           )}
         </div>
       </div>
       {cropFile && <ImageCropper file={cropFile} onCancel={() => setCropFile(null)} onCrop={onCropped} />}
+
+      {popup && (
+        <div style={S.modalOverlay} onClick={() => setPopup(false)}>
+          <div style={S.modalCard} onClick={e => e.stopPropagation()}>
+            <div style={S.modalIcon}>✓</div>
+            <h3 style={S.modalTitle}>Email verified</h3>
+            <p style={S.modalText}>
+              Once HR approves your request, your login <b>ID and password</b> will be sent to your email.
+              Keep an eye on your inbox, and be ready.
+            </p>
+            <button style={S.cta} onClick={() => setPopup(false)}>Got it</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -222,4 +267,9 @@ const S = {
   cta: { width: '100%', height: 56, borderRadius: 999, border: 'none', background: '#fff', color: '#0A0A0B', fontWeight: 700, fontSize: 15.5, cursor: 'pointer', marginTop: 4, transition: 'transform .1s, opacity .2s' },
   back: { width: '100%', background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', marginTop: 14, fontSize: 13 },
   check: { width: 60, height: 60, borderRadius: '50%', background: 'rgba(34,197,94,.15)', color: '#22C55E', display: 'grid', placeItems: 'center', fontSize: 30, margin: '0 auto 18px' },
+  modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(6,6,8,.72)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 3000 },
+  modalCard: { width: '100%', maxWidth: 380, boxSizing: 'border-box', background: '#141418', border: '1px solid rgba(255,255,255,.08)', borderRadius: 24, padding: '32px 26px 26px', textAlign: 'center', boxShadow: '0 30px 80px rgba(0,0,0,.55)' },
+  modalIcon: { width: 60, height: 60, borderRadius: '50%', background: 'rgba(34,197,94,.15)', color: '#22C55E', display: 'grid', placeItems: 'center', fontSize: 30, margin: '0 auto 18px' },
+  modalTitle: { color: '#fff', fontSize: 21, fontWeight: 700, margin: '0 0 10px', letterSpacing: '-.01em' },
+  modalText: { color: 'rgba(255,255,255,.6)', fontSize: 14.5, lineHeight: 1.6, margin: '0 0 22px' },
 };
