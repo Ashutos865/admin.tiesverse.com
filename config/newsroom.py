@@ -144,3 +144,25 @@ def public_guests_feed(request):
             cached = []
         cache.set('public_guests_feed', cached, 120)
     return JsonResponse({'guests': cached})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_tech_products(request):
+    """Admin-managed Technology-section products for the website. Cached ~2 min."""
+    cached = cache.get('public_tech_products')
+    if cached is None:
+        try:
+            from tiesverse_app.models import TechProduct
+            cached = [
+                {
+                    'id': p.id, 'name': p.name, 'tag': p.tag or '',
+                    'description': p.description or '', 'image_url': p.image_url or '',
+                    'cta_label': p.cta_label or 'Learn more', 'cta_url': p.cta_url or '/contact',
+                }
+                for p in TechProduct.objects.using('turso_db').filter(is_active=True).order_by('order', 'id')
+            ]
+        except Exception:  # noqa: BLE001
+            cached = []
+        cache.set('public_tech_products', cached, 120)
+    return JsonResponse({'products': cached})

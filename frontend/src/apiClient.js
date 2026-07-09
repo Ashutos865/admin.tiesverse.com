@@ -170,6 +170,12 @@ export const createEvent = (data) => adminFetch('/api/landing/events', 'POST', d
 export const updateEvent = (id, data) => adminFetch(`/api/landing/events/${id}`, 'PATCH', data);
 export const deleteEvent = (id) => adminFetch(`/api/landing/events/${id}`, 'DELETE');
 
+// Tech products (website Technology section)
+export const getTechProducts = () => adminFetch('/api/landing/tech-products/').catch(() => []);
+export const createTechProduct = (data) => adminFetch('/api/landing/tech-products/', 'POST', data);
+export const updateTechProduct = (id, data) => adminFetch(`/api/landing/tech-products/${id}/`, 'PATCH', data);
+export const deleteTechProduct = (id) => adminFetch(`/api/landing/tech-products/${id}/`, 'DELETE');
+
 // DEPARTMENTS
 export const getDepartments = () => adminFetch('/api/landing/departments');
 export const createDepartment = (data) => adminFetch('/api/landing/departments', 'POST', data);

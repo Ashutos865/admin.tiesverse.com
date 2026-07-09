@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     DepartmentViewSet, TeamMemberViewSet, TeamMemberSocialViewSet,
     EventViewSet, EventSpeakerViewSet, EventRegistrationViewSet,
-    WebinarListingViewSet,
+    WebinarListingViewSet, TechProductViewSet,
 )
 
 router = DefaultRouter()
@@ -14,6 +14,7 @@ router.register(r'events', EventViewSet)
 router.register(r'event_speakers', EventSpeakerViewSet)
 router.register(r'event_registrations', EventRegistrationViewSet)
 router.register(r'webinars', WebinarListingViewSet)
+router.register(r'tech-products', TechProductViewSet, basename='tech-product')
 
 urlpatterns = [
     path('', include(router.urls)),

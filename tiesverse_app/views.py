@@ -2,12 +2,12 @@ from rest_framework import viewsets
 from rest_framework.permissions import DjangoModelPermissions, IsAuthenticated
 from .models import (
     Department, Event, EventSpeaker, EventRegistration,
-    TeamMember, TeamMemberSocial, WebinarListing,
+    TeamMember, TeamMemberSocial, WebinarListing, TechProduct,
 )
 from .serializers import (
     DepartmentSerializer, EventSerializer, EventSpeakerSerializer,
     EventRegistrationSerializer, TeamMemberSerializer, TeamMemberSocialSerializer,
-    WebinarListingSerializer,
+    WebinarListingSerializer, TechProductSerializer,
 )
 from . import supabase_sync
 
@@ -78,3 +78,10 @@ class WebinarListingViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
     queryset = WebinarListing.objects.all().order_by('-date')
     serializer_class = WebinarListingSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
+
+
+class TechProductViewSet(viewsets.ModelViewSet):
+    """Admin CRUD for the website's Technology-section products."""
+    queryset = TechProduct.objects.all().order_by('order', 'id')
+    serializer_class = TechProductSerializer
+    permission_classes = [IsAuthenticated]

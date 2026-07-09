@@ -1,5 +1,11 @@
 from rest_framework import serializers
-from .models import Department, TeamMember, TeamMemberSocial, Event, EventSpeaker, EventRegistration, WebinarListing
+from .models import Department, TeamMember, TeamMemberSocial, Event, EventSpeaker, EventRegistration, WebinarListing, TechProduct
+
+
+class TechProductSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TechProduct
+        fields = '__all__'
 
 class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:

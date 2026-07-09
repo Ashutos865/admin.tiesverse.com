@@ -308,3 +308,24 @@ class WebinarListing(models.Model):
             'status':            self.status,
             'kind':              self.kind,
         }
+
+
+class TechProduct(models.Model):
+    """A product shown in the website's Technology section (admin-managed)."""
+    name = models.CharField(max_length=200)
+    tag = models.CharField(max_length=120, blank=True)          # e.g. "Consumer", "Govt & Enterprise"
+    description = models.TextField(blank=True)
+    image_url = models.CharField(max_length=500, blank=True)    # Cloudinary WebP
+    cta_label = models.CharField(max_length=80, blank=True, default='Learn more')
+    cta_url = models.CharField(max_length=500, blank=True, default='/contact')
+    order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'tech_products'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return self.name
