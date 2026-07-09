@@ -19,17 +19,5 @@ class CareerAppConfig(AppConfig):
                     cursor.execute('PRAGMA foreign_keys = OFF;')
 
         connection_created.connect(_disable_fk_for_turso, dispatch_uid='turso_disable_fk')
-
-        # The headless Form API (/api/forms/v1/) is called cross-origin from other
-        # Tiesverse domains. Let django-cors-headers reflect ANY origin for those
-        # paths so the browser makes the call — the real gate is the origin-locked
-        # API key checked in the view, not CORS.
-        try:
-            from corsheaders.signals import check_request_enabled
-
-            def _cors_allow_form_api(sender, request, **kwargs):
-                return request.path.startswith('/api/forms/v1/')
-
-            check_request_enabled.connect(_cors_allow_form_api, dispatch_uid='cors_form_api')
-        except Exception:  # noqa: BLE001 — never break startup over CORS wiring
-            pass
+        # CORS for the headless Form API is handled by
+        # career_app.middleware.FormApiCorsMiddleware (see settings.MIDDLEWARE).

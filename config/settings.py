@@ -95,6 +95,7 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 MIDDLEWARE = [
+    'career_app.middleware.FormApiCorsMiddleware',   # opens CORS for /api/forms/v1/ (before CorsMiddleware)
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
