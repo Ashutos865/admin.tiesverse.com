@@ -170,9 +170,22 @@ export const createEvent = (data) => adminFetch('/api/landing/events', 'POST', d
 export const updateEvent = (id, data) => adminFetch(`/api/landing/events/${id}`, 'PATCH', data);
 export const deleteEvent = (id) => adminFetch(`/api/landing/events/${id}`, 'DELETE');
 
-// Website image slots (per-slot override / auto-manual)
+// Website image slots (per-slot override / auto-manual). Uploads go to Cloudflare R2.
 export const getSiteImages = () => adminFetch('/api/landing/site-images/').catch(() => ({ slots: [] }));
 export const setSiteImage = (data) => adminFetch('/api/landing/site-images/', 'POST', data);
+export const uploadSiteImage = async (key, file) => {
+    const form = new FormData();
+    form.append('key', key);
+    form.append('file', file);
+    const res = await fetch(`${API_URL}/api/landing/site-image-upload/`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+        body: form,
+    });
+    if (res.status === 401) { setApiToken(null); window.location.href = '/login'; return { error: 'Session expired.' }; }
+    const text = await res.text();
+    try { return JSON.parse(text); } catch { return { error: `Upload failed (${res.status}).` }; }
+};
 
 // Tech products (website Technology section)
 export const getTechProducts = () => adminFetch('/api/landing/tech-products/').catch(() => []);

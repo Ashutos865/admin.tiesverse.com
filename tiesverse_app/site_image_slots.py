@@ -53,19 +53,15 @@ def _rows(mapping, group, aspect=1, auto=False):
     return [{'key': k, 'label': v, 'group': group, 'aspect': aspect, 'auto': auto} for k, v in mapping.items()]
 
 
-SLOTS = (
-    [
-        {'key': 'hero', 'label': 'Homepage hero', 'group': 'Hero & backdrops', 'aspect': 16 / 9, 'auto': False},
-        {'key': 'cta-backdrop', 'label': 'CTA band backdrop', 'group': 'Hero & backdrops', 'aspect': 16 / 9, 'auto': False},
-        {'key': 'letter-backdrop', 'label': 'Founders letter backdrop', 'group': 'Hero & backdrops', 'aspect': 16 / 9, 'auto': False},
-    ]
-    + _rows(_BRANDS, 'Brand logos', 1, False)
-    + _rows(_GOVT, 'Government & ministry logos', 1, False)
-    + _rows(_UNIV, 'University logos', 1, False)
-    + [
-        {'key': 'nav-insights', 'label': 'Nav: Insights featured card', 'group': 'Nav feature cards', 'aspect': 4 / 3, 'auto': True},
-        {'key': 'nav-engagements', 'label': 'Nav: Engagements featured card', 'group': 'Nav feature cards', 'aspect': 4 / 3, 'auto': True},
-    ]
-)
+# Brand / government-ministry / university logos are intentionally HARDCODED in
+# the website (stable brand assets) — not managed here. The CMS only covers the
+# slots that genuinely change: the hero, backdrops, and data-driven nav cards.
+SLOTS = [
+    {'key': 'hero', 'label': 'Homepage hero', 'group': 'Hero & backdrops', 'aspect': 16 / 9, 'auto': False},
+    {'key': 'cta-backdrop', 'label': 'CTA band backdrop', 'group': 'Hero & backdrops', 'aspect': 16 / 9, 'auto': False},
+    {'key': 'letter-backdrop', 'label': 'Founders letter backdrop', 'group': 'Hero & backdrops', 'aspect': 16 / 9, 'auto': False},
+    {'key': 'nav-insights', 'label': 'Nav: Insights featured card', 'group': 'Nav feature cards', 'aspect': 4 / 3, 'auto': True},
+    {'key': 'nav-engagements', 'label': 'Nav: Engagements featured card', 'group': 'Nav feature cards', 'aspect': 4 / 3, 'auto': True},
+]
 
 SLOT_KEYS = {s['key'] for s in SLOTS}

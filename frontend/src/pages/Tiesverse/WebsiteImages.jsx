@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getSiteImages, setSiteImage, uploadImage } from '../../apiClient';
+import { getSiteImages, setSiteImage, uploadSiteImage } from '../../apiClient';
 import { Upload, Image as ImageIcon } from 'lucide-react';
 import RectCropper from '../../components/RectCropper.jsx';
 
@@ -25,12 +25,9 @@ export default function WebsiteImages() {
   };
   const onCropped = async (file) => {
     const { key } = crop; setCrop(null); setBusyKey(key);
-    const up = await uploadImage(file);
-    if (up?.secure_url) {
-      await setSiteImage({ key, image_url: up.secure_url, mode: 'manual' });
-      patch(key, { image_url: up.secure_url, mode: 'manual' });
-      showToast('Image updated');
-    } else showToast(up?.error || 'Upload failed');
+    const up = await uploadSiteImage(key, file);   // → WebP → Cloudflare R2 → sets the slot
+    if (up?.image_url) { patch(key, { image_url: up.image_url, mode: 'manual' }); showToast('Image updated'); }
+    else showToast(up?.error || 'Upload failed');
     setBusyKey('');
   };
   const toggleMode = async (slot) => {

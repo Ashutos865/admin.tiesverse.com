@@ -120,3 +120,33 @@ def site_images_admin(request):
     si, _ = SiteImage.objects.update_or_create(key=key, defaults=defaults)
     cache.delete('public_site_images')   # push the change to the website promptly
     return Response({'key': si.key, 'image_url': si.image_url, 'mode': si.mode})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def site_image_upload(request):
+    """Upload a website image → WebP → Cloudflare R2 → return the public proxy URL."""
+    key = str(request.data.get('key') or '').strip()
+    if key not in SLOT_KEYS:
+        return Response({'error': 'Unknown slot.'}, status=400)
+    f = request.FILES.get('file')
+    if not f:
+        return Response({'error': 'No file provided.'}, status=400)
+    from .media_views import to_webp
+    from career_app.providers import R2Storage
+    from django.utils import timezone
+    try:
+        webp = to_webp(f).read()
+    except Exception:  # noqa: BLE001 — fall back to the original bytes
+        f.seek(0)
+        webp = f.read()
+    try:
+        R2Storage().put_object(f'site-images/{key}.webp', webp, 'image/webp')
+    except Exception as e:  # noqa: BLE001
+        return Response({'error': f'R2 upload failed: {e}'}, status=502)
+    # Cache-busting version so the browser picks up the new image immediately.
+    ts = int(timezone.now().timestamp())
+    url = request.build_absolute_uri(f'/api/public/site-image/{key}/') + f'?v={ts}'
+    SiteImage.objects.update_or_create(key=key, defaults={'image_url': url, 'mode': 'manual'})
+    cache.delete('public_site_images')
+    return Response({'image_url': url})

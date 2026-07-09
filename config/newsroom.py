@@ -185,3 +185,16 @@ def public_site_images(request):
             cached = {}
         cache.set('public_site_images', cached, 120)
     return JsonResponse({'images': cached})
+
+
+def public_site_image(request, key):
+    """Serve a website image stored in Cloudflare R2 (public, cached ~1 day)."""
+    from django.http import HttpResponse, HttpResponseNotFound
+    try:
+        from career_app.providers import R2Storage
+        data = R2Storage().get_object(f'site-images/{key}.webp')
+    except Exception:  # noqa: BLE001 — missing object / R2 error
+        return HttpResponseNotFound()
+    resp = HttpResponse(data, content_type='image/webp')
+    resp['Cache-Control'] = 'public, max-age=86400'
+    return resp

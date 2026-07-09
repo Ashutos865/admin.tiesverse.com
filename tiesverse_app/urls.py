@@ -5,7 +5,7 @@ from .views import (
     EventViewSet, EventSpeakerViewSet, EventRegistrationViewSet,
     WebinarListingViewSet, TechProductViewSet,
 )
-from .views import site_images_admin
+from .views import site_images_admin, site_image_upload
 
 router = DefaultRouter()
 router.register(r'departments', DepartmentViewSet)
@@ -19,5 +19,6 @@ router.register(r'tech-products', TechProductViewSet, basename='tech-product')
 
 urlpatterns = [
     path('site-images/', site_images_admin, name='site-images-admin'),
+    path('site-image-upload/', site_image_upload, name='site-image-upload'),
     path('', include(router.urls)),
 ]
