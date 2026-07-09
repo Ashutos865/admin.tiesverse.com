@@ -1568,8 +1568,21 @@ class OnboardingPublicUploadView(APIView):
             file_obj = request.FILES.get(field_name)
             if file_obj:
                 ext = file_obj.name.rsplit('.', 1)[-1].lower() if '.' in file_obj.name else 'bin'
+                content_type = file_obj.content_type or 'application/octet-stream'
+                data = file_obj.read()
+                # The profile photo is always an image → store it as WebP (smaller,
+                # consistent). Docs (aadhaar/college_id) may be PDFs, so leave as-is.
+                if field_name == 'photo' and content_type.startswith('image/'):
+                    try:
+                        from tiesverse_app.media_views import to_webp
+                        file_obj.seek(0)
+                        data = to_webp(file_obj).read()
+                        content_type, ext = 'image/webp', 'webp'
+                    except Exception:  # noqa: BLE001 — fall back to the original bytes
+                        file_obj.seek(0)
+                        data = file_obj.read()
                 r2_key = f"onboarding/{token[:16]}/{r2_name}.{ext}"
-                r2.put_object(r2_key, file_obj.read(), file_obj.content_type or 'application/octet-stream')
+                r2.put_object(r2_key, data, content_type)
                 setattr(sub, key_attr, r2_key)
                 setattr(sub, flag_attr, True)
                 updated = True
