@@ -344,3 +344,134 @@ class SiteImage(models.Model):
 
     def __str__(self):
         return f"{self.key} ({self.mode})"
+
+
+class DataStore(models.Model):
+    """A standalone data store ("database"/table) that any Tiesverse frontend can
+    write to / read from via /api/data/v1/ using an origin-locked API key. Columns
+    are typed and defined here in the admin; the API validates against them."""
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=120, unique=True, blank=True)
+    description = models.TextField(blank=True)
+    columns = models.JSONField(default=list, blank=True)   # [{key,label,type,required}]
+    is_active = models.BooleanField(default=True)
+    created_by_user = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
+        related_name='data_stores',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'data_stores'
+        ordering = ['-updated_at']
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base = _slugify(self.name) or 'store'
+            slug, i = base, 2
+            while DataStore.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f'{base}-{i}'; i += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+class DataApiKey(models.Model):
+    """Origin-locked API key for a DataStore. Only the sha256 hash is stored;
+    the full key is shown once. Submit keys write, read keys read."""
+    SCOPE_SUBMIT = 'submit'
+    SCOPE_READ = 'read'
+    SCOPE_CHOICES = [(SCOPE_SUBMIT, 'Write only (POST)'), (SCOPE_READ, 'Read only (GET)')]
+
+    store = models.ForeignKey(DataStore, on_delete=models.CASCADE, related_name='api_keys')
+    label = models.CharField(max_length=120, blank=True)
+    scope = models.CharField(max_length=10, choices=SCOPE_CHOICES, default=SCOPE_SUBMIT)
+    key_id = models.CharField(max_length=32, unique=True)
+    key_hash = models.CharField(max_length=64)
+    allowed_origins = models.JSONField(default=list, blank=True)   # ['https://x.com']; empty = blocked
+    expires_at = models.DateTimeField(null=True, blank=True)
+    single_use = models.BooleanField(default=False)
+    used_at = models.DateTimeField(null=True, blank=True)
+    records_count = models.IntegerField(default=0)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    created_by_user = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
+        related_name='data_api_keys',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'data_api_keys'
+        ordering = ['-created_at']
+
+    @staticmethod
+    def _hash(raw):
+        import hashlib
+        return hashlib.sha256((raw or '').encode()).hexdigest()
+
+    @classmethod
+    def issue(cls, store, scope, **kwargs):
+        """Create a key; returns (obj, full_key). full_key is shown once only."""
+        import secrets
+        prefix = 'tvk_wr' if scope == cls.SCOPE_SUBMIT else 'tvk_rd'
+        key_id = f'{prefix}_{secrets.token_hex(5)}'
+        secret = secrets.token_urlsafe(32)
+        full = f'{key_id}.{secret}'
+        obj = cls.objects.create(store=store, scope=scope, key_id=key_id, key_hash=cls._hash(full), **kwargs)
+        return obj, full
+
+    @property
+    def status(self):
+        from django.utils import timezone
+        if self.revoked_at:
+            return 'revoked'
+        if self.expires_at and timezone.now() >= self.expires_at:
+            return 'expired'
+        if self.single_use and self.used_at:
+            return 'used'
+        return 'active'
+
+    def matches(self, raw):
+        return bool(raw) and self.key_hash == self._hash(raw)
+
+    def origin_allowed(self, origin):
+        if not origin:
+            return False
+        origins = self.allowed_origins or []
+        if not origins:
+            return False
+        if '*' in origins:
+            return True
+        from urllib.parse import urlparse
+        try:
+            host = urlparse(origin).netloc.lower() or origin.lower()
+        except Exception:  # noqa: BLE001
+            host = origin.lower()
+        for allowed in origins:
+            a = str(allowed).strip().lower()
+            try:
+                a_host = urlparse(a).netloc or a
+            except Exception:  # noqa: BLE001
+                a_host = a
+            if host == a_host.lower():
+                return True
+        return False
+
+
+class DataRecord(models.Model):
+    """One row written to a DataStore via the API."""
+    store = models.ForeignKey(DataStore, on_delete=models.CASCADE, related_name='records')
+    data = models.JSONField(default=dict, blank=True)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'data_records'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Record {self.pk} in {self.store_id}"

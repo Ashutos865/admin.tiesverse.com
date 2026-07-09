@@ -29,6 +29,7 @@ import EventsManagement from './pages/Tiesverse/EventsManagement';
 import TiesverseAdminPanel from './pages/Tiesverse/Admin.jsx';
 import TechProducts from './pages/Tiesverse/TechProducts.jsx';
 import WebsiteImages from './pages/Tiesverse/WebsiteImages.jsx';
+import DataApi from './pages/Tiesverse/DataApi.jsx';
 
 // Career
 import CareerAdmin from './pages/Career/Admin.jsx';
@@ -56,7 +57,6 @@ import FormsListPage from './pages/Forms/FormsListPage.jsx';
 import FormBuilder from './pages/Forms/FormBuilder.jsx';
 import FormFillPage from './pages/Forms/FormFillPage.jsx';
 import FormResponsesPage from './pages/Forms/FormResponsesPage.jsx';
-import FormApiPage from './pages/Forms/FormApiPage.jsx';
 import PublicFormPage from './pages/Forms/PublicFormPage.jsx';
 
 // Certificate Generator
@@ -128,6 +128,7 @@ function App() {
               <Route path="/tiesverse/homepage" element={<Navigate to="/tiesverse/website-images" replace />} />
               <Route path="/tiesverse/tech-products" element={<TechProducts />} />
               <Route path="/tiesverse/website-images" element={<WebsiteImages />} />
+              <Route path="/tiesverse/data-api" element={<DataApi />} />
 
               {/* Career Routes */}
               <Route path="/career/positions" element={<CareerAdmin tab="positions" />} />
@@ -175,7 +176,6 @@ function App() {
               <Route path="/hr/forms" element={<FormsListPage />} />
               <Route path="/hr/forms/:id/edit" element={<FormBuilder />} />
               <Route path="/hr/forms/:id/responses" element={<FormResponsesPage />} />
-              <Route path="/hr/forms/:id/api" element={<FormApiPage />} />
               <Route path="/forms/:id" element={<FormFillPage />} />
 
               {/* Certificate Generator Routes */}

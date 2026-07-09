@@ -19,5 +19,5 @@ class CareerAppConfig(AppConfig):
                     cursor.execute('PRAGMA foreign_keys = OFF;')
 
         connection_created.connect(_disable_fk_for_turso, dispatch_uid='turso_disable_fk')
-        # CORS for the headless Form API is handled by
-        # career_app.middleware.FormApiCorsMiddleware (see settings.MIDDLEWARE).
+        # CORS for the standalone Data API is handled by
+        # career_app.middleware.DataApiCorsMiddleware (see settings.MIDDLEWARE).

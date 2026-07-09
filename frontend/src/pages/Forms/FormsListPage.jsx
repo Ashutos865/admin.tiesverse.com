@@ -1,14 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  FileSpreadsheet, Plus, Pencil, Trash2, BarChart3, Link2, Globe, Lock, Copy, Check, KeyRound,
+  FileSpreadsheet, Plus, Pencil, Trash2, BarChart3, Link2, Globe, Lock, Copy, Check,
 } from 'lucide-react';
 import { getForms, createForm, deleteForm } from '../../apiClient';
 import { blankForm, PUBLIC_FORMS_ORIGIN } from './formConfig';
 import { useMe } from '../../context/MeContext';
 
 export default function FormsListPage() {
-  const { scope, isAdvisory } = useMe();
+  const { scope } = useMe();
   const navigate = useNavigate();
   const canManage = scope === 'all';
 
@@ -121,7 +121,6 @@ export default function FormsListPage() {
                     <div style={S.actions}>
                       <button className="fc-act" style={S.act} onClick={() => navigate(`/hr/forms/${f.id}/edit`)}><Pencil size={14} />Edit</button>
                       <button className="fc-act" style={S.act} onClick={() => navigate(`/hr/forms/${f.id}/responses`)}><BarChart3 size={14} />Responses</button>
-                      {isAdvisory && <button className="fc-act" style={S.act} title="API access (Advisory)" onClick={() => navigate(`/hr/forms/${f.id}/api`)}><KeyRound size={14} />API</button>}
                       <button className="fc-act" style={S.act} title="Copy share link" onClick={() => copyLink(f)}>
                         {copiedId === f.id ? <><Check size={14} color="#10b981" />Copied</> : <><Link2 size={14} />Share</>}
                       </button>

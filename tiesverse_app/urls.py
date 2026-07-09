@@ -6,6 +6,9 @@ from .views import (
     WebinarListingViewSet, TechProductViewSet,
 )
 from .views import site_images_admin, site_image_upload
+from .data_api import (
+    data_stores, data_store_detail, data_store_records, data_keys, data_key_detail,
+)
 
 router = DefaultRouter()
 router.register(r'departments', DepartmentViewSet)
@@ -20,5 +23,11 @@ router.register(r'tech-products', TechProductViewSet, basename='tech-product')
 urlpatterns = [
     path('site-images/', site_images_admin, name='site-images-admin'),
     path('site-image-upload/', site_image_upload, name='site-image-upload'),
+    # ── Data API management (Advisory only) ──
+    path('data-stores/', data_stores, name='data-stores'),
+    path('data-stores/<int:pk>/', data_store_detail, name='data-store-detail'),
+    path('data-stores/<int:pk>/records/', data_store_records, name='data-store-records'),
+    path('data-stores/<int:pk>/keys/', data_keys, name='data-keys'),
+    path('data-stores/<int:pk>/keys/<int:key_pk>/', data_key_detail, name='data-key-detail'),
     path('', include(router.urls)),
 ]
