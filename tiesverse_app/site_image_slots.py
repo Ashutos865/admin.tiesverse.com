@@ -102,6 +102,29 @@ _NAV = [
 # key → bundled /work/ filename, used by the seed command.
 NAV_SEED = {k: f for (k, _l, _a, f) in _NAV}
 
+# Hero/backdrop/brand/signature slots that have a real bundled image on the live
+# site (verified image/*, not the SPA fallback). Excluded on purpose because no
+# real image exists yet — they stay "using default" until an editor uploads one:
+# team-group and the 6 brand placeholders (brand-jantar-mantar, brand-arch-pattern,
+# brand-one-light, brand-scale-stillness, brand-atlas, brand-source-portrait).
+PAGE_SEED = {
+    'hero': 'hero.png',
+    'cta-backdrop': 'cta-backdrop.png',
+    'letter-backdrop': 'letter-backdrop.png',
+    'brand-establishing': 'brand-establishing.png',
+    'brand-universe-map': 'brand-universe-map.png',
+    'brand-bharat': 'brand-bharat.png',
+    'moodboard': 'Moodboard.png',
+    'sign-observatory': 'sign-observatory.png',
+    'sign-river': 'sign-river.png',
+    'sign-archive': 'sign-archive.png',
+    'sign-tower': 'sign-tower.png',
+    'sign-constellation': 'sign-constellation.png',
+}
+
+# All slots the seed command can import, key → /work/ filename.
+SEED_FILES = {**NAV_SEED, **PAGE_SEED}
+
 
 SLOTS = (
     [
@@ -115,3 +138,6 @@ SLOTS = (
 )
 
 SLOT_KEYS = {s['key'] for s in SLOTS}
+
+# key → auto flag; the seed command uses it to seed auto slots as 'auto'.
+SEED_AUTO = {s['key']: s['auto'] for s in SLOTS}
