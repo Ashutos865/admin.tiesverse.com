@@ -2,7 +2,7 @@ import { useContext, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { ArrowRight, Eye, EyeOff, LoaderCircle, Lock, User } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
-import Turnstile, { TURNSTILE_ENABLED } from '../components/Turnstile';
+import Turnstile from '../components/Turnstile';
 import './Login.css';
 
 const Login = () => {
@@ -26,10 +26,6 @@ const Login = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError(null);
-    if (TURNSTILE_ENABLED && !captcha) {
-      setError('Please complete the verification below.');
-      return;
-    }
     setSubmitting(true);
     const result = await loginUser(username, password, captcha);
     if (result.success) {
@@ -102,7 +98,7 @@ const Login = () => {
 
             <Turnstile onToken={setCaptcha} resetKey={captchaReset} />
 
-            <button className="login-submit" type="submit" disabled={submitting || (TURNSTILE_ENABLED && !captcha)}>
+            <button className="login-submit" type="submit" disabled={submitting}>
               <span className="login-submit-label">{submitting ? 'Authenticating…' : 'Log in'}</span>
               <span className="login-submit-arrow">
                 {submitting
