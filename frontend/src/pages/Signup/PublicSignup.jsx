@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { publicSignup, verifySignupOtp } from '../../apiClient';
 import ImageCropper from '../../components/ImageCropper.jsx';
 import Turnstile, { TURNSTILE_ENABLED } from '../../components/Turnstile';
+import Wordmark from '../../components/Wordmark';
 
 const OTP_LEN = 6;
 const RESEND_SECS = 45;
@@ -166,7 +167,7 @@ export default function PublicSignup() {
       <div style={S.shell}>
         <div style={S.hero}>
           <div style={S.sheen} />
-          <div style={S.wm}>.ties</div>
+          <div style={S.wm}><Wordmark light mono size={19} /></div>
           <h1 style={S.display}>Join the<br />movement.</h1>
           <p style={S.heroSub}>Research, Media &amp; Technology, built by the youth, for Bharat.</p>
         </div>
@@ -266,26 +267,26 @@ const S = {
     border: '1px solid rgba(255,255,255,.85)', boxShadow: '0 40px 90px -34px rgba(120,68,18,.30), 0 2px 6px rgba(120,68,18,.06), inset 0 1px 0 rgba(255,255,255,.9)',
   },
   hero: {
-    position: 'relative', overflow: 'hidden', padding: 26, width: '100%', boxSizing: 'border-box',
-    minHeight: '31vh', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+    position: 'relative', overflow: 'hidden', padding: '44px 26px 22px', width: '100%', boxSizing: 'border-box',
+    display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
     background: 'radial-gradient(135% 130% at 26% -12%, #FFB459 0%, #FE7A00 46%, #D6520A 100%)',
   },
   sheen: { position: 'absolute', inset: 0, background: 'linear-gradient(120deg, rgba(255,255,255,.32) 0%, rgba(255,255,255,0) 42%)', pointerEvents: 'none' },
-  wm: { position: 'absolute', top: 22, left: 26, color: '#fff', fontWeight: 800, fontSize: 20, letterSpacing: '-.02em' },
-  display: { color: '#fff', fontFamily: 'Georgia, "Times New Roman", serif', fontWeight: 600, fontSize: 'clamp(32px,8.4vw,46px)', lineHeight: .96, letterSpacing: '-.02em', margin: '0 0 10px', textWrap: 'balance' },
-  heroSub: { color: 'rgba(255,248,240,.94)', fontSize: 14, lineHeight: 1.45, margin: 0, maxWidth: 300 },
-  body: { padding: '26px 24px 16px', boxSizing: 'border-box' },
-  h2: { color: TXT, fontSize: 22, fontWeight: 700, margin: '0 0 6px', letterSpacing: '-.01em' },
-  sub: { color: TXT_MUTE, fontSize: 14.5, lineHeight: 1.5, margin: '0 0 18px' },
+  wm: { position: 'absolute', top: 18, left: 26 },
+  display: { color: '#fff', fontFamily: 'Georgia, "Times New Roman", serif', fontWeight: 600, fontSize: 'clamp(30px,7.6vw,40px)', lineHeight: .98, letterSpacing: '-.02em', margin: '0 0 8px', textWrap: 'balance' },
+  heroSub: { color: 'rgba(255,248,240,.94)', fontSize: 13.5, lineHeight: 1.4, margin: 0, maxWidth: 300 },
+  body: { padding: '20px 22px 14px', boxSizing: 'border-box' },
+  h2: { color: TXT, fontSize: 20, fontWeight: 700, margin: '0 0 5px', letterSpacing: '-.01em' },
+  sub: { color: TXT_MUTE, fontSize: 14, lineHeight: 1.45, margin: '0 0 14px' },
   req: { color: '#E56D00', fontWeight: 700 },
-  photoRow: { display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 },
-  avatar: { width: 72, height: 72, borderRadius: '50%', background: 'rgba(255,255,255,.6)', border: '1px dashed rgba(29,22,13,.22)', display: 'grid', placeItems: 'center', cursor: 'pointer', overflow: 'hidden', flex: 'none' },
+  photoRow: { display: 'flex', alignItems: 'center', gap: 15, marginBottom: 14 },
+  avatar: { width: 64, height: 64, borderRadius: '50%', background: 'rgba(255,255,255,.6)', border: '1px dashed rgba(29,22,13,.22)', display: 'grid', placeItems: 'center', cursor: 'pointer', overflow: 'hidden', flex: 'none' },
   avatarImg: { width: '100%', height: '100%', objectFit: 'cover' },
-  plus: { fontSize: 28, color: 'rgba(29,22,13,.32)' },
+  plus: { fontSize: 26, color: 'rgba(29,22,13,.32)' },
   ghost: { background: GLASS, border: `1px solid ${GLASS_BORDER}`, color: TXT, borderRadius: 12, padding: '9px 15px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
-  hint: { color: 'rgba(29,22,13,.46)', fontSize: 12, margin: '7px 0 0' },
-  lbl: { display: 'flex', flexDirection: 'column', gap: 7, fontSize: 13, fontWeight: 600, color: TXT_MUTE, marginBottom: 14, letterSpacing: '.02em' },
-  input: { padding: '13px 15px', borderRadius: 14, border: `1px solid ${GLASS_BORDER}`, background: 'rgba(255,255,255,.72)', color: TXT, fontSize: 15, outline: 'none', transition: 'border-color .18s, box-shadow .18s, background .18s' },
+  hint: { color: 'rgba(29,22,13,.46)', fontSize: 12, margin: '6px 0 0' },
+  lbl: { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, fontWeight: 600, color: TXT_MUTE, marginBottom: 11, letterSpacing: '.02em' },
+  input: { padding: '11px 15px', borderRadius: 14, border: `1px solid ${GLASS_BORDER}`, background: 'rgba(255,255,255,.72)', color: TXT, fontSize: 15, outline: 'none', transition: 'border-color .18s, box-shadow .18s, background .18s' },
   emailChip: { display: 'inline-block', background: 'rgba(254,122,0,.10)', border: '1px solid rgba(254,122,0,.30)', color: '#B4560A', borderRadius: 999, padding: '10px 18px', fontSize: 14, letterSpacing: '.02em', marginBottom: 14 },
   helper: { color: 'rgba(29,22,13,.46)', fontSize: 12.5, lineHeight: 1.5, margin: '0 0 20px' },
   otpRow: { display: 'flex', gap: 8, marginBottom: 14, width: '100%' },
@@ -297,8 +298,8 @@ const S = {
   resend: { background: 'none', border: 'none', color: '#E56D00', fontWeight: 700, cursor: 'pointer', fontSize: 13, padding: 0 },
   resendOff: { color: 'rgba(29,22,13,.3)', cursor: 'not-allowed' },
   err: { color: '#C0392B', fontSize: 13, margin: '0 0 12px' },
-  cta: { width: '100%', height: 56, borderRadius: 999, border: 'none', background: '#1D160D', color: '#FFF3E3', fontWeight: 700, fontSize: 15.5, cursor: 'pointer', marginTop: 4, transition: 'transform .1s, opacity .2s, box-shadow .2s', boxShadow: '0 14px 30px -12px rgba(29,22,13,.5)' },
-  back: { width: '100%', background: 'none', border: 'none', color: 'rgba(29,22,13,.5)', cursor: 'pointer', marginTop: 14, fontSize: 13 },
+  cta: { width: '100%', height: 50, borderRadius: 999, border: 'none', background: '#1D160D', color: '#FFF3E3', fontWeight: 700, fontSize: 15.5, cursor: 'pointer', marginTop: 4, transition: 'transform .1s, opacity .2s, box-shadow .2s', boxShadow: '0 14px 30px -12px rgba(29,22,13,.5)' },
+  back: { width: '100%', background: 'none', border: 'none', color: 'rgba(29,22,13,.5)', cursor: 'pointer', marginTop: 12, fontSize: 13 },
   check: { width: 60, height: 60, borderRadius: '50%', background: 'rgba(22,163,74,.12)', color: '#16A34A', display: 'grid', placeItems: 'center', fontSize: 30, margin: '0 auto 18px', border: '1px solid rgba(22,163,74,.26)' },
   modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(70,42,12,.28)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 3000 },
   modalCard: { width: '100%', maxWidth: 380, boxSizing: 'border-box', background: 'rgba(255,252,246,.82)', backdropFilter: 'blur(30px) saturate(1.4)', WebkitBackdropFilter: 'blur(30px) saturate(1.4)', border: '1px solid rgba(255,255,255,.9)', borderRadius: 26, padding: '32px 26px 26px', textAlign: 'center', boxShadow: '0 44px 90px -30px rgba(120,68,18,.42), inset 0 1px 0 rgba(255,255,255,.95)' },

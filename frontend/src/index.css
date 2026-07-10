@@ -729,17 +729,17 @@ tr:hover td {
 
 .portal-sidebar-brand {
   display: flex;
-  min-height: 112px;
+  min-height: 96px;
   align-items: center;
   justify-content: space-between;
-  padding: 24px;
+  padding: 22px 24px;
   border-bottom: 1px solid var(--outline-variant);
 }
 
 .portal-sidebar-brand > div {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
 }
 
 .portal-sidebar-brand strong {

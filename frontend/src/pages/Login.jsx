@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { ArrowRight, Eye, EyeOff, LoaderCircle, Lock, User } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import Turnstile from '../components/Turnstile';
+import Wordmark from '../components/Wordmark';
 import './Login.css';
 
 const Login = () => {
@@ -44,8 +45,7 @@ const Login = () => {
 
       <section className="login-shell" aria-labelledby="login-title">
         <header className="login-brand">
-          <img src="/favicon.svg" alt="Tiesverse logo" />
-          <h1 id="login-title">Tiesverse Portal</h1>
+          <h1 id="login-title" className="login-wordmark"><Wordmark size={36} /></h1>
         </header>
 
         <div className="login-card">

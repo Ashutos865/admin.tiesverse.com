@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionContext';
 import { useMe } from '../../context/MeContext';
+import Wordmark from '../Wordmark';
 
 export const portals = [
   {
@@ -258,7 +259,7 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
       <aside className={`portal-sidebar ${isOpen ? 'is-open' : ''}`}>
         <div className="portal-sidebar-brand">
           <div>
-            <strong>Tiesverse</strong>
+            <Wordmark size={22} />
             <span>Admin Control Center</span>
           </div>
           <button

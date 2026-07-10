@@ -58,22 +58,11 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   text-align: center;
 }
-.login-brand img {
-  width: 54px;
-  height: 54px;
-  margin-bottom: 15px;
-  border-radius: 15px;
-  box-shadow: 0 14px 30px -8px rgba(254, 122, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.7);
-}
-.login-brand h1 {
+.login-wordmark {
   margin: 0;
-  font-size: 29px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  color: #2a1d14;
 }
 
 /* ---- frosted glass panel (translucent — the backdrop shows through) ------ */
@@ -81,7 +70,7 @@
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  padding: 32px 30px 34px;
+  padding: 24px 28px 26px;
   border-radius: 28px;
   border: 1px solid rgba(255, 255, 255, 0.75);
   background: rgba(255, 250, 244, 0.42);
@@ -106,10 +95,10 @@
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.login-card-heading { margin-bottom: 22px; text-align: center; }
+.login-card-heading { margin-bottom: 16px; text-align: center; }
 .login-card-heading h2 {
   margin: 0;
-  font-size: 21px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: #241811;
@@ -142,10 +131,10 @@
 }
 
 /* ---- form: pill inputs --------------------------------------------------- */
-.login-form { display: flex; flex-direction: column; gap: 14px; }
+.login-form { display: flex; flex-direction: column; gap: 12px; }
 .login-field > span {
   display: block;
-  margin: 0 0 7px 4px;
+  margin: 0 0 6px 4px;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -154,7 +143,7 @@
 }
 .login-input {
   display: flex;
-  min-height: 50px;
+  min-height: 46px;
   align-items: center;
   border-radius: 999px;                       /* full pill */
   border: 1px solid rgba(255, 255, 255, 0.7);
@@ -209,11 +198,11 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  height: 56px;
-  margin-top: 6px;
+  height: 50px;
+  margin-top: 4px;
   padding: 0 8px 0 26px;
   border: 0;
-  border-radius: 28px;
+  border-radius: 25px;
   background: linear-gradient(180deg, #ff9a3d 0%, #fe7a00 56%, #ef6f00 100%);
   color: #ffffff;
   cursor: pointer;
@@ -261,7 +250,7 @@
 
 .login-forgot {
   display: block;
-  margin-top: 16px;
+  margin-top: 12px;
   text-align: center;
   font-size: 13px;
   font-weight: 600;

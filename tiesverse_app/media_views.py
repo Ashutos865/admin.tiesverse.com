@@ -15,24 +15,55 @@ from rest_framework import status
 import cloudinary.uploader
 import cloudinary.api
 
-# Raster formats we re-encode to WebP for minimum storage. SVG (vector) and GIF
-# (may be animated) are passed through untouched.
-_CONVERT_TYPES = {'image/png', 'image/jpeg', 'image/jpg', 'image/bmp', 'image/tiff'}
+# SVG (vector) and GIF (possibly animated) are passed through untouched; every
+# other raster image is re-encoded to WebP AND shrunk to stay under the size cap.
+_PASSTHROUGH_TYPES = {'image/svg+xml', 'image/gif'}
 _WEBP_QUALITY = 82
+_MAX_DIM = 1600                        # longest side kept for stored images
+_MIN_DIM = 320                         # never shrink below this while capping
+_TARGET_MAX_BYTES = 820 * 1024         # hard cap: stored image is always < 820 KB
+_UPLOAD_HARD_LIMIT = 25 * 1024 * 1024  # reject before decoding (memory guard)
 
 
-def to_webp(upload):
-    """Convert an uploaded raster image to compact WebP bytes.
+def _encode_webp(img, quality):
+    # method=4 is a good size/speed balance; higher methods cost a lot more CPU for
+    # ~1-2% smaller files — not worth it since we cap the size ourselves below.
+    buf = io.BytesIO()
+    img.save(buf, format='WEBP', quality=quality, method=4)
+    return buf
 
-    Keeps alpha for images that have it, flattens the rest to RGB. Returns a
-    BytesIO ready to hand to cloudinary.uploader.upload(). Raises on failure so
-    the caller can fall back to the original file.
+
+def to_webp(upload, max_dim=_MAX_DIM, target_bytes=_TARGET_MAX_BYTES):
+    """Convert an uploaded raster image to compact WebP bytes UNDER ``target_bytes``.
+
+    Downscales to ``max_dim`` on the longest side, then steps quality — and, if
+    still needed, dimensions — down until the encoded WebP is below the cap, so
+    what we store (and put in the DB URL) is never the full-size original. Keeps
+    alpha for images that have it, flattens the rest to RGB. Returns a BytesIO
+    ready for upload/storage. Raises on failure so the caller can fall back.
     """
     from PIL import Image  # imported lazily so a missing Pillow never hard-crashes import
+    resample = getattr(getattr(Image, 'Resampling', Image), 'LANCZOS', None) or Image.LANCZOS
     img = Image.open(upload)
     img = img.convert('RGBA') if img.mode in ('RGBA', 'LA', 'P') else img.convert('RGB')
-    buf = io.BytesIO()
-    img.save(buf, format='WEBP', quality=_WEBP_QUALITY, method=6)
+
+    # 1) Cap the longest side.
+    if max(img.size) > max_dim:
+        img.thumbnail((max_dim, max_dim), resample)
+
+    # 2) Encode; drop quality until under the cap (down to a still-readable floor).
+    quality = _WEBP_QUALITY
+    buf = _encode_webp(img, quality)
+    while buf.getbuffer().nbytes > target_bytes and quality > 40:
+        quality -= 10
+        buf = _encode_webp(img, quality)
+
+    # 3) Still over? Shrink dimensions 25% at a time until it fits.
+    while buf.getbuffer().nbytes > target_bytes and max(img.size) > _MIN_DIM:
+        w, h = img.size
+        img = img.resize((max(1, int(w * 0.75)), max(1, int(h * 0.75))), resample)
+        buf = _encode_webp(img, quality)
+
     buf.seek(0)
     return buf
 
@@ -50,13 +81,18 @@ class MediaUploadView(APIView):
         if not (upload.content_type or '').startswith('image/'):
             return Response({'error': 'Only image files are allowed.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        if upload.size and upload.size > _UPLOAD_HARD_LIMIT:
+            return Response({'error': 'Image too large (max 25 MB before compression).'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         ct = (upload.content_type or '').lower()
         to_upload = upload
         opts = dict(folder=settings.CLOUDINARY_UPLOAD_FOLDER, resource_type='image')
-        if ct in _CONVERT_TYPES:
+        # Re-encode + shrink every raster image to WebP under the size cap; only
+        # vector SVG and (possibly animated) GIF are stored as-is.
+        if ct not in _PASSTHROUGH_TYPES:
             try:
-                to_upload = to_webp(upload)
+                to_upload = to_webp(upload)   # WebP, shrunk to < 820 KB
                 opts['format'] = 'webp'
             except Exception:
                 # Pillow missing or a corrupt image → keep the original rather than fail.

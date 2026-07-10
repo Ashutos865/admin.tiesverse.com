@@ -2084,8 +2084,10 @@ class PublicSignupView(APIView):
         name = (request.data.get('name') or '').strip()
         email = (request.data.get('email') or '').strip().lower()
         photo_url = (request.data.get('photo_url') or '').strip()
-        # A multipart `photo` file -> convert to WebP -> Cloudinary (min storage)
+        # A multipart `photo` file -> convert to WebP (< 820 KB) -> Cloudinary
         photo_file = request.FILES.get('photo')
+        if photo_file and photo_file.size and photo_file.size > 25 * 1024 * 1024:
+            return Response({'error': 'Photo too large (max 25 MB).'}, status=400)
         if photo_file and not photo_url:
             try:
                 from tiesverse_app.media_views import to_webp
