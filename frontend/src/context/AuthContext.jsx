@@ -75,11 +75,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const loginUser = async (username, password) => {
+  const loginUser = async (username, password, turnstileToken = '') => {
     try {
       const response = await axios.post(`${API_URL}/api/token/`, {
         username,
-        password
+        password,
+        cf_turnstile_token: turnstileToken,
       });
       if (response.status === 200) {
         setAuthTokens(response.data);

@@ -2,6 +2,7 @@ import { useContext, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { ArrowRight, Eye, EyeOff, LoaderCircle, Lock, User } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
+import Turnstile, { TURNSTILE_ENABLED } from '../components/Turnstile';
 import './Login.css';
 
 const Login = () => {
@@ -10,6 +11,8 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [captcha, setCaptcha] = useState('');
+  const [captchaReset, setCaptchaReset] = useState(0);
   const [notice] = useState(() => {
     if (sessionStorage.getItem('sessionExpired') === 'idle') {
       sessionStorage.removeItem('sessionExpired');
@@ -23,13 +26,19 @@ const Login = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError(null);
+    if (TURNSTILE_ENABLED && !captcha) {
+      setError('Please complete the verification below.');
+      return;
+    }
     setSubmitting(true);
-    const result = await loginUser(username, password);
+    const result = await loginUser(username, password, captcha);
     if (result.success) {
       navigate('/');
       return;
     }
     setError(result.error);
+    setCaptcha('');                        // token is single-use — force a fresh one on retry
+    setCaptchaReset((n) => n + 1);
     setSubmitting(false);
   };
 
@@ -91,7 +100,9 @@ const Login = () => {
               </div>
             </label>
 
-            <button className="login-submit" type="submit" disabled={submitting}>
+            <Turnstile onToken={setCaptcha} resetKey={captchaReset} />
+
+            <button className="login-submit" type="submit" disabled={submitting || (TURNSTILE_ENABLED && !captcha)}>
               <span className="login-submit-label">{submitting ? 'Authenticating…' : 'Log in'}</span>
               <span className="login-submit-arrow">
                 {submitting

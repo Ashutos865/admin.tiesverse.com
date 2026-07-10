@@ -185,8 +185,36 @@ class DelegatePermissionsView(views.APIView):
 
 # ── Auth + settings ───────────────────────────────────────────────────────────
 
+def _verify_turnstile(secret, token, request):
+    """Verify a Cloudflare Turnstile token. Fails CLOSED on an explicit reject,
+    but OPEN on a network error to siteverify (so a Cloudflare hiccup can never
+    lock admins out — the password is still the primary factor)."""
+    if not token:
+        return False
+    import json
+    import urllib.request
+    import urllib.parse
+    ip = (request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
+          or request.META.get('REMOTE_ADDR', ''))
+    payload = urllib.parse.urlencode({'secret': secret, 'response': token, 'remoteip': ip}).encode()
+    try:
+        req = urllib.request.Request('https://challenges.cloudflare.com/turnstile/v0/siteverify', data=payload)
+        with urllib.request.urlopen(req, timeout=10) as r:  # noqa: S310 — fixed trusted host
+            return bool(json.loads(r.read()).get('success'))
+    except Exception:  # noqa: BLE001 — siteverify unreachable: don't lock out logins
+        return True
+
+
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
+    def post(self, request, *args, **kwargs):
+        from django.conf import settings as dj_settings
+        secret = getattr(dj_settings, 'TURNSTILE_SECRET_KEY', '')
+        if secret and not _verify_turnstile(secret, request.data.get('cf_turnstile_token') or '', request):
+            return response.Response(
+                {'detail': 'Human verification failed. Please try again.'}, status=403)
+        return super().post(request, *args, **kwargs)
 
 
 # ── Password reset (forgot password) ──────────────────────────────────────────

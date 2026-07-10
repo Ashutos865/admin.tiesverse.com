@@ -34,6 +34,10 @@ SECRET_KEY = (
 
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() != 'false'
 
+# Cloudflare Turnstile — when set, the login endpoint requires a valid token.
+# Empty = disabled (login unchanged), so it's safe to deploy before configuring.
+TURNSTILE_SECRET_KEY = os.environ.get('TURNSTILE_SECRET_KEY', '')
+
 # Never run in production signing JWTs/sessions with the public fallback key.
 if not DEBUG and SECRET_KEY == _INSECURE_SECRET:
     raise RuntimeError('SECRET_KEY (or JWT_SECRET) must be set in production.')
