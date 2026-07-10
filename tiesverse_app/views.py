@@ -95,6 +95,14 @@ from .models import SiteImage
 from .site_image_slots import SLOTS, SLOT_KEYS
 
 
+def _can_manage_site(user):
+    """Org-wide staff (superuser / HR / admin / advisory) may edit site content."""
+    if getattr(user, 'is_superuser', False):
+        return True
+    from career_app.access import get_access_scope
+    return get_access_scope(user)[0] == 'all'
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def site_images_admin(request):
@@ -109,6 +117,8 @@ def site_images_admin(request):
         } for slot in SLOTS]
         return Response({'slots': rows})
 
+    if not _can_manage_site(request.user):   # writes = org-wide staff only
+        return Response({'error': 'Only staff can manage website images.'}, status=403)
     key = str(request.data.get('key') or '').strip()
     if key not in SLOT_KEYS:
         return Response({'error': 'Unknown slot.'}, status=400)
@@ -126,6 +136,8 @@ def site_images_admin(request):
 @permission_classes([IsAuthenticated])
 def site_image_upload(request):
     """Upload a website image → WebP → Cloudflare R2 → return the public proxy URL."""
+    if not _can_manage_site(request.user):   # writes = org-wide staff only
+        return Response({'error': 'Only staff can manage website images.'}, status=403)
     key = str(request.data.get('key') or '').strip()
     if key not in SLOT_KEYS:
         return Response({'error': 'Unknown slot.'}, status=400)

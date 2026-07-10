@@ -53,6 +53,32 @@ def _perm_denied(request, perm):
     return Response({'error': 'You do not have permission to perform this action.'}, status=403)
 
 
+def _onboarding_denied(request, pk):
+    """Row-scope guard for reading ONE OnboardingSubmission (its id == the member
+    id). Org-wide roles see all; a lead sees their team; a member sees only their
+    own. Returns a 404 Response when out of scope (so existence isn't leaked)."""
+    scope, member = access.get_access_scope(request.user)
+    if scope == 'all':
+        return None
+    if member and (member.id == int(pk) or (scope == 'team' and int(pk) in access.team_member_ids(member))):
+        return None
+    return Response({'error': 'Not found'}, status=404)
+
+
+def _member_row_denied(request, member_id):
+    """Row-scope guard for an object owned by a member (its member_id). Org-wide
+    sees all; a lead sees their team; a member sees only their own. Returns a 404
+    Response when out of scope (so existence isn't leaked), else None."""
+    if member_id is None:
+        return None
+    scope, me = access.get_access_scope(request.user)
+    if scope == 'all':
+        return None
+    if me and (me.id == member_id or (scope == 'team' and member_id in access.team_member_ids(me))):
+        return None
+    return Response({'error': 'Not found'}, status=404)
+
+
 def _task_in_lead_scope(task, member):
     """True if `task` is within a team lead's scope: assigned to someone on their
     team, created by them, or targeted at one of their led departments."""
@@ -392,6 +418,9 @@ class InitiateOnboardingView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        denied = _perm_denied(request, 'add_onboardingsubmission')   # HR/Admin only
+        if denied:
+            return denied
         from django.conf import settings as dj_settings
         candidate_id = str(request.data.get('candidate_id', '') or '')
         candidate_name = request.data.get('candidate_name', '')
@@ -443,6 +472,9 @@ class OnboardingDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
+        denied = _onboarding_denied(request, pk)
+        if denied:
+            return denied
         try:
             sub = OnboardingSubmission.objects.get(pk=pk)
         except OnboardingSubmission.DoesNotExist:
@@ -455,6 +487,9 @@ class OnboardingVerifyView(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk):
+        denied = _perm_denied(request, 'add_onboardingsubmission')   # HR/Admin only
+        if denied:
+            return denied
         try:
             sub = OnboardingSubmission.objects.get(pk=pk)
         except OnboardingSubmission.DoesNotExist:
@@ -508,6 +543,9 @@ class ManualAddMemberView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        denied = _perm_denied(request, 'add_onboardingsubmission')   # HR/Admin only
+        if denied:
+            return denied
         name = (request.data.get('candidate_name') or '').strip()
         email = (request.data.get('candidate_email') or '').strip()
         if not name or not email:
@@ -545,6 +583,9 @@ class OnboardingDocView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk, doc_type):
+        denied = _onboarding_denied(request, pk)
+        if denied:
+            return denied
         try:
             sub = OnboardingSubmission.objects.get(pk=pk)
         except OnboardingSubmission.DoesNotExist:
@@ -584,6 +625,9 @@ class CertificateIssueView(APIView):
     }
 
     def patch(self, request, pk):
+        denied = _perm_denied(request, 'add_onboardingsubmission')   # HR/Admin only
+        if denied:
+            return denied
         try:
             sub = OnboardingSubmission.objects.get(pk=pk)
         except OnboardingSubmission.DoesNotExist:
@@ -664,6 +708,9 @@ class SendCertificateEmailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
+        denied = _perm_denied(request, 'add_onboardingsubmission')   # HR/Admin only
+        if denied:
+            return denied
         import base64
         from django.conf import settings as dj_settings
         from config.email_templates import get_template, render_tokens, resolve_from
@@ -1003,6 +1050,9 @@ class AttendanceDetailView(APIView):
             record = AttendanceRecord.objects.get(pk=pk)
         except AttendanceRecord.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
+        denied = _member_row_denied(request, record.member_id)
+        if denied:
+            return denied
         return Response(AttendanceRecordSerializer(record).data)
 
     def patch(self, request, pk):
@@ -1076,6 +1126,9 @@ class LeaveDetailView(APIView):
             leave = LeaveRequest.objects.get(pk=pk)
         except LeaveRequest.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
+        denied = _member_row_denied(request, leave.member_id)
+        if denied:
+            return denied
         return Response(LeaveRequestSerializer(leave).data)
 
     def patch(self, request, pk):
@@ -1193,6 +1246,9 @@ class OffboardingDetailView(APIView):
             off = OffboardingRequest.objects.get(pk=pk)
         except OffboardingRequest.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
+        denied = _member_row_denied(request, off.member_id)
+        if denied:
+            return denied
         data = OffboardingRequestSerializer(off).data
         data['assets_to_return'] = AssetSerializer(_open_assets_for(off.member), many=True).data
         data['tasks_to_handover'] = TaskSerializer(_open_tasks_for(off.member), many=True).data
@@ -1317,6 +1373,9 @@ class AssetListView(APIView):
         return Response(AssetSerializer(qs, many=True).data)
 
     def post(self, request):
+        denied = _perm_denied(request, 'add_asset')   # HR/Admin only
+        if denied:
+            return denied
         ser = AssetSerializer(data=request.data)
         if ser.is_valid():
             ser.save()
@@ -1332,9 +1391,15 @@ class AssetDetailView(APIView):
             asset = Asset.objects.get(pk=pk)
         except Asset.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
+        denied = _member_row_denied(request, asset.assigned_to_id)
+        if denied:
+            return denied
         return Response(AssetSerializer(asset).data)
 
     def patch(self, request, pk):
+        denied = _perm_denied(request, 'change_asset')   # HR/Admin only
+        if denied:
+            return denied
         try:
             asset = Asset.objects.get(pk=pk)
         except Asset.DoesNotExist:
@@ -1346,6 +1411,9 @@ class AssetDetailView(APIView):
         return Response(ser.errors, status=400)
 
     def delete(self, request, pk):
+        denied = _perm_denied(request, 'delete_asset')   # HR/Admin only
+        if denied:
+            return denied
         try:
             asset = Asset.objects.get(pk=pk)
         except Asset.DoesNotExist:
@@ -1359,6 +1427,9 @@ class AssetAssignView(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk):
+        denied = _perm_denied(request, 'change_asset')   # HR/Admin only
+        if denied:
+            return denied
         try:
             asset = Asset.objects.get(pk=pk)
         except Asset.DoesNotExist:
@@ -1479,6 +1550,9 @@ class TaskDetailView(APIView):
         try:
             task = Task.objects.get(pk=pk)
         except Task.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+        scope, me = access.get_access_scope(request.user)
+        if scope != 'all' and not (me and (task.assigned_to_id == me.id or task.assigned_by_id == me.id or _task_in_lead_scope(task, me))):
             return Response({'error': 'Not found'}, status=404)
         return Response(TaskSerializer(task).data)
 
@@ -1658,6 +1732,9 @@ class SendOfferLetterView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        denied = _perm_denied(request, 'add_onboardingsubmission')   # HR/Admin only
+        if denied:
+            return denied
         import base64
         from config.email_templates import get_template, render_tokens, resolve_from
         from config.email_utils import send_email

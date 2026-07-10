@@ -704,10 +704,15 @@ class SESNotificationView(views.APIView):
 
         msg_type = body.get('Type') or request.headers.get('x-amz-sns-message-type', '')
 
-        # Confirm the SNS subscription automatically on first setup.
+        # Confirm the SNS subscription automatically on first setup. Only ever
+        # fetch a genuine AWS SNS host — otherwise this is an SSRF gadget that
+        # would let an unauthenticated caller make the server hit internal URLs.
         if msg_type == 'SubscriptionConfirmation':
-            sub_url = body.get('SubscribeURL')
-            if sub_url:
+            import re
+            from urllib.parse import urlparse
+            sub_url = body.get('SubscribeURL') or ''
+            host = (urlparse(sub_url).hostname or '').lower()
+            if sub_url.startswith('https://') and re.fullmatch(r'sns\.[a-z0-9-]+\.amazonaws\.com', host):
                 try:
                     urlopen(sub_url, timeout=10).read()
                 except Exception:  # noqa: BLE001

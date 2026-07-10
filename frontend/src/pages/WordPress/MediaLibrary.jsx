@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { wpGet, wpDelete, wpUploadMedia, qs } from './wpApi';
+import { wpGet, wpDelete, wpUploadMedia, qs, stripHtml } from './wpApi';
 import { Upload, Trash2, Loader2, X, Copy, Check, Image as ImageIcon } from 'lucide-react';
 
 export default function MediaLibrary() {
@@ -79,7 +79,7 @@ export default function MediaLibrary() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'grid', placeItems: 'center', padding: 16 }} onClick={() => setSelected(null)}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 520, border: '1px solid var(--outline-variant)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid var(--outline-variant)' }}>
-              <h3 style={{ margin: 0, fontSize: 15, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dangerouslySetInnerHTML={{ __html: selected.title?.rendered || 'Media' }} />
+              <h3 style={{ margin: 0, fontSize: 15, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stripHtml(selected.title?.rendered) || 'Media'}</h3>
               <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
             </div>
             <div style={{ padding: 18 }}>

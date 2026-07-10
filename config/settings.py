@@ -25,13 +25,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
+_INSECURE_SECRET = 'django-insecure-ckk$((ll8=s^xa^429nn_*v5(yv_*l974yni802g4rki%j#h&$'
 SECRET_KEY = (
     os.environ.get('SECRET_KEY')
     or os.environ.get('JWT_SECRET')
-    or 'django-insecure-ckk$((ll8=s^xa^429nn_*v5(yv_*l974yni802g4rki%j#h&$'
+    or _INSECURE_SECRET
 )
 
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() != 'false'
+
+# Never run in production signing JWTs/sessions with the public fallback key.
+if not DEBUG and SECRET_KEY == _INSECURE_SECRET:
+    raise RuntimeError('SECRET_KEY (or JWT_SECRET) must be set in production.')
 
 CERTIFICATE_GENERATOR_API_URL = os.environ.get(
     'CERTIFICATE_GENERATOR_API_URL',
@@ -40,6 +45,20 @@ CERTIFICATE_GENERATOR_API_URL = os.environ.get(
 
 _allowed = os.environ.get('ALLOWED_HOSTS', '')
 ALLOWED_HOSTS = [h.strip() for h in _allowed.split(',') if h.strip()] or ['localhost', '127.0.0.1']
+
+# ── Security headers ──────────────────────────────────────────────────────
+# Always safe: block MIME-sniffing and framing.
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+# Behind nginx TLS: tell Django the original request was HTTPS.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# Transport/cookie hardening only in production (would break local http dev).
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
 _cors_extra = [h.strip() for h in os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',') if h.strip()]
 CORS_ALLOWED_ORIGINS = [

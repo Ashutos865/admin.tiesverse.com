@@ -23,6 +23,9 @@ from .models import DataStore, DataApiKey, DataRecord
 HONEYPOT_FIELD = '_hp'
 WRITE_RATE_PER_MIN = 60
 R2_PREFIX = 'data-uploads'
+MAX_FILE_BYTES = 10 * 1024 * 1024      # 10 MB per uploaded file
+MAX_VALUE_LEN = 20000                  # per string value
+MAX_KEYS = 100                         # per record
 COLUMN_TYPES = ['text', 'number', 'boolean', 'email', 'url', 'date', 'datetime', 'file']
 _EMAIL = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 
@@ -100,13 +103,25 @@ def _write(request, store):
     if err:
         return err
 
-    bucket = f'dataapi:rl:{key.id}:{int(timezone.now().timestamp() // 60)}'
-    if (cache.get(bucket) or 0) >= WRITE_RATE_PER_MIN:
-        return _err('Too many writes, slow down.', 429)
-    cache.set(bucket, (cache.get(bucket) or 0) + 1, 70)
+    # Rate limit — per key AND per client IP, atomic increment (best-effort).
+    ip = _client_ip(request) or 'noip'
+    window = int(timezone.now().timestamp() // 60)
+    for bucket in (f'dataapi:rl:k:{key.id}:{window}', f'dataapi:rl:i:{ip}:{window}'):
+        cache.add(bucket, 0, 70)
+        try:
+            if cache.incr(bucket) > WRITE_RATE_PER_MIN:
+                return _err('Too many writes, slow down.', 429)
+        except ValueError:
+            pass  # key expired between add and incr — treat as under limit
 
     if (request.data.get(HONEYPOT_FIELD) or '').strip():
         return Response({'ok': True, 'id': None}, status=201)
+
+    # Single-use: atomically claim so two concurrent requests can't both write.
+    if key.single_use:
+        claimed = DataApiKey.objects.filter(pk=key.id, used_at__isnull=True).update(used_at=timezone.now())
+        if not claimed:
+            return _err('This API key has already been used.', 403)
 
     data, ferr = _collect(request, store)
     if ferr:
@@ -116,11 +131,7 @@ def _write(request, store):
         return _err('Validation failed.', 422, fields=errors)
 
     rec = DataRecord.objects.create(store=store, data=data, ip=_client_ip(request))
-    key.records_count = (key.records_count or 0) + 1
-    key.last_used_at = timezone.now()
-    if key.single_use:
-        key.used_at = timezone.now()
-    key.save(update_fields=['records_count', 'last_used_at', 'used_at'])
+    DataApiKey.objects.filter(pk=key.id).update(records_count=(key.records_count or 0) + 1, last_used_at=timezone.now())
     return Response({'ok': True, 'id': rec.id, 'created_at': rec.created_at.isoformat()}, status=201)
 
 
@@ -164,6 +175,16 @@ def _collect(request, store):
         data = {k: v for k, v in request.data.items() if k not in ('data', HONEYPOT_FIELD)}
     if not isinstance(data, dict):
         return None, _err('data must be an object of column -> value.', 400)
+    if len(data) > MAX_KEYS:
+        return None, _err(f'Too many fields (max {MAX_KEYS}).', 400)
+
+    # Only accept defined columns (drop unknown keys); cap string sizes.
+    defined = {str(c.get('key')) for c in (store.columns or []) if c.get('key')}
+    if defined:
+        data = {k: v for k, v in data.items() if str(k) in defined}
+    for k, v in list(data.items()):
+        if isinstance(v, str) and len(v) > MAX_VALUE_LEN:
+            data[k] = v[:MAX_VALUE_LEN]
 
     files = getattr(request, 'FILES', None)
     if files:
@@ -171,6 +192,10 @@ def _collect(request, store):
         import secrets
         base = request.build_absolute_uri('/')[:-1]
         for col, f in files.items():
+            if defined and str(col) not in defined:
+                continue  # ignore files for undefined columns
+            if getattr(f, 'size', 0) > MAX_FILE_BYTES:
+                return None, _err(f'File too large (max {MAX_FILE_BYTES // (1024 * 1024)} MB).', 413)
             payload, ctype, ext = _maybe_webp(f)
             safe = f'{secrets.token_hex(8)}.{ext}'
             try:
