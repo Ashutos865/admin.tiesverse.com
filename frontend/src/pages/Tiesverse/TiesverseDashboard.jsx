@@ -1,6 +1,5 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AuthContext } from '../../context/AuthContext';
 import {
   ArrowUpRight,
   BarChart3,
@@ -118,11 +117,6 @@ const TiesverseDashboard = () => {
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  const { user, profile } = useContext(AuthContext);
-  const firstName = (profile?.display_name || user?.username || 'there').split(/\s+/)[0];
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -176,7 +170,7 @@ const TiesverseDashboard = () => {
       <section className="tv-dashboard-heading">
         <div>
           <span className="tv-eyebrow">Tiesverse overview</span>
-          <h1>{greeting}, {firstName}</h1>
+          <h1>Dashboard</h1>
           <p>Welcome back. Here is what is happening across Tiesverse today.</p>
         </div>
         <div className="tv-heading-actions">

@@ -5,15 +5,6 @@ import { AuthContext } from '../../context/AuthContext';
 import { ThemeContext } from '../../context/ThemeContext';
 import NotificationsBell from './NotificationsBell.jsx';
 
-const portalLabels = {
-  tiesverse:    'Tiesverse Portal',
-  career:       'Career Portal',
-  webinar:      'Webinar Portal',
-  certificates: 'Certificate Generator',
-  technical:    'Technical / Infrastructure',
-  accounts:     'Users & Permissions',
-};
-
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '');
 
 const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
@@ -22,6 +13,9 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
   const navigate = useNavigate();
 
   const displayName = profile?.display_name || user?.username || 'Admin';
+  const firstName = displayName.split(/\s+/)[0];
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const initials = displayName
     .split(/\s+/)
     .filter(Boolean)
@@ -40,7 +34,7 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
         >
           <Menu size={22} />
         </button>
-        <span className="portal-topbar-title">{portalLabels[activePortal] || 'Admin'}</span>
+        <span className="portal-topbar-title">{greeting}, {firstName}</span>
       </div>
 
       <div className="portal-topbar-actions">
