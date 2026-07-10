@@ -102,6 +102,16 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    # Scoped rate limits — applied only to the sensitive public/auth endpoints
+    # (see throttle_scope on those views), so normal admin usage and the public
+    # website feeds are untouched. Keyed by client IP.
+    'DEFAULT_THROTTLE_RATES': {
+        'login': '10/min',
+        'signup': '8/min',
+        'otp': '12/min',
+        'password_reset': '5/min',
+        'public_form': '20/min',
+    },
 }
 
 from datetime import timedelta

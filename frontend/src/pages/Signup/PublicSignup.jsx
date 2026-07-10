@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { publicSignup, verifySignupOtp } from '../../apiClient';
 import ImageCropper from '../../components/ImageCropper.jsx';
+import Turnstile, { TURNSTILE_ENABLED } from '../../components/Turnstile';
 
 const OTP_LEN = 6;
 const RESEND_SECS = 45;
@@ -90,6 +91,8 @@ export default function PublicSignup() {
   const [err, setErr] = useState('');
   const [left, setLeft] = useState(0);
   const [popup, setPopup] = useState(false);   // "check your mail" modal after OTP success
+  const [captcha, setCaptcha] = useState('');
+  const [captchaReset, setCaptchaReset] = useState(0);
   const fileRef = useRef();
 
   useEffect(() => {
@@ -115,27 +118,33 @@ export default function PublicSignup() {
     fd.append('name', name.trim());
     fd.append('email', email.trim());
     if (photo) fd.append('photo', photo);
+    fd.append('cf_turnstile_token', captcha);
     return publicSignup(hash, fd).catch(() => ({ error: 'Network error.' }));
-  }, [hash, name, email, photo]);
+  }, [hash, name, email, photo, captcha]);
+
+  const freshCaptcha = () => { setCaptcha(''); setCaptchaReset(n => n + 1); };
 
   const submit = async () => {
     if (!photo) return setErr('Add a profile photo to continue.');
     if (!name.trim()) return setErr('Your full name is required.');
     if (!email.trim()) return setErr('Your email is required.');
+    if (TURNSTILE_ENABLED && !captcha) return setErr('Please complete the verification below.');
     setBusy(true); setErr('');
     const res = await sendCode();
     setBusy(false);
-    if (res?.status === 'otp_sent') { setStep('otp'); setOtp(''); setLeft(RESEND_SECS); }
-    else setErr(res?.error || 'Could not submit. Please try again.');
+    if (res?.status === 'otp_sent') { setStep('otp'); setOtp(''); setLeft(RESEND_SECS); freshCaptcha(); }
+    else { setErr(res?.error || 'Could not submit. Please try again.'); freshCaptcha(); }
   };
 
   const resend = async () => {
     if (left > 0) return;
+    if (TURNSTILE_ENABLED && !captcha) return setErr('Please complete the verification below.');
     setBusy(true); setErr('');
     const res = await sendCode();
     setBusy(false);
     if (res?.status === 'otp_sent') { setOtp(''); setLeft(RESEND_SECS); }
     else setErr(res?.error || 'Could not resend.');
+    freshCaptcha();
   };
 
   const verify = async () => {
@@ -184,6 +193,7 @@ export default function PublicSignup() {
                 <input className="ps-fld" style={S.input} type="email" value={email} onChange={e => { setEmail(e.target.value); setErr(''); }} placeholder="you@example.com" />
               </label>
               {err && <p style={S.err}>{err}</p>}
+              <Turnstile onToken={setCaptcha} resetKey={captchaReset} />
               <button style={S.cta} onClick={submit} disabled={busy}>{busy ? 'Sending code…' : 'Continue'}</button>
             </>
           )}
@@ -203,6 +213,7 @@ export default function PublicSignup() {
                 </span>
               </div>
               {err && <p style={S.err}>{err}</p>}
+              <div style={{ display: TURNSTILE_ENABLED ? 'block' : 'none' }}><Turnstile onToken={setCaptcha} resetKey={captchaReset} /></div>
               <button style={S.cta} onClick={verify} disabled={busy}>{busy ? 'Verifying…' : 'Continue'}</button>
               <button style={S.back} onClick={() => { setStep('form'); setErr(''); }}>← Change details</button>
             </>

@@ -5,9 +5,10 @@ from django.contrib.auth.models import User, Group
 from django.http import HttpResponse, Http404
 from django.utils import timezone
 from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
 from rest_framework.permissions import DjangoModelPermissions, IsAuthenticated, AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle, AnonRateThrottle
 from rest_framework.views import APIView
 
 from .models import (
@@ -2044,10 +2045,15 @@ def _send_otp_email(email, name, otp):
 class PublicSignupView(APIView):
     """Public: with the shared hashed link, submit name/email/photo -> emails an OTP."""
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'signup'
 
     def post(self, request, link_hash):
         if not _signup_hash_ok(link_hash):
             return Response({'error': 'Invalid or expired signup link.'}, status=403)
+        from config.turnstile import verify_turnstile
+        if not verify_turnstile(request, request.data.get('cf_turnstile_token') or ''):
+            return Response({'error': 'Human verification failed. Please try again.'}, status=403)
         name = (request.data.get('name') or '').strip()
         email = (request.data.get('email') or '').strip().lower()
         photo_url = (request.data.get('photo_url') or '').strip()
@@ -2086,6 +2092,8 @@ class PublicSignupView(APIView):
 class VerifySignupOtpView(APIView):
     """Public: verify the emailed OTP -> signup moves to 'awaiting HR'."""
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'otp'
 
     def post(self, request, link_hash):
         if not _signup_hash_ok(link_hash):
@@ -2574,8 +2582,13 @@ def public_form_view(request, token):
     return Response(PublicFormSerializer(form).data)
 
 
+class _PublicFormThrottle(AnonRateThrottle):
+    scope = 'public_form'
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([_PublicFormThrottle])
 def public_form_submit(request, token):
     """Accept a submission for a published PUBLIC form (no login required)."""
     form = Form.objects.filter(token=token, is_published=True,

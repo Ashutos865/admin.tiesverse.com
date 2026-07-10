@@ -3,6 +3,7 @@ from django.db.models import Q
 from rest_framework import viewsets, permissions, views, response, status
 from rest_framework.decorators import action
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.throttling import ScopedRateThrottle
 from .serializers import (
     UserSerializer, PermissionSerializer, CustomTokenObtainPairSerializer,
     SettingSerializer, EmailTemplateSerializer, EmailCampaignSerializer,
@@ -185,33 +186,14 @@ class DelegatePermissionsView(views.APIView):
 
 # ── Auth + settings ───────────────────────────────────────────────────────────
 
-def _verify_turnstile(secret, token, request):
-    """Verify a Cloudflare Turnstile token. Fails CLOSED on an explicit reject,
-    but OPEN on a network error to siteverify (so a Cloudflare hiccup can never
-    lock admins out — the password is still the primary factor)."""
-    if not token:
-        return False
-    import json
-    import urllib.request
-    import urllib.parse
-    ip = (request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
-          or request.META.get('REMOTE_ADDR', ''))
-    payload = urllib.parse.urlencode({'secret': secret, 'response': token, 'remoteip': ip}).encode()
-    try:
-        req = urllib.request.Request('https://challenges.cloudflare.com/turnstile/v0/siteverify', data=payload)
-        with urllib.request.urlopen(req, timeout=10) as r:  # noqa: S310 — fixed trusted host
-            return bool(json.loads(r.read()).get('success'))
-    except Exception:  # noqa: BLE001 — siteverify unreachable: don't lock out logins
-        return True
-
-
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'login'
 
     def post(self, request, *args, **kwargs):
-        from django.conf import settings as dj_settings
-        secret = getattr(dj_settings, 'TURNSTILE_SECRET_KEY', '')
-        if secret and not _verify_turnstile(secret, request.data.get('cf_turnstile_token') or '', request):
+        from config.turnstile import verify_turnstile
+        if not verify_turnstile(request, request.data.get('cf_turnstile_token') or ''):
             return response.Response(
                 {'detail': 'Human verification failed. Please try again.'}, status=403)
         return super().post(request, *args, **kwargs)
@@ -225,6 +207,8 @@ class PasswordResetRequestView(views.APIView):
     response so the endpoint can't be used to probe which accounts exist."""
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'password_reset'
 
     GENERIC = {'detail': 'If an account matches that address, a password reset link has been sent.'}
 
