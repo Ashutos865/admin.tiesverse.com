@@ -50,7 +50,6 @@ const Login = () => {
 
         <div className="login-card">
           <div className="login-card-heading">
-            <h2>Admin Control Center</h2>
             <p>Please authenticate to access management</p>
           </div>
 

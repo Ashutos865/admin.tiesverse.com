@@ -259,8 +259,7 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
       <aside className={`portal-sidebar ${isOpen ? 'is-open' : ''}`}>
         <div className="portal-sidebar-brand">
           <div>
-            <Wordmark size={22} />
-            <span>Admin Control Center</span>
+            <Wordmark size={24} />
           </div>
           <button
             type="button"
