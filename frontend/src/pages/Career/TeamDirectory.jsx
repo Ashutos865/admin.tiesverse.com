@@ -10,15 +10,27 @@ import {
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const MEMBER_TYPES = ['Intern', 'Full-Time', 'Part-Time', 'Volunteer', 'Contractor', 'Advisory'];
+// Shared role set — the "Role / Access" (portal_role) and "Member Type" dropdowns
+// use the SAME values. ROLE_OPTIONS pairs the portal_role machine value with its label.
+const ROLE_OPTIONS = [
+    ['member',      'Member'],
+    ['intern',      'Intern'],
+    ['team_lead',   'Team Lead'],
+    ['advisory',    'Advisory'],
+    ['hr',          'HR'],
+    ['admin',       'Admin'],
+    ['contractual', 'Contractual'],
+];
+const MEMBER_TYPES = ROLE_OPTIONS.map(([, label]) => label);
 
 const TYPE_STYLE = {
-    'Intern':     { bg: 'color-mix(in srgb, var(--primary) 10%, transparent)', color: 'var(--primary)' },
-    'Full-Time':  { bg: 'color-mix(in srgb, #067a50 10%, transparent)',        color: '#067a50' },
-    'Part-Time':  { bg: 'color-mix(in srgb, #8a5700 10%, transparent)',         color: '#8a5700' },
-    'Volunteer':  { bg: 'color-mix(in srgb, #0ea5e9 10%, transparent)',         color: '#0ea5e9' },
-    'Contractor': { bg: 'color-mix(in srgb, #9333ea 10%, transparent)',         color: '#9333ea' },
-    'Advisory':   { bg: 'color-mix(in srgb, #ec4899 10%, transparent)',         color: '#ec4899' },
+    'Member':      { bg: 'color-mix(in srgb, var(--primary) 10%, transparent)', color: 'var(--primary)' },
+    'Intern':      { bg: 'color-mix(in srgb, #0ea5e9 10%, transparent)',         color: '#0ea5e9' },
+    'Team Lead':   { bg: 'color-mix(in srgb, #067a50 10%, transparent)',         color: '#067a50' },
+    'Advisory':    { bg: 'color-mix(in srgb, #ec4899 10%, transparent)',         color: '#ec4899' },
+    'HR':          { bg: 'color-mix(in srgb, #8a5700 10%, transparent)',         color: '#8a5700' },
+    'Admin':       { bg: 'color-mix(in srgb, #e11d48 10%, transparent)',         color: '#e11d48' },
+    'Contractual': { bg: 'color-mix(in srgb, #9333ea 10%, transparent)',         color: '#9333ea' },
 };
 
 const CERTS = [
@@ -453,6 +465,7 @@ function EditModal({ member, departments, onClose, onSaved }) {
     const [form, setForm] = useState({
         candidate_name: member.candidate_name || '',
         role_offered:   member.role_offered   || '',
+        portal_role:    member.portal_role    || 'member',
         member_type:    meta.type             || '',
         notes:          meta.notes            || '',
         joining_date:   meta.joining_date     || (member.verified_at ? member.verified_at.slice(0, 10) : ''),
@@ -468,6 +481,7 @@ function EditModal({ member, departments, onClose, onSaved }) {
         const res = await verifyOnboarding(member.id, {
             candidate_name:       form.candidate_name,
             role_offered:         form.role_offered,
+            portal_role:          form.portal_role,
             assigned_departments: form.assigned_departments,
             hr_notes:             serializeMeta(newMeta),
         });
@@ -487,6 +501,12 @@ function EditModal({ member, departments, onClose, onSaved }) {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div><Lbl>Full Name *</Lbl><input style={F} value={form.candidate_name} onChange={e => setForm(f => ({ ...f, candidate_name: e.target.value }))} /></div>
                         <div><Lbl>Role / Title</Lbl><input style={F} value={form.role_offered} onChange={e => setForm(f => ({ ...f, role_offered: e.target.value }))} placeholder="e.g. Content Writer" /></div>
+                        <div>
+                            <Lbl>Role / Access</Lbl>
+                            <select style={{ ...F, cursor: 'pointer' }} value={form.portal_role} onChange={e => setForm(f => ({ ...f, portal_role: e.target.value }))}>
+                                {ROLE_OPTIONS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+                            </select>
+                        </div>
                         <div>
                             <Lbl>Member Type</Lbl>
                             <select style={{ ...F, cursor: 'pointer' }} value={form.member_type} onChange={e => setForm(f => ({ ...f, member_type: e.target.value }))}>

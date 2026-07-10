@@ -68,12 +68,13 @@ EMPLOYMENT_TYPE_CHOICES = [
 ]
 
 PORTAL_ROLE_CHOICES = [
-    ('intern', 'Intern'),
     ('member', 'Member'),
+    ('intern', 'Intern'),
     ('team_lead', 'Team Lead'),
     ('advisory', 'Advisory'),
     ('hr', 'HR'),
     ('admin', 'Admin'),
+    ('contractual', 'Contractual'),
 ]
 
 

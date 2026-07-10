@@ -106,7 +106,7 @@ def _generate_password(length=12):
 
 ROLE_LABELS = {
     'intern': 'Intern', 'member': 'Member', 'team_lead': 'Team Lead',
-    'advisory': 'Advisory', 'hr': 'HR', 'admin': 'Admin',
+    'advisory': 'Advisory', 'hr': 'HR', 'admin': 'Admin', 'contractual': 'Contractual',
 }
 
 
@@ -214,8 +214,28 @@ def _reset_password_and_send(account):
 
 GROUP_NAME_MAP = {
     'intern': 'Interns', 'member': 'Members', 'team_lead': 'Team Leads',
-    'advisory': 'Advisory', 'hr': 'HR', 'admin': 'Admins',
+    'advisory': 'Advisory', 'hr': 'HR', 'admin': 'Admins', 'contractual': 'Contractual',
 }
+
+
+def _sync_member_group(sub):
+    """Make the member's Django Group match their current portal_role, so changing
+    a role in the Team Directory editor is a real access change (not just a label).
+    Removes every other role group first, so demotions actually drop permissions."""
+    user = getattr(getattr(sub, 'account', None), 'user', None)
+    if not user:
+        return
+    target = GROUP_NAME_MAP.get(sub.portal_role or 'member', 'Members')
+    role_groups = set(GROUP_NAME_MAP.values())
+    for g in user.groups.filter(name__in=role_groups).exclude(name=target):
+        user.groups.remove(g)
+    group, _ = Group.objects.get_or_create(name=target)
+    user.groups.add(group)
+    try:
+        from .role_permissions import sync_group_permissions
+        sync_group_permissions()
+    except Exception:  # noqa: BLE001 — never block a role change on this
+        pass
 
 
 def _ensure_hr_departments(names):
@@ -519,7 +539,9 @@ class OnboardingVerifyView(APIView):
             sub.employment_type = request.data['employment_type']
         if 'joining_date' in request.data:
             sub.joining_date = request.data['joining_date'] or None
+        role_changed = False
         if 'portal_role' in request.data:
+            role_changed = (request.data['portal_role'] or '') != (sub.portal_role or '')
             sub.portal_role = request.data['portal_role']
         if 'member_notes' in request.data:
             sub.member_notes = request.data['member_notes']
@@ -531,6 +553,11 @@ class OnboardingVerifyView(APIView):
 
         # Create the portal login on first verification.
         temp_password = _provision_member_account(sub, request.user) if creating_account else None
+
+        # Editing the role of an already-provisioned member must move their Django
+        # Group so the access level truly changes (the "role won't update" fix).
+        if role_changed and not creating_account:
+            _sync_member_group(sub)
 
         source = OnboardingSubmission.objects.get(pk=sub.pk) if temp_password else sub
         resp_data = OnboardingSubmissionSerializer(source).data

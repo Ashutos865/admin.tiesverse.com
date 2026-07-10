@@ -3,8 +3,8 @@ import { getSignups, approveSignup, rejectSignup, getHRDepartments, resendCreden
 import { usePermissions } from '../../context/PermissionContext';
 
 const ROLES = [
-  ['intern', 'Intern'], ['member', 'Member'], ['team_lead', 'Team Lead'],
-  ['advisory', 'Advisory'], ['hr', 'HR'], ['admin', 'Admin'],
+  ['member', 'Member'], ['intern', 'Intern'], ['team_lead', 'Team Lead'],
+  ['advisory', 'Advisory'], ['hr', 'HR'], ['admin', 'Admin'], ['contractual', 'Contractual'],
 ];
 const STATUS_LABEL = { otp_pending: 'Awaiting email OTP', verified: 'Ready to approve' };
 

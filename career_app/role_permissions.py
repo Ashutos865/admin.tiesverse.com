@@ -52,8 +52,9 @@ ADVISORY = HR_FULL + [
 ]
 
 GROUP_PERMISSIONS = {
-    'Interns':    ['view_project'],   # see projects they participate in (row-scoped)
-    'Members':    ['view_project'],   # see projects they participate in (row-scoped)
+    'Interns':     ['view_project'],   # see projects they participate in (row-scoped)
+    'Members':     ['view_project'],   # see projects they participate in (row-scoped)
+    'Contractual': ['view_project'],   # contractor: self-service + see own projects
     'Team Leads': TEAM_LEAD,   # view their team + manage team attendance/tasks + own projects
     'Advisory':   ADVISORY,    # FULL access, org-wide (scope 'all') + org-wide projects;
                                # advisory-only oversight (task review, weekly updates,
