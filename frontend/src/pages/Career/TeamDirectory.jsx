@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getOnboardingList, getHRDepartments, verifyOnboarding, addTeamMember, issueCertificate, sendCertificateEmail, getEmailTemplates, fetchDocBlobUrl, viewDoc } from '../../apiClient';
 import { previewTemplate } from '../../lib/emailPreview';
+import { usePermissions } from '../../context/PermissionContext';
 import {
     Users, Plus, Search, Edit2, X, CheckCircle, Building2,
     Mail, Calendar, Briefcase, Phone, FileText, RefreshCw,
@@ -22,6 +23,10 @@ const ROLE_OPTIONS = [
     ['contractual', 'Contractual'],
 ];
 const MEMBER_TYPES = ROLE_OPTIONS.map(([, label]) => label);
+
+// Full-access role — grants Django is_superuser. Only offered to existing Super
+// Users (the backend rejects the change otherwise), so it lives outside ROLE_OPTIONS.
+const SUPERUSER_OPTION = ['superuser', 'Super User'];
 
 const TYPE_STYLE = {
     'Member':      { bg: 'color-mix(in srgb, var(--primary) 10%, transparent)', color: 'var(--primary)' },
@@ -460,8 +465,13 @@ function ProfileSection({ title, icon, children }) {
 
 // ── Edit Modal ─────────────────────────────────────────────────────────────────
 
-function EditModal({ member, departments, onClose, onSaved }) {
+function EditModal({ member, departments, onClose, onSaved, allowSuperuser }) {
     const meta = parseMeta(member.hr_notes);
+    // Offer Super User only to superusers; also keep it visible if this member
+    // already holds it, so the dropdown reflects their real role.
+    const roleOptions = (allowSuperuser || member.portal_role === 'superuser')
+        ? [...ROLE_OPTIONS, SUPERUSER_OPTION]
+        : ROLE_OPTIONS;
     const [form, setForm] = useState({
         candidate_name: member.candidate_name || '',
         role_offered:   member.role_offered   || '',
@@ -504,7 +514,7 @@ function EditModal({ member, departments, onClose, onSaved }) {
                         <div>
                             <Lbl>Role / Access</Lbl>
                             <select style={{ ...F, cursor: 'pointer' }} value={form.portal_role} onChange={e => setForm(f => ({ ...f, portal_role: e.target.value }))}>
-                                {ROLE_OPTIONS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+                                {roleOptions.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
                             </select>
                         </div>
                         <div>
@@ -756,6 +766,7 @@ function AddModal({ departments, onClose, onAdded }) {
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function TeamDirectory() {
+    const { isSuperuser } = usePermissions();
     const [members, setMembers] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -953,6 +964,7 @@ export default function TeamDirectory() {
                 <EditModal
                     member={editTarget}
                     departments={departments}
+                    allowSuperuser={isSuperuser}
                     onClose={() => setEditTarget(null)}
                     onSaved={(updated) => { handleUpdated(updated); setEditTarget(null); }}
                 />

@@ -75,6 +75,7 @@ PORTAL_ROLE_CHOICES = [
     ('hr', 'HR'),
     ('admin', 'Admin'),
     ('contractual', 'Contractual'),
+    ('superuser', 'Super User'),   # full access — sets Django is_superuser
 ]
 
 

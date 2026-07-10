@@ -23,7 +23,7 @@ const fieldStyle = {
 
 const EMPTY = { name: '', description: '', lead_name: '', co_lead_name: '', is_active: true };
 
-const ROLE_LABELS = { member: 'Member', intern: 'Intern', team_lead: 'Team Lead', advisory: 'Advisory', hr: 'HR', admin: 'Admin', contractual: 'Contractual' };
+const ROLE_LABELS = { member: 'Member', intern: 'Intern', team_lead: 'Team Lead', advisory: 'Advisory', hr: 'HR', admin: 'Admin', contractual: 'Contractual', superuser: 'Super User' };
 const memberRoleLabel = (m) => ROLE_LABELS[m.portal_role] || m.role_offered || 'No role';
 
 // Dropdown to pick a team member by name (or clear)

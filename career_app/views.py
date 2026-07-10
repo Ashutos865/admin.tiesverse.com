@@ -107,6 +107,7 @@ def _generate_password(length=12):
 ROLE_LABELS = {
     'intern': 'Intern', 'member': 'Member', 'team_lead': 'Team Lead',
     'advisory': 'Advisory', 'hr': 'HR', 'admin': 'Admin', 'contractual': 'Contractual',
+    'superuser': 'Super User',
 }
 
 
@@ -215,13 +216,16 @@ def _reset_password_and_send(account):
 GROUP_NAME_MAP = {
     'intern': 'Interns', 'member': 'Members', 'team_lead': 'Team Leads',
     'advisory': 'Advisory', 'hr': 'HR', 'admin': 'Admins', 'contractual': 'Contractual',
+    'superuser': 'Admins',   # also an Admin; the real grant is is_superuser below
 }
 
 
 def _sync_member_group(sub):
-    """Make the member's Django Group match their current portal_role, so changing
-    a role in the Team Directory editor is a real access change (not just a label).
-    Removes every other role group first, so demotions actually drop permissions."""
+    """Make the member's Django Group + superuser flag match their current
+    portal_role, so changing a role in the Team Directory editor is a real access
+    change (not just a label). Removes every other role group first, so demotions
+    actually drop permissions; the Super User role toggles Django is_superuser
+    (full access). The caller must gate who is allowed to set/clear 'superuser'."""
     user = getattr(getattr(sub, 'account', None), 'user', None)
     if not user:
         return
@@ -231,6 +235,11 @@ def _sync_member_group(sub):
         user.groups.remove(g)
     group, _ = Group.objects.get_or_create(name=target)
     user.groups.add(group)
+    # Super User ⇒ Django superuser (sees/does everything); any other role clears it.
+    want_super = (sub.portal_role == 'superuser')
+    if user.is_superuser != want_super:
+        user.is_superuser = want_super
+        user.save(update_fields=['is_superuser'])
     try:
         from .role_permissions import sync_group_permissions
         sync_group_permissions()
@@ -541,8 +550,17 @@ class OnboardingVerifyView(APIView):
             sub.joining_date = request.data['joining_date'] or None
         role_changed = False
         if 'portal_role' in request.data:
-            role_changed = (request.data['portal_role'] or '') != (sub.portal_role or '')
-            sub.portal_role = request.data['portal_role']
+            new_role = request.data['portal_role'] or ''
+            old_role = sub.portal_role or ''
+            role_changed = new_role != old_role
+            # Only an existing Super User may grant or revoke Super User access,
+            # so HR/Admin can't self-escalate to full Django superuser.
+            if role_changed and 'superuser' in (new_role, old_role) and not request.user.is_superuser:
+                return Response(
+                    {'error': 'Only a Super User can grant or remove Super User access.'},
+                    status=403,
+                )
+            sub.portal_role = new_role
         if 'member_notes' in request.data:
             sub.member_notes = request.data['member_notes']
 
@@ -554,9 +572,10 @@ class OnboardingVerifyView(APIView):
         # Create the portal login on first verification.
         temp_password = _provision_member_account(sub, request.user) if creating_account else None
 
-        # Editing the role of an already-provisioned member must move their Django
-        # Group so the access level truly changes (the "role won't update" fix).
-        if role_changed and not creating_account:
+        # Editing the role must move the member's Django Group + superuser flag so
+        # the access level truly changes (the "role won't update" fix). Runs after
+        # provisioning too, so a member verified straight into a role is synced.
+        if role_changed:
             _sync_member_group(sub)
 
         source = OnboardingSubmission.objects.get(pk=sub.pk) if temp_password else sub
