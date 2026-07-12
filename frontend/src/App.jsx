@@ -44,6 +44,15 @@ import AssetsPage from './pages/Career/AssetsPage.jsx';
 import TasksPage from './pages/Career/TasksPage.jsx';
 import ProjectsPage from './pages/Career/ProjectsPage.jsx';
 import ProjectDetail from './pages/Career/ProjectDetail.jsx';
+
+// Learn Portal
+import LearnDashboard from './pages/Learn/LearnDashboard.jsx';
+import LearnProgram from './pages/Learn/LearnProgram.jsx';
+import CourseCatalog from './pages/Learn/CourseCatalog.jsx';
+import CoursePlayer from './pages/Learn/CoursePlayer.jsx';
+import LearnCertificates from './pages/Learn/LearnCertificates.jsx';
+import LearnLeaderboard from './pages/Learn/LearnLeaderboard.jsx';
+import ManageLearning from './pages/Learn/ManageLearning.jsx';
 import MyWork from './pages/MyWork/MyWork.jsx';
 import AdvisoryPanel from './pages/Advisory/AdvisoryPanel.jsx';
 import TechnicalDashboard from './pages/Technical/TechnicalDashboard.jsx';
@@ -107,6 +116,15 @@ function App() {
               <Route path="/me/tasks" element={<MyWork tab="tasks" />} />
               <Route path="/me/assets" element={<MyWork tab="assets" />} />
               <Route path="/me/profile" element={<MyWork tab="profile" />} />
+
+              {/* Learn Portal Routes */}
+              <Route path="/learn/dashboard" element={<LearnDashboard />} />
+              <Route path="/learn/program" element={<LearnProgram />} />
+              <Route path="/learn/courses" element={<CourseCatalog />} />
+              <Route path="/learn/courses/:id" element={<CoursePlayer />} />
+              <Route path="/learn/certificates" element={<LearnCertificates />} />
+              <Route path="/learn/leaderboard" element={<LearnLeaderboard />} />
+              <Route path="/learn/manage" element={<ManageLearning />} />
 
               {/* Accounts Routes */}
               <Route path="/accounts/users" element={<UserManagement />} />

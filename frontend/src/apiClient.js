@@ -621,3 +621,22 @@ export const exportProjectCsv = async (projectId, title = 'project') => {
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEARN PORTAL (learn_app) — uses the same adminFetch helper as every other portal
+// ─────────────────────────────────────────────────────────────────────────────
+export const getDomains         = ()         => adminFetch('/api/learn/domains').catch(() => []);
+export const getCourses         = (q = '')   => adminFetch(`/api/learn/courses${q ? `?${q}` : ''}`).catch(() => []);
+export const getCourse          = (id)       => adminFetch(`/api/learn/courses/${id}`);
+export const createCourse       = (data)     => adminFetch('/api/learn/courses', 'POST', data);
+export const updateCourse       = (id, data) => adminFetch(`/api/learn/courses/${id}`, 'PATCH', data);
+export const deleteCourse       = (id)       => adminFetch(`/api/learn/courses/${id}`, 'DELETE');
+export const getLessons         = (cid)      => adminFetch(`/api/learn/courses/${cid}/lessons`).catch(() => []);
+export const createLesson       = (cid, d)   => adminFetch(`/api/learn/courses/${cid}/lessons`, 'POST', d);
+export const enroll             = (cid)      => adminFetch(`/api/learn/courses/${cid}/enroll`, 'POST');
+export const markLessonProgress = (lid, seconds, done) =>
+  adminFetch(`/api/learn/lessons/${lid}/progress`, 'POST', { seconds, completed: !!done });
+export const getMyLearning      = ()         => adminFetch('/api/learn/me').catch(() => ({ courses: [] }));
+export const getQuiz            = (lid)      => adminFetch(`/api/learn/lessons/${lid}/quiz`).catch(() => ({ questions: [] }));
+export const submitQuiz         = (lid, answers) => adminFetch(`/api/learn/lessons/${lid}/quiz/submit`, 'POST', { answers });
+export const getLeaderboard     = ()         => adminFetch('/api/learn/leaderboard').catch(() => []);

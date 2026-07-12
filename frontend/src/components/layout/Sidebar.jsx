@@ -34,6 +34,8 @@ import {
   Video,
   X,
   Image as ImageIcon,
+  BookOpen,
+  BarChart3,
 } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionContext';
 import { useMe } from '../../context/MeContext';
@@ -54,6 +56,21 @@ export const portals = [
       { name: 'My Assets',     path: '/me/assets',     icon: PackageOpen,       perms: [] },
       { name: 'My Profile',    path: '/me/profile',    icon: UserCheck,         perms: [] },
       { name: 'Policies',      path: '/me/policies',   icon: FileText,          perms: [] },
+    ],
+  },
+  {
+    key: 'learn',
+    label: 'Learn Portal',
+    icon: BookOpen,
+    firstPath: '/learn/dashboard',
+    everyone: true,                    // Learn Portal is open to every authenticated member
+    links: [
+      { name: 'Dashboard',       path: '/learn/dashboard',    icon: LayoutDashboard, perms: [] },
+      { name: 'Program',         path: '/learn/program',      icon: CalendarDays,    perms: [] },
+      { name: 'Courses',         path: '/learn/courses',      icon: LayoutGrid,      perms: [] },
+      { name: 'Certificates',    path: '/learn/certificates', icon: Award,           perms: [] },
+      { name: 'Leaderboard',     path: '/learn/leaderboard',  icon: BarChart3,       perms: [] },
+      { name: 'Manage Learning', path: '/learn/manage',       icon: Video,           perms: ['add_course', 'change_course'] },
     ],
   },
   {
@@ -224,6 +241,7 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
   const navigate = useNavigate();
 
   const isPortalVisible = (portal) => {
+    if (portal.everyone) return true;   // open to every authenticated member (e.g. Learn Portal)
     if (portal.developerOnly) return isDeveloper;
     if (portal.memberOnly) return isMember;
     if (portal.advisoryOnly) return isSuperuser || isAdvisory;

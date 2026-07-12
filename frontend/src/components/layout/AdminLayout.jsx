@@ -70,6 +70,8 @@ const AdminLayout = () => {
 
   const activePortal = location.pathname.startsWith('/me/')
     ? 'mywork'
+    : location.pathname.startsWith('/learn')
+    ? 'learn'
     : location.pathname.startsWith('/hr')
     ? 'hr'
     : location.pathname.startsWith('/career')
