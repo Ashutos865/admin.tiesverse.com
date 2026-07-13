@@ -97,6 +97,7 @@ INSTALLED_APPS = [
     'webinar_app',
     'accounts_app',
     'learn_app',
+    'docs_app',
 ]
 
 REST_FRAMEWORK = {

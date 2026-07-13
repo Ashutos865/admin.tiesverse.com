@@ -68,6 +68,7 @@ urlpatterns = [
     path('api/career/', include('career_app.urls')),
     path('api/webinar/', include('webinar_app.urls')),
     path('api/learn/', include('learn_app.urls')),
+    path('api/docs/', include('docs_app.urls')),
     path('api/media/upload/', MediaUploadView.as_view(), name='media_upload'),
     path('api/media/upload-file/', DocumentUploadView.as_view(), name='media_upload_file'),
     path('api/media/images/', CloudinaryImageListView.as_view(), name='media_images'),

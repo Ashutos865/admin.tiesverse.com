@@ -640,3 +640,15 @@ export const getMyLearning      = ()         => adminFetch('/api/learn/me').catc
 export const getQuiz            = (lid)      => adminFetch(`/api/learn/lessons/${lid}/quiz`).catch(() => ({ questions: [] }));
 export const submitQuiz         = (lid, answers) => adminFetch(`/api/learn/lessons/${lid}/quiz/submit`, 'POST', { answers });
 export const getLeaderboard     = ()         => adminFetch('/api/learn/leaderboard').catch(() => []);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TIES DOCS (docs_app) — internal knowledge base; same adminFetch helper
+// ─────────────────────────────────────────────────────────────────────────────
+export const getDocsTree    = ()      => adminFetch('/api/docs/tree').catch(() => []);
+export const getDocSpaces   = ()      => adminFetch('/api/docs/spaces').catch(() => []);
+export const getDocPage     = (id)    => adminFetch(`/api/docs/pages/${id}`);
+export const createDocPage  = (data)  => adminFetch('/api/docs/pages', 'POST', data);
+export const updateDocPage  = (id, d) => adminFetch(`/api/docs/pages/${id}`, 'PATCH', d);
+export const deleteDocPage  = (id)    => adminFetch(`/api/docs/pages/${id}`, 'DELETE');
+export const createDocSpace = (data)  => adminFetch('/api/docs/spaces', 'POST', data);
+export const searchDocs     = (q)     => adminFetch(`/api/docs/pages?search=${encodeURIComponent(q)}`).catch(() => []);

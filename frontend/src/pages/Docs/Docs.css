@@ -1,0 +1,45 @@
+/* TIES Docs. Knowledge-base layout (left nav tree + article), styled with the
+   same admin tokens so it matches the panel. Reference: a docs site like
+   code.claude.com/docs. All colours come from index.css variables. */
+
+.docs-shell { display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 0; max-width: 1400px; margin: 0 auto; min-height: calc(100vh - var(--navbar-height) - 64px); }
+@media (max-width: 900px) { .docs-shell { grid-template-columns: 1fr; } .docs-nav { display: none; } .docs-nav.is-open { display: block; } }
+
+/* left navigation */
+.docs-nav { position: sticky; top: 0; align-self: start; padding-right: 20px; border-right: 1px solid var(--outline-variant); }
+.docs-search { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-hover); margin-bottom: 18px; }
+.docs-search input { flex: 1; border: 0; background: transparent; outline: none; color: var(--text-main); font-size: 13.5px; }
+.docs-space { margin-bottom: 18px; }
+.docs-space-title { display: flex; align-items: center; gap: 8px; font-family: 'Hanken Grotesk', sans-serif; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
+.docs-link { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 8px; color: var(--text-main); font-size: 13.5px; cursor: pointer; border: 0; background: transparent; }
+.docs-link:hover { background: var(--surface-hover); }
+.docs-link.is-active { background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary); font-weight: 650; }
+.docs-link.is-child { padding-left: 22px; font-size: 13px; color: var(--text-muted); }
+.docs-link.is-child.is-active { color: var(--primary); }
+
+/* article */
+.docs-main { padding: 0 8px 60px 32px; min-width: 0; }
+.docs-breadcrumb { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 12.5px; margin-bottom: 10px; }
+.docs-breadcrumb b { color: var(--text-main); }
+.docs-article { max-width: 760px; }
+.docs-article h1 { font-family: 'Hanken Grotesk', 'Inter', sans-serif; font-size: 32px; letter-spacing: -0.02em; margin-bottom: 6px; }
+.docs-meta { color: var(--text-muted); font-size: 12.5px; margin-bottom: 26px; }
+.docs-actions { display: flex; gap: 8px; margin-left: auto; }
+
+/* rendered markdown */
+.docs-body { color: var(--text-main); font-size: 15.5px; line-height: 1.75; }
+.docs-body h2 { font-family: 'Hanken Grotesk', 'Inter', sans-serif; font-size: 22px; letter-spacing: -0.01em; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--outline-variant); }
+.docs-body h3 { font-family: 'Hanken Grotesk', 'Inter', sans-serif; font-size: 17px; margin: 24px 0 10px; }
+.docs-body p { margin: 0 0 16px; }
+.docs-body ul, .docs-body ol { margin: 0 0 16px; padding-left: 22px; }
+.docs-body li { margin: 5px 0; }
+.docs-body a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+.docs-body code { font-family: 'JetBrains Mono', monospace; font-size: 0.88em; background: var(--surface-container-high); padding: 2px 6px; border-radius: 6px; }
+.docs-body pre { background: var(--surface-container-low); border: 1px solid var(--outline-variant); border-radius: 12px; padding: 16px; overflow-x: auto; margin: 0 0 16px; }
+.docs-body pre code { background: none; padding: 0; font-size: 13px; }
+.docs-body blockquote { border-left: 3px solid var(--primary); padding: 4px 0 4px 16px; margin: 0 0 16px; color: var(--text-muted); }
+.docs-body hr { border: 0; border-top: 1px solid var(--outline-variant); margin: 26px 0; }
+
+/* editor */
+.docs-editor textarea { width: 100%; min-height: 320px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-hover); color: var(--text-main); font-family: 'JetBrains Mono', monospace; font-size: 13.5px; line-height: 1.6; outline: none; resize: vertical; }
+.docs-editor textarea:focus { border-color: color-mix(in srgb, var(--primary) 58%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent); }

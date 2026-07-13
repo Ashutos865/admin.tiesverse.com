@@ -72,6 +72,8 @@ const AdminLayout = () => {
     ? 'mywork'
     : location.pathname.startsWith('/learn')
     ? 'learn'
+    : location.pathname.startsWith('/docs')
+    ? 'docs'
     : location.pathname.startsWith('/hr')
     ? 'hr'
     : location.pathname.startsWith('/career')

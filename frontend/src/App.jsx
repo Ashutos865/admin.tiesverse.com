@@ -53,6 +53,9 @@ import CoursePlayer from './pages/Learn/CoursePlayer.jsx';
 import LearnCertificates from './pages/Learn/LearnCertificates.jsx';
 import LearnLeaderboard from './pages/Learn/LearnLeaderboard.jsx';
 import ManageLearning from './pages/Learn/ManageLearning.jsx';
+
+// TIES Docs
+import TiesDocs from './pages/Docs/TiesDocs.jsx';
 import MyWork from './pages/MyWork/MyWork.jsx';
 import AdvisoryPanel from './pages/Advisory/AdvisoryPanel.jsx';
 import TechnicalDashboard from './pages/Technical/TechnicalDashboard.jsx';
@@ -125,6 +128,9 @@ function App() {
               <Route path="/learn/certificates" element={<LearnCertificates />} />
               <Route path="/learn/leaderboard" element={<LearnLeaderboard />} />
               <Route path="/learn/manage" element={<ManageLearning />} />
+
+              {/* TIES Docs Route */}
+              <Route path="/docs" element={<TiesDocs />} />
 
               {/* Accounts Routes */}
               <Route path="/accounts/users" element={<UserManagement />} />

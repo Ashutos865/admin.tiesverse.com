@@ -74,6 +74,16 @@ export const portals = [
     ],
   },
   {
+    key: 'docs',
+    label: 'TIES Docs',
+    icon: BookOpen,
+    firstPath: '/docs',
+    everyone: true,                    // knowledge base is readable by every member
+    links: [
+      { name: 'Knowledge Base', path: '/docs', icon: BookOpen, perms: [] },
+    ],
+  },
+  {
     key: 'tiesverse',
     label: 'Tiesverse Portal',
     icon: Globe,
