@@ -35,7 +35,7 @@ export const PermissionProvider = ({ children }) => {
      */
     const hasAnyPermission = (codenames) => {
       if (isSuperuser) return true;
-      return codenames.some(c => permissions.includes(c));
+      return (codenames || []).some(c => permissions.includes(c));
     };
 
     /**
@@ -44,7 +44,7 @@ export const PermissionProvider = ({ children }) => {
      */
     const hasAllPermissions = (codenames) => {
       if (isSuperuser) return true;
-      return codenames.every(c => permissions.includes(c));
+      return (codenames || []).every(c => permissions.includes(c));
     };
 
     return {

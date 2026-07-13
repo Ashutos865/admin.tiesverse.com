@@ -18,6 +18,7 @@ const AdminLayout = () => {
   // Mirror the Sidebar's role gating so the palette only surfaces reachable pages.
   const commands = useMemo(() => {
     const portalVisible = (p) => {
+      if (p.everyone) return true;   // open to every authenticated member (Learn Portal, TIES Docs)
       if (p.developerOnly) return isDeveloper;
       if (p.memberOnly) return isMember;
       if (p.advisoryOnly) return isSuperuser || isAdvisory;
