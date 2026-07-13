@@ -28,7 +28,7 @@ class DocPage(models.Model):
     order = models.PositiveIntegerField(default=0)
     is_published = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='docs_edited')
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='docs_edited', db_constraint=False)
 
     class Meta:
         db_table = 'docs_pages'

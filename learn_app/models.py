@@ -59,7 +59,7 @@ class Lesson(models.Model):
 
 # ── Enrollment + per-lesson progress ──────────────────────────────────────────
 class Enrollment(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='learn_enrollments')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='learn_enrollments', db_constraint=False)
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='enrollments')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -69,7 +69,7 @@ class Enrollment(models.Model):
 
 
 class LessonProgress(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='learn_progress')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='learn_progress', db_constraint=False)
     lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='progress')
     seconds = models.PositiveIntegerField(default=0)
     completed = models.BooleanField(default=False)
@@ -97,7 +97,7 @@ class QuizQuestion(models.Model):
 
 
 class QuizAttempt(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='learn_quiz_attempts')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='learn_quiz_attempts', db_constraint=False)
     lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='attempts')
     score = models.PositiveSmallIntegerField(default=0)  # percent 0-100
     passed = models.BooleanField(default=False)
