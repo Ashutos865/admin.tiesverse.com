@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Search, Plus, Edit2, Trash2, BookOpen } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Search, Plus, Edit2, Trash2, BookOpen, Bold, Italic, List, ListOrdered,
+  ListChecks, Quote, Code, Link2, Heading1, Heading2, CornerDownRight,
+} from 'lucide-react';
 import { usePermissions } from '../../context/PermissionContext';
 import { getDocsTree, getDocPage, createDocPage, updateDocPage, deleteDocPage, searchDocs } from '../../apiClient';
 import '../Learn/Learn.css';
@@ -27,6 +30,14 @@ function mdToHtml(src = '') {
     if (/^# /.test(line)) { closeList(); out.push(`<h2>${linkFix(inlineNoLink(line.slice(2)))}</h2>`); i++; continue; }
     if (/^> /.test(line)) { closeList(); out.push(`<blockquote>${linkFix(inlineNoLink(line.slice(2)))}</blockquote>`); i++; continue; }
     if (/^(-{3,}|\*{3,})$/.test(line.trim())) { closeList(); out.push('<hr>'); i++; continue; }
+    // checkbox / task item: - [ ] or - [x]
+    if (/^\s*[-*] \[[ xX]\] /.test(line)) {
+      if (listType !== 'ul') { closeList(); out.push('<ul class="docs-tasks">'); listType = 'ul'; }
+      const checked = /\[[xX]\]/.test(line);
+      const txt = line.replace(/^\s*[-*] \[[ xX]\]\s?/, '');
+      out.push(`<li class="docs-task ${checked ? 'is-done' : ''}"><span class="docs-cbx">${checked ? '✓' : ''}</span><span>${linkFix(inlineNoLink(txt))}</span></li>`);
+      i++; continue;
+    }
     if (/^\s*[-*] /.test(line)) { if (listType !== 'ul') { closeList(); out.push('<ul>'); listType = 'ul'; } out.push(`<li>${linkFix(inlineNoLink(line.replace(/^\s*[-*] /, '')))}</li>`); i++; continue; }
     if (/^\s*\d+\. /.test(line)) { if (listType !== 'ol') { closeList(); out.push('<ol>'); listType = 'ol'; } out.push(`<li>${linkFix(inlineNoLink(line.replace(/^\s*\d+\. /, '')))}</li>`); i++; continue; }
     if (line.trim() === '') { closeList(); i++; continue; }
@@ -40,6 +51,70 @@ function mdToHtml(src = '') {
   }
 }
 
+/* Convert pasted rich text (HTML from Notion / Google Docs / the web) into clean
+   Markdown, so pasting keeps headings, bold, bullets and checkboxes automatically.
+   Built in-house (no library); handles the common semantic tags + inline styles. */
+function htmlToMarkdown(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+
+  const inline = (node) => {
+    let s = '';
+    node.childNodes.forEach((n) => {
+      if (n.nodeType === 3) { s += n.textContent.replace(/\s+/g, ' '); return; }
+      if (n.nodeType !== 1) return;
+      const tag = n.tagName.toLowerCase();
+      const style = (n.getAttribute && n.getAttribute('style')) || '';
+      const bold = tag === 'strong' || tag === 'b' || /font-weight\s*:\s*(bold|[6-9]\d\d)/.test(style);
+      const ital = tag === 'em' || tag === 'i' || /font-style\s*:\s*italic/.test(style);
+      let inner = inline(n);
+      if (tag === 'br') { s += '\n'; return; }
+      if (tag === 'code') { s += `\`${inner.trim()}\``; return; }
+      if (tag === 'a') { const href = n.getAttribute('href') || ''; s += href ? `[${inner}](${href})` : inner; return; }
+      if (bold) inner = `**${inner.trim()}**`;
+      if (ital) inner = `*${inner.trim()}*`;
+      s += inner;
+    });
+    return s;
+  };
+
+  const out = [];
+  const block = (node, indent = '') => {
+    node.childNodes.forEach((n) => {
+      if (n.nodeType === 3) { const t = n.textContent.trim(); if (t) out.push(indent + t); return; }
+      if (n.nodeType !== 1) return;
+      const tag = n.tagName.toLowerCase();
+      if (/^h[1-6]$/.test(tag)) { const lvl = Math.min(3, parseInt(tag[1], 10)); out.push(''); out.push('#'.repeat(lvl) + ' ' + inline(n).trim()); out.push(''); return; }
+      if (tag === 'p') { const t = inline(n).trim(); if (t) { out.push(indent + t); out.push(''); } return; }
+      if (tag === 'blockquote') { out.push('> ' + inline(n).trim()); out.push(''); return; }
+      if (tag === 'pre') { out.push('```'); out.push(n.textContent.replace(/\n+$/, '')); out.push('```'); out.push(''); return; }
+      if (tag === 'ul' || tag === 'ol') {
+        let idx = 1;
+        n.childNodes.forEach((li) => {
+          if (li.nodeType !== 1 || li.tagName.toLowerCase() !== 'li') return;
+          const cb = li.querySelector('input[type="checkbox"]');
+          const marker = cb ? (cb.checked ? '- [x]' : '- [ ]') : (tag === 'ol' ? `${idx++}.` : '-');
+          // text of this li excluding nested lists
+          const clone = li.cloneNode(true);
+          clone.querySelectorAll('ul,ol').forEach((sub) => sub.remove());
+          clone.querySelectorAll('input').forEach((inp) => inp.remove());
+          const txt = inline(clone).trim();
+          if (txt) out.push(`${indent}${marker} ${txt}`);
+          // recurse into nested lists with deeper indent
+          li.querySelectorAll(':scope > ul, :scope > ol').forEach((sub) => block({ childNodes: [sub] }, indent + '  '));
+        });
+        out.push('');
+        return;
+      }
+      if (tag === 'br') { out.push(''); return; }
+      // containers (div, span, section, li fallback): recurse
+      block(n, indent);
+    });
+  };
+
+  block(doc.body);
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 const EMPTY_PAGE = { title: '', body: '', space: '', parent: null, slug: '' };
 
 export default function TiesDocs() {
@@ -51,9 +126,10 @@ export default function TiesDocs() {
   const [page, setPage] = useState(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
-  const [editing, setEditing] = useState(null);      // page object being edited or EMPTY_PAGE for new
+  const [editing, setEditing] = useState(null);      // page object being edited or a fresh page for new
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
+  const taRef = useRef(null);
 
   const show = (m) => { setToast(m); window.setTimeout(() => setToast(''), 2600); };
   const loadTree = () => getDocsTree().then((t) => {
@@ -67,9 +143,11 @@ export default function TiesDocs() {
   const runSearch = (q) => { setQuery(q); if (!q.trim()) { setResults(null); return; } searchDocs(q).then((r) => setResults(Array.isArray(r) ? r : [])); };
 
   const spaces = useMemo(() => tree.map((t) => t.space), [tree]);
+  const setBody = (v) => setEditing((e) => ({ ...e, body: v }));
 
-  const openNew = () => setEditing({ ...EMPTY_PAGE, space: spaces[0]?.id || '' });
+  const openNew = (parent = null, spaceId = null) => setEditing({ ...EMPTY_PAGE, space: spaceId || spaces[0]?.id || '', parent });
   const openEdit = () => page && setEditing({ id: page.id, title: page.title, body: page.body, space: page.space, parent: page.parent, slug: page.slug });
+
   const save = async () => {
     if (!editing.title.trim()) { show('Title is required'); return; }
     setSaving(true);
@@ -82,6 +160,96 @@ export default function TiesDocs() {
   };
   const remove = async () => { if (!page || !window.confirm(`Delete "${page.title}"?`)) return; await deleteDocPage(page.id); setPage(null); setActiveId(null); loadTree(); show('Page deleted'); };
 
+  // ── editor helpers ──────────────────────────────────────────────────────────
+  const withSel = (fn) => {
+    const ta = taRef.current; if (!ta) return;
+    const { selectionStart: a, selectionEnd: b, value } = ta;
+    const r = fn(value, a, b);
+    setBody(r.value);
+    requestAnimationFrame(() => { ta.focus(); ta.selectionStart = r.selStart; ta.selectionEnd = r.selEnd; });
+  };
+  const wrap = (mark) => withSel((v, a, b) => {
+    const sel = v.slice(a, b) || 'text';
+    return { value: v.slice(0, a) + mark + sel + mark + v.slice(b), selStart: a + mark.length, selEnd: a + mark.length + sel.length };
+  });
+  const prefixLines = (mk) => withSel((v, a, b) => {
+    const ls = v.lastIndexOf('\n', a - 1) + 1;
+    const le = v.indexOf('\n', b); const end = le < 0 ? v.length : le;
+    const block = v.slice(ls, end).split('\n').map((ln, i) => {
+      const m = typeof mk === 'function' ? mk(i) : mk;
+      return ln.replace(/^(\s*)([-*] \[[ xX]\] |[-*] |\d+\. |#+ |> )?/, `$1${m}`);
+    }).join('\n');
+    return { value: v.slice(0, ls) + block + v.slice(end), selStart: ls, selEnd: ls + block.length };
+  });
+  const insertLink = () => withSel((v, a, b) => {
+    const sel = v.slice(a, b) || 'link text';
+    const snippet = `[${sel}](https://)`;
+    return { value: v.slice(0, a) + snippet + v.slice(b), selStart: a + snippet.length - 1, selEnd: a + snippet.length - 1 };
+  });
+
+  const onKeyDown = (e) => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    const ta = e.target; const pos = ta.selectionStart; const val = ta.value;
+    const ls = val.lastIndexOf('\n', pos - 1) + 1;
+    const line = val.slice(ls, pos);
+    const m = line.match(/^(\s*)([-*] \[[ xX]\]|[-*]|\d+\.)\s+(.*)$/);
+    if (!m) return;
+    const [, indent, marker, content] = m;
+    e.preventDefault();
+    if (!content.trim()) { // empty item -> exit the list
+      const nv = val.slice(0, ls) + val.slice(pos);
+      setBody(nv); requestAnimationFrame(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = ls; });
+      return;
+    }
+    let next = marker;
+    if (/^\d+\.$/.test(marker)) next = (parseInt(marker, 10) + 1) + '.';
+    else if (/\[[ xX]\]/.test(marker)) next = marker.replace(/\[[xX]\]/, '[ ]');
+    const ins = `\n${indent}${next} `;
+    const nv = val.slice(0, pos) + ins + val.slice(pos);
+    setBody(nv); const np = pos + ins.length;
+    requestAnimationFrame(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = np; });
+  };
+
+  const onPaste = (e) => {
+    const html = e.clipboardData?.getData('text/html');
+    if (!html || !/[<]/.test(html)) return; // let plain text paste normally
+    const md = htmlToMarkdown(html);
+    if (!md) return;
+    e.preventDefault();
+    const ta = e.target; const { selectionStart: a, selectionEnd: b, value } = ta;
+    const nv = value.slice(0, a) + md + value.slice(b);
+    setBody(nv); const np = a + md.length;
+    requestAnimationFrame(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = np; });
+    show('Pasted & auto-formatted');
+  };
+
+  const TOOLS = [
+    { ic: Heading1, t: 'Heading', fn: () => prefixLines('# ') },
+    { ic: Heading2, t: 'Subheading', fn: () => prefixLines('## ') },
+    { ic: Bold, t: 'Bold', fn: () => wrap('**') },
+    { ic: Italic, t: 'Italic', fn: () => wrap('*') },
+    { ic: List, t: 'Bullet list', fn: () => prefixLines('- ') },
+    { ic: ListOrdered, t: 'Numbered list', fn: () => prefixLines((i) => `${i + 1}. `) },
+    { ic: ListChecks, t: 'Checklist', fn: () => prefixLines('- [ ] ') },
+    { ic: Quote, t: 'Quote', fn: () => prefixLines('> ') },
+    { ic: Code, t: 'Inline code', fn: () => wrap('`') },
+    { ic: Link2, t: 'Link', fn: insertLink },
+  ];
+
+  // ── sidebar tree (nested by parent) ─────────────────────────────────────────
+  const renderNodes = (pages, parent, depth = 0) => pages
+    .filter((p) => (p.parent || null) === parent)
+    .map((p) => (
+      <div key={p.id}>
+        <button type="button" className={`docs-link ${p.id === activeId ? 'is-active' : ''}`} style={{ paddingLeft: 10 + depth * 16 }} onClick={() => setActiveId(p.id)}>
+          {depth > 0 && <CornerDownRight size={12} style={{ opacity: 0.5, marginRight: 4, verticalAlign: '-2px' }} />}{p.title}
+        </button>
+        {renderNodes(pages, p.id, depth + 1)}
+      </div>
+    ));
+
+  const parentTitle = editing?.parent ? (tree.flatMap((t) => t.pages).find((p) => p.id === editing.parent)?.title) : null;
+
   return (
     <div className="learn-page" style={{ maxWidth: 1400 }}>
       {toast && <div className="learn-toast">{toast}</div>}
@@ -91,7 +259,7 @@ export default function TiesDocs() {
           <h1>TIES Docs</h1>
           <p>Documentation, SOPs, processes, and directories in one place. A strong documentation culture for an agile operating model.</p>
         </div>
-        {canEdit && <div className="learn-heading-actions"><button type="button" className="learn-primary-button" onClick={openNew}><Plus size={18} /> New page</button></div>}
+        {canEdit && <div className="learn-heading-actions"><button type="button" className="learn-primary-button" onClick={() => openNew()}><Plus size={18} /> New page</button></div>}
       </header>
 
       <div className="docs-shell">
@@ -105,10 +273,7 @@ export default function TiesDocs() {
           ) : tree.map((t) => (
             <div className="docs-space" key={t.space.id}>
               <div className="docs-space-title"><BookOpen size={13} /> {t.space.name}</div>
-              {t.pages.map((p) => (
-                <button type="button" key={p.id} className={`docs-link ${p.parent ? 'is-child' : ''} ${p.id === activeId ? 'is-active' : ''}`} onClick={() => setActiveId(p.id)}>{p.title}</button>
-              ))}
-              {!t.pages.length && <span style={{ fontSize: 12, color: 'var(--text-muted)', paddingLeft: 10 }}>No pages yet</span>}
+              {t.pages.length ? renderNodes(t.pages, null) : <span style={{ fontSize: 12, color: 'var(--text-muted)', paddingLeft: 10 }}>No pages yet</span>}
             </div>
           ))}
           {!tree.length && <div className="learn-state" style={{ padding: 24 }}><BookOpen size={28} /><strong>No spaces yet</strong></div>}
@@ -117,8 +282,9 @@ export default function TiesDocs() {
         <main className="docs-main">
           {editing ? (
             <div className="docs-editor">
-              <div className="learn-heading" style={{ marginBottom: 16 }}>
+              <div className="learn-heading" style={{ marginBottom: 12 }}>
                 <div style={{ flex: 1 }}>
+                  {parentTitle && <div className="docs-subpage-note"><CornerDownRight size={13} /> Sub-page of <b>{parentTitle}</b></div>}
                   <input className="docs-title-input" value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} placeholder="Page title"
                     style={{ width: '100%', fontFamily: "'Hanken Grotesk','Inter',sans-serif", fontSize: 26, fontWeight: 700, border: 0, background: 'transparent', color: 'var(--text-main)', outline: 'none' }} />
                 </div>
@@ -130,7 +296,23 @@ export default function TiesDocs() {
                   <button type="button" className="learn-primary-button" disabled={saving} onClick={save}>{saving ? 'Saving' : 'Save page'}</button>
                 </div>
               </div>
-              <textarea value={editing.body} onChange={(e) => setEditing({ ...editing, body: e.target.value })} placeholder={'Write in Markdown...\n\n## Section\n- point one\n- point two\n\n`inline code`, **bold**, [links](https://example.com)'} />
+
+              <div className="docs-toolbar">
+                {TOOLS.map((tool, i) => {
+                  const Ic = tool.ic;
+                  return <button type="button" key={i} className="docs-tool" title={tool.t} onMouseDown={(e) => { e.preventDefault(); tool.fn(); }}><Ic size={16} /></button>;
+                })}
+                <span className="docs-toolbar-hint">Paste from Notion / Docs / web — it auto-formats</span>
+              </div>
+
+              <div className="docs-edit-split">
+                <textarea ref={taRef} value={editing.body} onChange={(e) => setBody(e.target.value)} onKeyDown={onKeyDown} onPaste={onPaste}
+                  placeholder={'Write here. Use the toolbar, or type Markdown:\n\n# Heading\n- bullet (Enter continues the list)\n- [ ] checkbox task\n\n**bold**, *italic*, `code`, [links](https://example.com)'} />
+                <div className="docs-preview">
+                  <div className="docs-preview-label">Preview</div>
+                  <div className="docs-body" dangerouslySetInnerHTML={{ __html: mdToHtml(editing.body) || '<p style="color:var(--text-muted)">Nothing to preview yet.</p>' }} />
+                </div>
+              </div>
             </div>
           ) : page ? (
             <>
@@ -139,6 +321,7 @@ export default function TiesDocs() {
                 <h1 className="docs-article" style={{ flex: 1 }}>{page.title}</h1>
                 {canEdit && (
                   <div className="docs-actions">
+                    <button type="button" className="learn-ghost-button" onClick={() => openNew(page.id, page.space)} title="Add a sub-page under this page"><Plus size={15} /> Sub-page</button>
                     <button type="button" className="learn-icon-button" title="Edit" onClick={openEdit}><Edit2 size={17} /></button>
                     <button type="button" className="learn-icon-button is-danger" title="Delete" onClick={remove}><Trash2 size={17} /></button>
                   </div>
