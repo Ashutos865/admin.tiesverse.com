@@ -101,6 +101,13 @@ def _webinar_import_rows(template_id: str, event_key: str = '', pending_only: bo
         email = str(row.get('email') or '').strip()
         event_title = str(row.get('event_title') or 'Webinar').strip()
         certificate_id = str(row.get('webinar_certificate_id') or '').strip()
+        # Certificate date = when the webinar/workshop actually happened
+        # (event_date), NOT when the person registered. Fall back to
+        # registered_at only if an older record has no event_date, so the date
+        # field is never blank on the certificate.
+        event_date = str(row.get('event_date') or '').strip()
+        registered_at = str(row.get('registered_at') or '').strip()
+        cert_date = event_date or registered_at
         rows.append({
             'source_type': 'webinar',
             'source_ref': source_ref,
@@ -117,8 +124,10 @@ def _webinar_import_rows(template_id: str, event_key: str = '', pending_only: bo
                 'webinar': event_title,
                 'phone': row.get('phone') or '',
                 'city': row.get('city') or '',
-                'date': row.get('registered_at') or '',
-                'registered_at': row.get('registered_at') or '',
+                'date': cert_date,                 # date the webinar happened
+                'event_date': event_date,          # explicit {{event_date}} placeholder
+                'webinar_date': event_date,        # explicit {{webinar_date}} placeholder
+                'registered_at': registered_at,    # kept for reference
                 'certificate_id': certificate_id,
                 'cert_id': certificate_id,
             },
