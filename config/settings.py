@@ -113,6 +113,7 @@ REST_FRAMEWORK = {
         'otp': '12/min',
         'password_reset': '5/min',
         'public_form': '20/min',
+        'verify': '30/min',
     },
 }
 

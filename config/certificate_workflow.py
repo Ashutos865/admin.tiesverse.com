@@ -16,11 +16,21 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from django.http import HttpResponse, JsonResponse
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.throttling import SimpleRateThrottle
 
 from career_app import cloudflare_proxy
 from webinar_app import turso_client
+
+
+class VerifyRateThrottle(SimpleRateThrottle):
+    """Rate-limit the public certificate verification by client IP (see the
+    'verify' scope in settings), so the endpoint can't be hammered/enumerated."""
+    scope = 'verify'
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {'scope': self.scope, 'ident': self.get_ident(request)}
 
 
 def _slug(value: str, fallback: str = 'cert') -> str:
@@ -205,6 +215,58 @@ def _serialize_record(record: dict) -> dict:
         'email_status': record.get('email_status') or 'not_sent',
         'created_at': record.get('created_at') or '',
     }
+
+
+_VERIFY_TYPE_LABEL = {
+    'webinar': 'Webinar / workshop certificate',
+    'offer': 'Offer letter',
+    'manual': 'Certificate',
+}
+
+
+def _verify_date(iso_value) -> str:
+    try:
+        return datetime.fromisoformat(str(iso_value).replace('Z', '+00:00')).strftime('%d %b %Y')
+    except (TypeError, ValueError):
+        return ''
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([VerifyRateThrottle])
+def verify_certificate(request):
+    """Public fraud-detection lookup. Given an exact certificate ID, confirm it
+    is genuine and return ONLY minimal info (name, title, type, issue date).
+    No email/template/internal fields, and no listing — you must know the exact
+    ID, so nothing can be enumerated or scraped."""
+    cert_id = (request.query_params.get('id') or '').strip().upper()
+    if not cert_id:
+        return JsonResponse({'valid': False, 'error': 'No certificate ID provided.'}, status=400)
+    if not turso_client.is_configured():
+        return JsonResponse({'valid': False})
+    try:
+        turso_client.setup_tables()
+        rows = turso_client.execute(
+            """SELECT certificate_id, source_type, person_name, subject_title, created_at
+               FROM certificate_records WHERE UPPER(certificate_id)=:cid LIMIT 1""",
+            {'cid': cert_id},
+        )
+    except turso_client.TursoError:
+        return JsonResponse({'valid': False})
+    if not rows:
+        return JsonResponse({'valid': False, 'certificate_id': cert_id})
+    r = rows[0]
+    source_type = r.get('source_type') or ''
+    return JsonResponse({
+        'valid': True,
+        'certificate_id': r.get('certificate_id') or cert_id,
+        'name': r.get('person_name') or '',
+        'title': r.get('subject_title') or '',
+        'type': source_type,
+        'type_label': _VERIFY_TYPE_LABEL.get(source_type, 'Certificate'),
+        'issued_on': _verify_date(r.get('created_at')),
+        'issuer': 'TIESVERSE',
+    })
 
 
 @api_view(['GET'])

@@ -36,6 +36,7 @@ from config.certificate_workflow import (
     certificate_records_csv,
     certificate_send_emails,
     certificate_sources,
+    verify_certificate,
 )
 from config.data_sources import list_data_sources, data_source_rows
 from config.tech_stats import technical_stats
@@ -58,6 +59,7 @@ urlpatterns = [
     path('api/public/events/', public_events_feed, name='public-events-feed'),
     path('api/public/guests/', public_guests_feed, name='public-guests-feed'),
     path('api/public/tech-products/', public_tech_products, name='public-tech-products'),
+    path('api/public/verify-certificate/', verify_certificate, name='verify-certificate'),
     path('api/public/site-images/', public_site_images, name='public-site-images'),
     path('api/public/site-image/<str:key>/', public_site_image, name='public-site-image'),
     path('api/public/email-template/<str:key>/', PublicEmailTemplateView.as_view(), name='public-email-template'),
