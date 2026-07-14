@@ -33,7 +33,7 @@ export default function FormRenderer({
   const pageBg = embedded
     ? {}
     : theme.bg_type === 'image' && theme.bg_image
-      ? { backgroundImage: `url(${theme.bg_image})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+      ? { backgroundImage: `url(${theme.bg_image})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }
       : theme.bg_type === 'gradient'
         ? { background: theme.bg_gradient }
         : { background: theme.bg_color };

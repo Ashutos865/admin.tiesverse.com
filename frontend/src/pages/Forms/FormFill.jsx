@@ -68,15 +68,19 @@ export default function FormFill({ form, submitFn, askIdentity }) {
   };
 
   const theme = mergeTheme(form.theme);
-  const pageBg = theme.bg_type === 'image' && theme.bg_image
+  const bg = theme.bg_type === 'image' && theme.bg_image
     ? { backgroundImage: `url(${theme.bg_image})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : theme.bg_type === 'gradient' ? { background: theme.bg_gradient } : { background: theme.bg_color };
+  // The background sits on a fixed, full-viewport layer so it stays put while the
+  // questions scroll over it (an uploaded picture no longer scrolls with content).
+  const fixedBg = { position: 'fixed', inset: 0, zIndex: 0, ...bg };
 
   if (done) {
     const s = mergeSettings(form.settings);
     return (
-      <div style={{ ...pageBg, minHeight: '100vh', display: 'flex', flexDirection: 'column', fontFamily: fontStack(theme.font) }}>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', fontFamily: fontStack(theme.font), position: 'relative' }}>
+        <div aria-hidden style={fixedBg} />
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, position: 'relative', zIndex: 1 }}>
           <div style={{ background: '#fff', borderRadius: 24, padding: '44px 36px', maxWidth: 480, textAlign: 'center', boxShadow: '0 30px 80px -30px rgba(0,0,0,.45)', borderTop: `6px solid ${theme.accent}` }}>
             <div style={{ fontSize: 56, lineHeight: 1, marginBottom: 10 }}>{s.thank_you_emoji || '🎉'}</div>
             <h2 style={{ fontSize: 25, fontWeight: 800, margin: '0 0 10px', color: '#161616' }}>{s.thank_you_title || 'All done!'}</h2>
@@ -89,7 +93,7 @@ export default function FormFill({ form, submitFn, askIdentity }) {
             ) : null}
           </div>
         </div>
-        <div style={{ paddingBottom: 18 }}><TiesFooter show={s.show_footer !== false} /></div>
+        <div style={{ paddingBottom: 18, position: 'relative', zIndex: 1 }}><TiesFooter show={s.show_footer !== false} /></div>
       </div>
     );
   }
@@ -97,7 +101,9 @@ export default function FormFill({ form, submitFn, askIdentity }) {
   return (
     // Background is painted ONCE here on the outer wrapper so it stays a single,
     // continuous image. The identity block and FormRenderer below are transparent.
-    <div style={{ ...pageBg, minHeight: '100vh' }}>
+    <div style={{ minHeight: '100vh', position: 'relative' }}>
+      <div aria-hidden style={fixedBg} />
+      <div style={{ position: 'relative', zIndex: 1 }}>
       {askIdentity && (
         <div style={{ paddingTop: 40, fontFamily: fontStack(theme.font) }}>
           <div style={{ maxWidth: 680, margin: '0 auto', padding: '0 16px' }}>
@@ -122,6 +128,7 @@ export default function FormFill({ form, submitFn, askIdentity }) {
         errors={errors}
         embedded
       />
+      </div>
     </div>
   );
 }
