@@ -263,9 +263,16 @@ class FormSerializer(serializers.ModelSerializer):
 class PublicFormSerializer(serializers.ModelSerializer):
     """Slim, safe representation exposed to anyone filling a form.
     Never leaks token/responses/creator or the accepting/close internals."""
+    anonymous = serializers.SerializerMethodField()
+
     class Meta:
         model = Form
-        fields = ['id', 'title', 'description', 'schema', 'theme', 'visibility']
+        fields = ['id', 'title', 'description', 'schema', 'theme', 'visibility', 'anonymous']
+
+    def get_anonymous(self, obj):
+        # Expose ONLY this one flag (not the full settings) so the public form
+        # knows whether to skip asking for the person's name & email.
+        return bool((obj.settings or {}).get('anonymous'))
 
 
 class FormResponseSerializer(serializers.ModelSerializer):

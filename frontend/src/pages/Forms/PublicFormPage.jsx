@@ -31,7 +31,8 @@ export default function PublicFormPage() {
     </Center>
   );
 
-  return <FormFill form={form} submitFn={(answers, identity) => submitPublicForm(token, { answers, ...identity })} askIdentity />;
+  // Skip the name/email block entirely for anonymous forms (reviews/feedback).
+  return <FormFill form={form} submitFn={(answers, identity) => submitPublicForm(token, { answers, ...identity })} askIdentity={!form.anonymous} />;
 }
 
 function Center({ children }) {

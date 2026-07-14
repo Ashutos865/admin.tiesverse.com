@@ -570,6 +570,7 @@ function SettingsPanel({ form, onChange, onSettings, shareLink, copied, copyLink
       {!form.is_published && <div style={P.hint}>Publish the form for this link to work.</div>}
 
       <div style={P.group}>Response options</div>
+      <Toggle label="Anonymous responses" checked={!!s.anonymous} onChange={v => onSettings({ anonymous: v })} hint="For reviews & feedback — the public form won't ask for the person's name or email." />
       <Toggle label="Accepting responses" checked={s.accepting !== false} onChange={v => onSettings({ accepting: v })} />
       <Toggle label="Require login to submit" checked={!!s.require_login} onChange={v => onSettings({ require_login: v })} />
       <Toggle label="One response per person" checked={!!s.one_response} onChange={v => onSettings({ one_response: v })} hint="Only enforceable for logged-in members." />

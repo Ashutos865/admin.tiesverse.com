@@ -82,6 +82,7 @@ export const DEFAULT_SETTINGS = {
   require_login: false,
   one_response: false,
   collect_email: false,
+  anonymous: false,          // for reviews/feedback: don't ask name & email on the public form
   thank_you: 'Thanks — your response has been recorded.',
   thank_you_title: 'All done!',
   thank_you_emoji: '🎉',
