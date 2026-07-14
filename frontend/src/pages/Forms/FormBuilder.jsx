@@ -495,13 +495,24 @@ function DesignPanel({ theme, onChange }) {
             {busy === 'bg' ? <Loader2 size={14} className="spin" /> : <ImageIcon size={14} />}
             {theme.bg_image ? 'Change image' : 'Upload background'}
           </button>
-          {theme.bg_image && <img src={theme.bg_image} alt="" style={{ width: '100%', height: 70, objectFit: 'cover', borderRadius: 8, marginTop: 8 }} />}
+          {theme.bg_image && (
+            <div style={{ position: 'relative', marginTop: 8 }}>
+              <img src={theme.bg_image} alt="" style={{ width: '100%', height: 70, objectFit: 'cover', borderRadius: 8 }} />
+              <button style={P.removeImg} title="Remove background image"
+                onClick={() => onChange({ bg_image: '', bg_type: 'color' })}><X size={13} /></button>
+            </div>
+          )}
         </div>
       )}
 
       <div style={P.group}>Accent colour</div>
       <label style={P.row}>Buttons &amp; highlights
         <input type="color" style={P.color} value={theme.accent} onChange={e => onChange({ accent: e.target.value })} />
+      </label>
+
+      <div style={P.group}>Text colour</div>
+      <label style={P.row}>Headings &amp; notes over the background
+        <input type="color" style={P.color} value={theme.text_color || '#161616'} onChange={e => onChange({ text_color: e.target.value })} />
       </label>
 
       <div style={P.group}>Global header image</div>

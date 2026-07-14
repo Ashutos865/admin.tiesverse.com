@@ -21,6 +21,7 @@ export default function FormRenderer({
   const theme = mergeTheme(form.theme);
   const settings = mergeSettings(form.settings);
   const accent = theme.accent || '#fe7a00';
+  const textColor = theme.text_color || '#161616';   // headings/notes over the background
   const font = fontStack(theme.font);
   const total = pageCount(settings);
   const pages = settings.pages || [];
@@ -93,6 +94,7 @@ export default function FormRenderer({
             key={f.id}
             field={f}
             accent={accent}
+            textColor={textColor}
             cardStyle={cardStyle}
             value={values[f.id]}
             onChange={(v) => onChange && onChange(f.id, v)}
@@ -151,19 +153,19 @@ const navBtn = {
   padding: '12px 24px', fontSize: 15, fontWeight: 700, cursor: 'pointer',
 };
 
-function FieldCard({ field, accent, cardStyle, value, onChange, invalid, preview }) {
+function FieldCard({ field, accent, textColor = '#161616', cardStyle, value, onChange, invalid, preview }) {
   if (field.type === 'heading') {
     return (
       <div style={{ padding: '10px 4px 2px' }}>
-        <h2 style={{ fontSize: 20, fontWeight: 800, color: '#161616', margin: 0 }}>{field.label}</h2>
-        {field.help ? <p style={{ color: '#666', fontSize: 14, marginTop: 4 }}>{field.help}</p> : null}
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: textColor, margin: 0 }}>{field.label}</h2>
+        {field.help ? <p style={{ color: textColor, opacity: 0.72, fontSize: 14, marginTop: 4 }}>{field.help}</p> : null}
       </div>
     );
   }
   if (field.type === 'paragraph') {
     return (
       <div style={{ padding: '2px 4px' }}>
-        <p style={{ color: '#444', fontSize: 15, lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>{field.label}</p>
+        <p style={{ color: textColor, opacity: 0.85, fontSize: 15, lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>{field.label}</p>
       </div>
     );
   }

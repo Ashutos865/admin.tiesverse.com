@@ -68,6 +68,7 @@ export const DEFAULT_THEME = {
   bg_image: '',
   bg_gradient: 'linear-gradient(135deg,#fff7ed,#ffedd5)',
   accent: '#fe7a00',
+  text_color: '#161616',  // colour of headings & notes shown directly over the background
   font: 'system',
   layout: 'card',       // 'card' | 'plain'
   button_text: 'Submit',
