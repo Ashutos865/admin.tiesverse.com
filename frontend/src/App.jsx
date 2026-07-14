@@ -1,95 +1,109 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { PermissionProvider } from './context/PermissionContext';
 import { MeProvider } from './context/MeContext';
 import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/layout/ProtectedRoute';
-import AdminLayout from './components/layout/AdminLayout';
 import DarkReaderGuard from './components/DarkReaderGuard';
 
+// Route pages are lazy-loaded (code-split) so first-load pages like /login and
+// /signup only download their own small chunk instead of the whole admin app.
+// Each route renders the same component as before; it is just fetched on demand.
+const AdminLayout = lazy(() => import('./components/layout/AdminLayout'));
+
 // Auth & Accounts
-import Login from './pages/Login';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import UserManagement from './pages/Accounts/UserManagement';
-import PermissionsManagement from './pages/Accounts/PermissionsManagement';
-import ProfileSettings from './pages/Accounts/ProfileSettings';
-import EmailTemplates from './pages/Accounts/EmailTemplates';
-import MailAutomation from './pages/Accounts/MailAutomation';
+const Login = lazy(() => import('./pages/Login'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const UserManagement = lazy(() => import('./pages/Accounts/UserManagement'));
+const PermissionsManagement = lazy(() => import('./pages/Accounts/PermissionsManagement'));
+const ProfileSettings = lazy(() => import('./pages/Accounts/ProfileSettings'));
+const EmailTemplates = lazy(() => import('./pages/Accounts/EmailTemplates'));
+const MailAutomation = lazy(() => import('./pages/Accounts/MailAutomation'));
 
 // Dashboards
-import TiesverseDashboard from './pages/Tiesverse/TiesverseDashboard';
-import CareerDashboard from './pages/Career/CareerDashboard';
-import WebinarDashboard from './pages/Webinar/WebinarDashboard';
-import Registrations from './pages/Webinar/Registrations.jsx';
-import Coupons from './pages/Webinar/Coupons.jsx';
+const TiesverseDashboard = lazy(() => import('./pages/Tiesverse/TiesverseDashboard'));
+const CareerDashboard = lazy(() => import('./pages/Career/CareerDashboard'));
+const WebinarDashboard = lazy(() => import('./pages/Webinar/WebinarDashboard'));
+const Registrations = lazy(() => import('./pages/Webinar/Registrations.jsx'));
+const Coupons = lazy(() => import('./pages/Webinar/Coupons.jsx'));
 
 // Tiesverse
-import EventsManagement from './pages/Tiesverse/EventsManagement';
-import TiesverseAdminPanel from './pages/Tiesverse/Admin.jsx';
-import TechProducts from './pages/Tiesverse/TechProducts.jsx';
-import WebsiteImages from './pages/Tiesverse/WebsiteImages.jsx';
-import DataApi from './pages/Tiesverse/DataApi.jsx';
+const EventsManagement = lazy(() => import('./pages/Tiesverse/EventsManagement'));
+const TiesverseAdminPanel = lazy(() => import('./pages/Tiesverse/Admin.jsx'));
+const TechProducts = lazy(() => import('./pages/Tiesverse/TechProducts.jsx'));
+const WebsiteImages = lazy(() => import('./pages/Tiesverse/WebsiteImages.jsx'));
+const DataApi = lazy(() => import('./pages/Tiesverse/DataApi.jsx'));
 
 // Career
-import CareerAdmin from './pages/Career/Admin.jsx';
-import OnboardingManagement from './pages/Career/OnboardingManagement.jsx';
-import HRDepartments from './pages/Career/HRDepartments.jsx';
-import TeamDirectory from './pages/Career/TeamDirectory.jsx';
-import MasterDirectory from './pages/Career/MasterDirectory.jsx';
-import AttendancePage from './pages/Career/AttendancePage.jsx';
-import LeavePage from './pages/Career/LeavePage.jsx';
-import OffboardingPage from './pages/Career/OffboardingPage.jsx';
-import AssetsPage from './pages/Career/AssetsPage.jsx';
-import TasksPage from './pages/Career/TasksPage.jsx';
-import ProjectsPage from './pages/Career/ProjectsPage.jsx';
-import ProjectDetail from './pages/Career/ProjectDetail.jsx';
+const CareerAdmin = lazy(() => import('./pages/Career/Admin.jsx'));
+const OnboardingManagement = lazy(() => import('./pages/Career/OnboardingManagement.jsx'));
+const HRDepartments = lazy(() => import('./pages/Career/HRDepartments.jsx'));
+const TeamDirectory = lazy(() => import('./pages/Career/TeamDirectory.jsx'));
+const MasterDirectory = lazy(() => import('./pages/Career/MasterDirectory.jsx'));
+const AttendancePage = lazy(() => import('./pages/Career/AttendancePage.jsx'));
+const LeavePage = lazy(() => import('./pages/Career/LeavePage.jsx'));
+const OffboardingPage = lazy(() => import('./pages/Career/OffboardingPage.jsx'));
+const AssetsPage = lazy(() => import('./pages/Career/AssetsPage.jsx'));
+const TasksPage = lazy(() => import('./pages/Career/TasksPage.jsx'));
+const ProjectsPage = lazy(() => import('./pages/Career/ProjectsPage.jsx'));
+const ProjectDetail = lazy(() => import('./pages/Career/ProjectDetail.jsx'));
 
 // Learn Portal
-import LearnDashboard from './pages/Learn/LearnDashboard.jsx';
-import LearnProgram from './pages/Learn/LearnProgram.jsx';
-import CourseCatalog from './pages/Learn/CourseCatalog.jsx';
-import CoursePlayer from './pages/Learn/CoursePlayer.jsx';
-import LearnCertificates from './pages/Learn/LearnCertificates.jsx';
-import LearnLeaderboard from './pages/Learn/LearnLeaderboard.jsx';
-import ManageLearning from './pages/Learn/ManageLearning.jsx';
+const LearnDashboard = lazy(() => import('./pages/Learn/LearnDashboard.jsx'));
+const LearnProgram = lazy(() => import('./pages/Learn/LearnProgram.jsx'));
+const CourseCatalog = lazy(() => import('./pages/Learn/CourseCatalog.jsx'));
+const CoursePlayer = lazy(() => import('./pages/Learn/CoursePlayer.jsx'));
+const LearnCertificates = lazy(() => import('./pages/Learn/LearnCertificates.jsx'));
+const LearnLeaderboard = lazy(() => import('./pages/Learn/LearnLeaderboard.jsx'));
+const ManageLearning = lazy(() => import('./pages/Learn/ManageLearning.jsx'));
 
 // TIES Docs
-import TiesDocs from './pages/Docs/TiesDocs.jsx';
-import MyWork from './pages/MyWork/MyWork.jsx';
-import AdvisoryPanel from './pages/Advisory/AdvisoryPanel.jsx';
-import TechnicalDashboard from './pages/Technical/TechnicalDashboard.jsx';
-import PoliciesPage from './pages/Career/PoliciesPage.jsx';
-import HelpCenter from './pages/Help/HelpCenter.jsx';
-import SignupApprovals from './pages/Career/SignupApprovals.jsx';
-import PublicSignup from './pages/Signup/PublicSignup.jsx';
+const TiesDocs = lazy(() => import('./pages/Docs/TiesDocs.jsx'));
+const MyWork = lazy(() => import('./pages/MyWork/MyWork.jsx'));
+const AdvisoryPanel = lazy(() => import('./pages/Advisory/AdvisoryPanel.jsx'));
+const TechnicalDashboard = lazy(() => import('./pages/Technical/TechnicalDashboard.jsx'));
+const PoliciesPage = lazy(() => import('./pages/Career/PoliciesPage.jsx'));
+const HelpCenter = lazy(() => import('./pages/Help/HelpCenter.jsx'));
+const SignupApprovals = lazy(() => import('./pages/Career/SignupApprovals.jsx'));
+const PublicSignup = lazy(() => import('./pages/Signup/PublicSignup.jsx'));
 
 // Forms (custom form builder)
-import FormsListPage from './pages/Forms/FormsListPage.jsx';
-import FormBuilder from './pages/Forms/FormBuilder.jsx';
-import FormFillPage from './pages/Forms/FormFillPage.jsx';
-import FormResponsesPage from './pages/Forms/FormResponsesPage.jsx';
-import PublicFormPage from './pages/Forms/PublicFormPage.jsx';
+const FormsListPage = lazy(() => import('./pages/Forms/FormsListPage.jsx'));
+const FormBuilder = lazy(() => import('./pages/Forms/FormBuilder.jsx'));
+const FormFillPage = lazy(() => import('./pages/Forms/FormFillPage.jsx'));
+const FormResponsesPage = lazy(() => import('./pages/Forms/FormResponsesPage.jsx'));
+const PublicFormPage = lazy(() => import('./pages/Forms/PublicFormPage.jsx'));
 
 // Certificate Generator
-import CertificateTemplates from './pages/Certificates/CertificateTemplates.jsx';
-import CertificateEditor from './pages/Certificates/CertificateEditor.jsx';
-import CertificateGenerate from './pages/Certificates/CertificateGenerate.jsx';
-import GeneratedCertificates from './pages/Certificates/GeneratedCertificates.jsx';
+const CertificateTemplates = lazy(() => import('./pages/Certificates/CertificateTemplates.jsx'));
+const CertificateEditor = lazy(() => import('./pages/Certificates/CertificateEditor.jsx'));
+const CertificateGenerate = lazy(() => import('./pages/Certificates/CertificateGenerate.jsx'));
+const GeneratedCertificates = lazy(() => import('./pages/Certificates/GeneratedCertificates.jsx'));
 
-// Webinar
-import { ManagingList, UserSubmissionsReview } from './pages/Webinar/index.jsx';
-import WebinarsWorkshops from './pages/Webinar/WebinarsWorkshops.jsx';
-import Speakers from './pages/Webinar/Speakers.jsx';
+// Webinar (named exports need a small default-wrapper for React.lazy)
+const ManagingList = lazy(() => import('./pages/Webinar/index.jsx').then(m => ({ default: m.ManagingList })));
+const UserSubmissionsReview = lazy(() => import('./pages/Webinar/index.jsx').then(m => ({ default: m.UserSubmissionsReview })));
+const WebinarsWorkshops = lazy(() => import('./pages/Webinar/WebinarsWorkshops.jsx'));
+const Speakers = lazy(() => import('./pages/Webinar/Speakers.jsx'));
 
 // Articles & Reports (WordPress) Portal
-import WPPosts from './pages/WordPress/Posts.jsx';
-import SiteNavManager from './pages/WordPress/SiteNavManager.jsx';
-import SiteMenuManager from './pages/WordPress/SiteMenuManager.jsx';
-import WPMedia from './pages/WordPress/MediaLibrary.jsx';
-import WPTaxonomies from './pages/WordPress/Taxonomies.jsx';
-import WPComments from './pages/WordPress/CommentsManager.jsx';
-import WPUsers from './pages/WordPress/Users.jsx';
+const WPPosts = lazy(() => import('./pages/WordPress/Posts.jsx'));
+const SiteNavManager = lazy(() => import('./pages/WordPress/SiteNavManager.jsx'));
+const SiteMenuManager = lazy(() => import('./pages/WordPress/SiteMenuManager.jsx'));
+const WPMedia = lazy(() => import('./pages/WordPress/MediaLibrary.jsx'));
+const WPTaxonomies = lazy(() => import('./pages/WordPress/Taxonomies.jsx'));
+const WPComments = lazy(() => import('./pages/WordPress/CommentsManager.jsx'));
+const WPUsers = lazy(() => import('./pages/WordPress/Users.jsx'));
+
+// Lightweight fallback shown while a route chunk is fetched.
+const RouteFallback = () => (
+  <div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>
+    <div style={{ width: 26, height: 26, border: '3px solid var(--outline-variant)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'route-spin 0.7s linear infinite' }} />
+    <style>{'@keyframes route-spin{to{transform:rotate(360deg)}}'}</style>
+  </div>
+);
 
 function App() {
   return (
@@ -99,6 +113,7 @@ function App() {
           <MeProvider>
           <Router>
           <DarkReaderGuard />
+          <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/signup/:hash" element={<PublicSignup />} />
@@ -230,6 +245,7 @@ function App() {
               <Route path="/wordpress/blog-menu" element={<SiteMenuManager />} />
             </Route>
           </Routes>
+          </Suspense>
         </Router>
           </MeProvider>
       </PermissionProvider>
