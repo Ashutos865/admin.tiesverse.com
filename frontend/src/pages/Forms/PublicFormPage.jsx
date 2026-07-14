@@ -13,6 +13,10 @@ export default function PublicFormPage() {
   const [form, setForm] = useState(null);
   const [state, setState] = useState('loading');   // loading | ready | closed | error
 
+  // Tab title: show "Forms" (or the form's name), not the app's "Tiesverse Admin".
+  useEffect(() => { document.title = 'Forms'; }, []);
+  useEffect(() => { if (form?.title) document.title = `${form.title} · Forms`; }, [form]);
+
   useEffect(() => {
     (async () => {
       const res = await getPublicForm(token).catch(() => ({ error: 'Failed' }));
