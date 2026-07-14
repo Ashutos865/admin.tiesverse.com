@@ -617,7 +617,7 @@ function SettingsPanel({ form, onChange, onSettings, shareLink, copied, copyLink
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <Toggle label={'Show “Made with ❤ with Tech · Tiesverse” footer'} checked={s.show_footer !== false} onChange={v => onSettings({ show_footer: v })} />
+        <Toggle label={'Show “Made with ❤ by Tech · Tiesverse” footer'} checked={s.show_footer !== false} onChange={v => onSettings({ show_footer: v })} />
       </div>
     </div>
   );

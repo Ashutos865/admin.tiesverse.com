@@ -140,7 +140,7 @@ export function TiesFooter({ show = true }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 10 }}>
       <span style={{ background: 'rgba(255,255,255,.9)', border: '1px solid rgba(0,0,0,.06)', borderRadius: 999, padding: '6px 15px', fontSize: 12.5, color: '#555', boxShadow: '0 6px 18px -10px rgba(0,0,0,.3)', backdropFilter: 'blur(4px)' }}>
-        Made with <span style={{ color: '#e0245e' }}>❤</span> with Tech&nbsp;·&nbsp;<strong style={{ color: '#161616', fontWeight: 800 }}>Tiesverse</strong>
+        Made with <span style={{ color: '#e0245e' }}>❤</span> by Tech&nbsp;·&nbsp;<strong style={{ color: '#161616', fontWeight: 800 }}>Tiesverse</strong>
       </span>
     </div>
   );

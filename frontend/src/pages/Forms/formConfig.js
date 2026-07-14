@@ -88,7 +88,7 @@ export const DEFAULT_SETTINGS = {
   thank_you_emoji: '🎉',
   thank_you_button_text: '',
   thank_you_button_url: '',
-  show_footer: true,          // the "Made with ❤️ with Tech" bar
+  show_footer: true,          // the "Made with ❤️ by Tech" bar
   close_date: '',
   multi_page: false,
   pages: [],           // [{id, title, description, banner, next_text}]
