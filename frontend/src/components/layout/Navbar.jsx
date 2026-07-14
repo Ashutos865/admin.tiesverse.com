@@ -1,6 +1,6 @@
 import { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HelpCircle, LogOut, Menu, Moon, Search, Settings, Sun } from 'lucide-react';
+import { HelpCircle, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
 import { AuthContext } from '../../context/AuthContext';
 import { ThemeContext } from '../../context/ThemeContext';
 import NotificationsBell from './NotificationsBell.jsx';
@@ -63,26 +63,23 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
         </button>
         <button
           type="button"
-          className="hide-narrow"
-          onClick={() => navigate('/accounts/settings')}
-          aria-label="Profile settings"
-          title="Settings"
-        >
-          <Settings size={19} />
-        </button>
-        <button
-          type="button"
           onClick={toggleTheme}
           aria-label="Toggle theme"
           title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
         >
           {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
         </button>
-        <span className="portal-user-avatar" title={displayName}>
+        <button
+          type="button"
+          className="portal-user-avatar"
+          onClick={() => navigate('/accounts/settings')}
+          aria-label="Profile and settings"
+          title={`${displayName} · Profile & settings`}
+        >
           {profile?.avatar_url
             ? <img src={profile.avatar_url} alt={displayName} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
             : (initials || 'TV')}
-        </span>
+        </button>
         <button type="button" onClick={logoutUser} aria-label="Log out" title="Log out">
           <LogOut size={18} />
         </button>
