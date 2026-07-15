@@ -22,6 +22,107 @@ const fieldStyle = {
     boxSizing: 'border-box', outline: 'none',
 };
 
+const pageStyle = {
+    width: '100%',
+    maxWidth: 1440,
+    margin: '0 auto',
+    padding: '32px clamp(16px, 4vw, 28px)',
+    minHeight: '100%',
+    boxSizing: 'border-box',
+    overflowX: 'hidden',
+};
+
+const headerStyle = {
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 24,
+    marginBottom: 24,
+    flexWrap: 'wrap',
+};
+
+const headerCopyStyle = {
+    minWidth: 0,
+    flex: '1 1 320px',
+};
+
+const eyebrowStyle = {
+    display: 'block',
+    marginBottom: 6,
+    color: 'var(--primary)',
+    fontFamily: 'Hanken Grotesk, sans-serif',
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: '0.1em',
+    textTransform: 'uppercase',
+};
+
+const titleStyle = {
+    margin: 0,
+    color: 'var(--text-main)',
+    fontFamily: 'Hanken Grotesk, sans-serif',
+    fontSize: 'clamp(1.75rem, 4vw, 2.125rem)',
+    fontWeight: 850,
+    lineHeight: 1.05,
+};
+
+const subtitleStyle = {
+    maxWidth: 720,
+    margin: '7px 0 0',
+    color: 'var(--text-muted)',
+    fontSize: 14,
+    lineHeight: 1.6,
+};
+
+const createButtonStyle = {
+    display: 'inline-flex',
+    minHeight: 44,
+    maxWidth: '100%',
+    flex: '0 1 auto',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: '0 18px',
+    border: 0,
+    borderRadius: 9,
+    background: 'var(--primary)',
+    boxShadow: '0 8px 20px color-mix(in srgb, var(--primary) 22%, transparent)',
+    color: '#fff',
+    cursor: 'pointer',
+    fontFamily: 'Hanken Grotesk, sans-serif',
+    fontSize: 13,
+    fontWeight: 750,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+};
+
+const createButtonTextStyle = {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+};
+
+const cardGridStyle = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 310px), 1fr))',
+    gap: 14,
+};
+
+const cardActionButton = (danger = false) => ({
+    display: 'inline-grid',
+    width: 30,
+    height: 30,
+    flex: '0 0 30px',
+    placeItems: 'center',
+    padding: 0,
+    borderRadius: 8,
+    border: danger ? '1px solid color-mix(in srgb, #ba1a1a 16%, transparent)' : '1px solid var(--outline-variant)',
+    background: danger ? 'color-mix(in srgb, #ba1a1a 7%, transparent)' : 'var(--surface-container-low)',
+    color: danger ? '#ba1a1a' : 'var(--text-muted)',
+    cursor: 'pointer',
+});
+
 const EMPTY = { name: '', description: '', lead_name: '', co_lead_name: '', is_active: true };
 
 const ROLE_LABELS = { member: 'Member', intern: 'Intern', team_lead: 'Team Lead', advisory: 'Advisory', hr: 'HR', admin: 'Admin', contractual: 'Contractual', superuser: 'Super User' };
@@ -110,7 +211,7 @@ export default function HRDepartments() {
     if (!canManage) return <NoAccess title="HR Departments" />;
 
     return (
-        <div style={{ padding: '32px 28px', minHeight: '100%' }}>
+        <div style={pageStyle}>
             {notification && (
                 <div style={{
                     position: 'fixed', top: 24, right: 24, zIndex: 9999,
@@ -125,14 +226,14 @@ export default function HRDepartments() {
             )}
 
             {/* Header */}
-            <div className="career-admin-header" style={{ marginBottom: 24 }}>
-                <div>
-                    <span className="career-admin-eyebrow">HR Operations</span>
-                    <h1>HR Departments</h1>
-                    <p>Create and manage departments. Assign a Team Lead and Co-Lead from your verified team members.</p>
+            <div className="career-admin-header" style={headerStyle}>
+                <div style={headerCopyStyle}>
+                    <span className="career-admin-eyebrow" style={eyebrowStyle}>HR Operations</span>
+                    <h1 style={titleStyle}>HR Departments</h1>
+                    <p style={subtitleStyle}>Create and manage departments. Assign a Team Lead and Co-Lead from your verified team members.</p>
                 </div>
-                <button className="career-admin-create" onClick={openCreate}>
-                    <Plus size={16} /> New Department
+                <button type="button" className="career-admin-create" onClick={openCreate} style={createButtonStyle}>
+                    <Plus size={16} style={{ flexShrink: 0 }} /> <span>New Department</span>
                 </button>
             </div>
 
@@ -144,7 +245,7 @@ export default function HRDepartments() {
                     No departments yet. Create your first one above.
                 </div>
             ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 310px), 1fr))', gap: 14 }}>
                     {departments.map(dept => {
                         const memberCount = teamMembers.filter(m => (m.assigned_departments || []).includes(dept.name)).length;
                         return (
@@ -172,10 +273,10 @@ export default function HRDepartments() {
                                         )}
                                     </div>
                                     <div style={{ display: 'flex', gap: 4, flexShrink: 0, marginLeft: 8 }}>
-                                        <button onClick={() => openEdit(dept)} style={{ background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, borderRadius: 7, display: 'grid', placeItems: 'center' }}>
+                                        <button type="button" aria-label={`Edit ${dept.name}`} title={`Edit ${dept.name}`} onClick={() => openEdit(dept)} style={cardActionButton(false)}>
                                             <Edit2 size={13} />
                                         </button>
-                                        <button onClick={() => handleDelete(dept)} style={{ background: 'color-mix(in srgb, #ba1a1a 6%, transparent)', border: '1px solid color-mix(in srgb, #ba1a1a 15%, transparent)', color: '#ba1a1a', cursor: 'pointer', padding: 6, borderRadius: 7, display: 'grid', placeItems: 'center' }}>
+                                        <button type="button" aria-label={`Delete ${dept.name}`} title={`Delete ${dept.name}`} onClick={() => handleDelete(dept)} style={cardActionButton(true)}>
                                             <Trash2 size={13} />
                                         </button>
                                     </div>
