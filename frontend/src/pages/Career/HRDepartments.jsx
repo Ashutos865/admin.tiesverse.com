@@ -265,7 +265,7 @@ export default function HRDepartments() {
                                     <MemberSelect
                                         value={form.co_lead_name}
                                         onChange={v => setForm(f => ({ ...f, co_lead_name: v }))}
-                                        members={teamMembers.filter(m => m.candidate_name !== form.lead_name)}
+                                        members={teamMembers}
                                         placeholder="Select co-lead…"
                                     />
                                 </div>
