@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { getHRDepartments, createHRDepartment, updateHRDepartment, deleteHRDepartment, getOnboardingList } from '../../apiClient';
 import { Building2, Plus, Edit2, Trash2, X, Crown, Users, Lock } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionContext';
@@ -34,9 +34,10 @@ const pageStyle = {
 
 const headerStyle = {
     display: 'flex',
+    flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    gap: 24,
+    gap: 16,
     marginBottom: 24,
     flexWrap: 'wrap',
 };
@@ -76,9 +77,11 @@ const subtitleStyle = {
 
 const createButtonStyle = {
     display: 'inline-flex',
+    width: 'fit-content',
     minHeight: 44,
     maxWidth: '100%',
     flex: '0 1 auto',
+    alignSelf: 'flex-end',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -159,16 +162,19 @@ export default function HRDepartments() {
         setTimeout(() => setNotification(null), 4000);
     };
 
-    const load = useCallback(async () => {
-        setLoading(true);
-        const [depts, subs] = await Promise.all([getHRDepartments(), getOnboardingList()]);
-        setDepartments(Array.isArray(depts) ? depts : []);
-        // Only verified members can be leads
-        setTeamMembers(Array.isArray(subs) ? subs.filter(s => s.status === 'verified') : []);
-        setLoading(false);
-    }, []);
+    useEffect(() => {
+        let ignore = false;
 
-    useEffect(() => { load(); }, [load]);
+        Promise.all([getHRDepartments(), getOnboardingList()]).then(([depts, subs]) => {
+            if (ignore) return;
+            setDepartments(Array.isArray(depts) ? depts : []);
+            // Only verified members can be leads
+            setTeamMembers(Array.isArray(subs) ? subs.filter(s => s.status === 'verified') : []);
+            setLoading(false);
+        });
+
+        return () => { ignore = true; };
+    }, []);
 
     const openCreate = () => { setForm(EMPTY); setModal({ mode: 'create' }); };
     const openEdit = (dept) => {
@@ -233,7 +239,7 @@ export default function HRDepartments() {
                     <p style={subtitleStyle}>Create and manage departments. Assign a Team Lead and Co-Lead from your verified team members.</p>
                 </div>
                 <button type="button" className="career-admin-create" onClick={openCreate} style={createButtonStyle}>
-                    <Plus size={16} style={{ flexShrink: 0 }} /> <span>New Department</span>
+                    <Plus size={16} style={{ flexShrink: 0 }} /> <span style={createButtonTextStyle}>New Department</span>
                 </button>
             </div>
 
@@ -245,7 +251,7 @@ export default function HRDepartments() {
                     No departments yet. Create your first one above.
                 </div>
             ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 310px), 1fr))', gap: 14 }}>
+                <div style={cardGridStyle}>
                     {departments.map(dept => {
                         const memberCount = teamMembers.filter(m => (m.assigned_departments || []).includes(dept.name)).length;
                         return (
@@ -259,7 +265,7 @@ export default function HRDepartments() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                            <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>
+                                            <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif', overflowWrap: 'anywhere' }}>
                                                 {dept.name}
                                             </h3>
                                             <span style={{
@@ -269,7 +275,7 @@ export default function HRDepartments() {
                                             }}>{dept.is_active ? 'Active' : 'Inactive'}</span>
                                         </div>
                                         {dept.description && (
-                                            <p style={{ margin: '5px 0 0', fontSize: '0.8125rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{dept.description}</p>
+                                            <p style={{ margin: '5px 0 0', fontSize: '0.8125rem', color: 'var(--text-muted)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>{dept.description}</p>
                                         )}
                                     </div>
                                     <div style={{ display: 'flex', gap: 4, flexShrink: 0, marginLeft: 8 }}>
@@ -285,10 +291,10 @@ export default function HRDepartments() {
                                 {/* Lead / Co-lead */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 10 }}>
                                     {dept.lead_name ? (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.8125rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, fontSize: '0.8125rem' }}>
                                             <Crown size={12} style={{ color: '#f59e0b', flexShrink: 0 }} />
-                                            <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Lead:</span>
-                                            <span style={{ color: 'var(--text-main)', fontWeight: 700 }}>{dept.lead_name}</span>
+                                            <span style={{ color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0 }}>Lead:</span>
+                                            <span style={{ color: 'var(--text-main)', fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>{dept.lead_name}</span>
                                         </div>
                                     ) : (
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.8125rem' }}>
@@ -297,10 +303,10 @@ export default function HRDepartments() {
                                         </div>
                                     )}
                                     {dept.co_lead_name && (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.8125rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, fontSize: '0.8125rem' }}>
                                             <Crown size={11} style={{ color: 'var(--primary)', flexShrink: 0, opacity: 0.7 }} />
-                                            <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Co-Lead:</span>
-                                            <span style={{ color: 'var(--text-main)', fontWeight: 700 }}>{dept.co_lead_name}</span>
+                                            <span style={{ color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0 }}>Co-Lead:</span>
+                                            <span style={{ color: 'var(--text-main)', fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>{dept.co_lead_name}</span>
                                         </div>
                                     )}
                                 </div>
@@ -327,7 +333,7 @@ export default function HRDepartments() {
                             <strong style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>
                                 {modal.mode === 'create' ? 'New Department' : 'Edit Department'}
                             </strong>
-                            <button onClick={closeModal} style={{ background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'grid', placeItems: 'center' }}><X size={14} /></button>
+                            <button type="button" aria-label="Close department dialog" title="Close" onClick={closeModal} style={{ background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'grid', placeItems: 'center' }}><X size={14} /></button>
                         </div>
 
                         {/* Modal body */}
@@ -345,7 +351,7 @@ export default function HRDepartments() {
                             </div>
 
                             {/* Lead + Co-Lead dropdowns */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 12 }}>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 5 }}>
                                         <Crown size={9} style={{ display: 'inline', marginRight: 4, color: '#f59e0b' }} />
