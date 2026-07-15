@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getSignups, approveSignup, rejectSignup, getHRDepartments, resendCredentials, getProvisionedMembers } from '../../apiClient';
 import { usePermissions } from '../../context/PermissionContext';
+import SearchableSelect from '../../components/SearchableSelect';
 
 const ROLES = [
   ['member', 'Member'], ['intern', 'Intern'], ['team_lead', 'Team Lead'],
@@ -148,14 +149,14 @@ export default function SignupApprovals() {
             <div style={S.sendBoxLbl}>Send login details to one member</div>
             <div style={S.sendBoxSub}>Issues a fresh password and emails it to just this person.</div>
           </div>
-          <select style={S.memberSelect} value={pickedMember} onChange={e => setPickedMember(e.target.value)}>
-            <option value="">Choose a member…</option>
-            {members.map(m => (
-              <option key={m.submission_id} value={m.submission_id}>
-                {m.name} · {m.email} ({m.role})
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            style={{ minWidth: 260, ...S.memberSelect }}
+            options={members.map(m => ({ value: m.submission_id, label: m.name, sub: `${m.email} · ${m.role}` }))}
+            value={pickedMember}
+            onChange={setPickedMember}
+            placeholder="Choose a member…"
+            searchPlaceholder="Search name or email…"
+          />
           <button
             style={{ ...S.sendOne, ...(pickedMember ? {} : S.disabled) }}
             disabled={!pickedMember || sendingOne}

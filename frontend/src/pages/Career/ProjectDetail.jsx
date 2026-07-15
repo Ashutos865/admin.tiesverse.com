@@ -12,6 +12,7 @@ import {
 } from '../../apiClient';
 import { usePermissions } from '../../context/PermissionContext';
 import ProjectChat from './ProjectChat.jsx';
+import SearchableSelect from '../../components/SearchableSelect';
 import {
   ArrowLeft, Loader2, Plus, CalendarClock, Users, AlertTriangle, X, Trash2,
   History, ClipboardList, Settings2, Flag, MessageSquare, CheckSquare, Square, ListChecks, Building2,
@@ -502,10 +503,13 @@ function TaskModal({ projectId, members, teams = [], departments, onClose, onSav
       <label style={lbl}>Title *<input autoFocus value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} style={field} /></label>
       <label style={lbl}>Description<textarea rows={2} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} style={{ ...field, resize: 'vertical' }} /></label>
       <label style={lbl}>Assign to person
-        <select value={form.assigned_to} onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value, assigned_to_department: '' }))} style={field}>
-          <option value="">— Select member —</option>
-          {members.map((m) => <option key={m.id} value={m.id}>{m.candidate_name}</option>)}
-        </select>
+        <SearchableSelect
+          options={members.map((m) => ({ value: m.id, label: m.candidate_name }))}
+          value={form.assigned_to}
+          onChange={(v) => setForm((f) => ({ ...f, assigned_to: v, assigned_to_department: v ? '' : f.assigned_to_department }))}
+          placeholder="— Select member —"
+          searchPlaceholder="Search member…"
+        />
       </label>
       {(departments || []).length > 0 && (
         <label style={lbl}>…or a whole department
@@ -641,16 +645,25 @@ function TeamCard({ team, members, canManage, onAdd, onRemovePerson, onUpdate, o
 
       {canManage && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <select value={sel} onChange={(e) => setSel(e.target.value)} style={{ ...field, flex: 1, minWidth: 150, padding: '6px 9px', fontSize: 12.5 }}>
-            <option value="">— Add a person to this team —</option>
-            {available.map((pm) => <option key={pm.id} value={pm.member}>{pm.member_name}</option>)}
-          </select>
+          <SearchableSelect
+            options={available.map((pm) => ({ value: pm.member, label: pm.member_name }))}
+            value={sel}
+            onChange={setSel}
+            placeholder="— Add a person to this team —"
+            searchPlaceholder="Search member…"
+            style={{ flex: 1, minWidth: 150 }}
+          />
           <button onClick={add} disabled={!sel} style={btn()}><Plus size={14} /> Add</button>
           {inTeam.length > 0 && (
-            <select value={team.lead || ''} onChange={(e) => onUpdate({ lead: e.target.value || null })} style={{ ...field, width: 'auto', padding: '6px 9px', fontSize: 12.5 }} title="Set team lead">
-              <option value="">— Set lead —</option>
-              {inTeam.map((pm) => <option key={pm.id} value={pm.member}>Lead: {pm.member_name}</option>)}
-            </select>
+            <SearchableSelect
+              options={inTeam.map((pm) => ({ value: pm.member, label: pm.member_name }))}
+              value={team.lead || ''}
+              onChange={(v) => onUpdate({ lead: v || null })}
+              clearable
+              allLabel="— Set lead —"
+              searchPlaceholder="Search member…"
+              style={{ minWidth: 160 }}
+            />
           )}
         </div>
       )}
@@ -746,10 +759,13 @@ function AddMemberModal({ members, existing, onClose, onSave }) {
     <Overlay title="Add a participant" onClose={onClose} footer={<><button onClick={onClose} style={btn()}>Cancel</button><button onClick={() => onSave(sel)} disabled={!sel} style={btn('var(--primary)', '#fff')}><Plus size={15} /> Add</button></>}>
       <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0 }}>Add any person — including people outside the project’s departments.</p>
       <label style={lbl}>Member
-        <select value={sel} onChange={(e) => setSel(e.target.value)} style={field}>
-          <option value="">— Select —</option>
-          {available.map((m) => <option key={m.id} value={m.id}>{m.candidate_name}{(m.assigned_departments || []).length ? ` · ${(m.assigned_departments || []).join(', ')}` : ''}</option>)}
-        </select>
+        <SearchableSelect
+          options={available.map((m) => ({ value: m.id, label: m.candidate_name, sub: (m.assigned_departments || []).join(', ') }))}
+          value={sel}
+          onChange={setSel}
+          placeholder="— Select —"
+          searchPlaceholder="Search member…"
+        />
       </label>
     </Overlay>
   );

@@ -3,6 +3,11 @@ import {
     getAttendanceList, approveAttendance, checkIn, checkOut,
     getOnboardingList,
 } from '../../apiClient';
+import SearchableSelect from '../../components/SearchableSelect';
+
+// Build the {value,label,sub} option list a SearchableSelect wants from members.
+const memberOptions = (members) =>
+    (members || []).map(m => ({ value: m.id, label: m.candidate_name, sub: m.portal_role_label || m.member_type || '' }));
 
 const STATUS_COLOR = {
     present: 'var(--primary)',
@@ -21,19 +26,15 @@ const APPROVAL_BADGE = {
 
 function MemberSelect({ members, value, onChange, placeholder = 'All members' }) {
     return (
-        <select
+        <SearchableSelect
+            options={memberOptions(members)}
             value={value}
-            onChange={e => onChange(e.target.value)}
-            style={{
-                padding: '6px 10px', borderRadius: 8, border: '1px solid var(--outline-variant)',
-                background: 'var(--surface-container-low)', color: 'var(--text-main)', fontSize: 13,
-            }}
-        >
-            <option value="">{placeholder}</option>
-            {members.map(m => (
-                <option key={m.id} value={m.id}>{m.candidate_name}</option>
-            ))}
-        </select>
+            onChange={onChange}
+            clearable
+            allLabel={placeholder}
+            searchPlaceholder="Search member…"
+            style={{ minWidth: 210 }}
+        />
     );
 }
 
@@ -232,14 +233,13 @@ export default function AttendancePage() {
                         Records today's attendance for the selected member. Work report is collected at check-out.
                     </p>
                     <label style={labelStyle}>Member *</label>
-                    <select
+                    <SearchableSelect
+                        options={memberOptions(members)}
                         value={checkInMember}
-                        onChange={e => setCheckInMember(e.target.value)}
-                        style={inputStyle}
-                    >
-                        <option value="">Select member</option>
-                        {members.map(m => <option key={m.id} value={m.id}>{m.candidate_name}</option>)}
-                    </select>
+                        onChange={setCheckInMember}
+                        placeholder="Select member"
+                        searchPlaceholder="Search member…"
+                    />
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
                         <button onClick={() => setShowCheckIn(false)} style={ghostBtn}>Cancel</button>
                         <button onClick={() => handleCheckIn(checkInMember)} disabled={saving || !checkInMember} style={primaryBtn}>

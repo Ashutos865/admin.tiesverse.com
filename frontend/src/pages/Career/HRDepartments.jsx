@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { getHRDepartments, createHRDepartment, updateHRDepartment, deleteHRDepartment, getOnboardingList } from '../../apiClient';
 import { Building2, Plus, Edit2, Trash2, X, Crown, Users, Lock } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionContext';
+import SearchableSelect from '../../components/SearchableSelect';
 
 // Only HR/Admin (write access) may manage departments — Team Leads etc. cannot.
 function NoAccess({ title }) {
@@ -26,15 +27,18 @@ const EMPTY = { name: '', description: '', lead_name: '', co_lead_name: '', is_a
 const ROLE_LABELS = { member: 'Member', intern: 'Intern', team_lead: 'Team Lead', advisory: 'Advisory', hr: 'HR', admin: 'Admin', contractual: 'Contractual', superuser: 'Super User' };
 const memberRoleLabel = (m) => ROLE_LABELS[m.portal_role] || m.role_offered || 'No role';
 
-// Dropdown to pick a team member by name (or clear)
+// Dropdown to pick a team member by name (or clear). Values are the member's
+// name (lead_name / co_lead_name are stored as names, not ids).
 function MemberSelect({ value, onChange, members, placeholder }) {
     return (
-        <select style={{ ...fieldStyle, cursor: 'pointer', appearance: 'auto' }} value={value} onChange={e => onChange(e.target.value)}>
-            <option value="">{placeholder}</option>
-            {members.map(m => (
-                <option key={m.id} value={m.candidate_name}>{m.candidate_name} — {memberRoleLabel(m)}</option>
-            ))}
-        </select>
+        <SearchableSelect
+            options={members.map(m => ({ value: m.candidate_name, label: m.candidate_name, sub: memberRoleLabel(m) }))}
+            value={value}
+            onChange={onChange}
+            clearable
+            allLabel={placeholder}
+            searchPlaceholder="Search member…"
+        />
     );
 }
 

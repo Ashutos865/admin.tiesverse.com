@@ -8,6 +8,7 @@ import {
 } from '../../apiClient';
 import { Plus, Edit2, Trash2, X, Sparkles, Briefcase, FileText, Mail, ToggleRight, CheckCircle, ExternalLink, Search, Download, Eye, UserCheck, Award, Send, CalendarDays, List as ListIcon } from 'lucide-react';
 import ScheduleCalendar from '../../components/ScheduleCalendar.jsx';
+import SearchableSelect from '../../components/SearchableSelect';
 import jsPDF from 'jspdf';
 
 const viewToggleStyle = (active) => ({
@@ -675,12 +676,13 @@ const CareerAdmin = ({ tab = 'positions' }) => {
             <>
                 <div>
                     <FieldLabel>Applicant (Enrollment)</FieldLabel>
-                    <select name="applicant" value={formData.applicant || ''} onChange={handleInputChange} style={selectStyle} required>
-                        <option value="">Select Applicant...</option>
-                        {enrollmentsList.map(e => (
-                            <option key={e.id} value={e.id}>{e.applicant_name} - {e.position?.title || 'Unknown Position'}</option>
-                        ))}
-                    </select>
+                    <SearchableSelect
+                        options={enrollmentsList.map(e => ({ value: e.id, label: e.applicant_name, sub: e.position?.title || 'Unknown Position' }))}
+                        value={formData.applicant || ''}
+                        onChange={v => handleInputChange({ target: { name: 'applicant', value: v } })}
+                        placeholder="Select Applicant..."
+                        searchPlaceholder="Search applicant…"
+                    />
                 </div>
                 <FormField label="Salary" name="salary" value={formData.salary} onChange={handleInputChange} required type="number" step="0.01" />
                 <FormField label="Joining Date" name="joining_date" value={formData.joining_date} onChange={handleInputChange} required type="date" />

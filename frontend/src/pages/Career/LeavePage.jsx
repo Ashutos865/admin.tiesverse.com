@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getLeaveList, createLeaveRequest, reviewLeaveRequest, getOnboardingList } from '../../apiClient';
 import { usePermissions } from '../../context/PermissionContext';
+import SearchableSelect from '../../components/SearchableSelect';
 
 const STATUS_STYLE = {
     pending:   { bg: 'var(--secondary-container)', color: 'var(--on-secondary-container)' },
@@ -182,10 +183,15 @@ export default function LeavePage() {
                 <>
                     {/* Filters */}
                     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
-                        <select value={filterMember} onChange={e => setFilterMember(e.target.value)} style={selectStyle}>
-                            <option value="">All members</option>
-                            {members.map(m => <option key={m.id} value={m.id}>{m.candidate_name}</option>)}
-                        </select>
+                        <SearchableSelect
+                            options={members.map(m => ({ value: m.id, label: m.candidate_name }))}
+                            value={filterMember}
+                            onChange={setFilterMember}
+                            clearable
+                            allLabel="All members"
+                            searchPlaceholder="Search member…"
+                            style={{ minWidth: 200 }}
+                        />
                         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selectStyle}>
                             <option value="">All statuses</option>
                             {['pending', 'approved', 'rejected', 'cancelled'].map(s => (
@@ -269,10 +275,13 @@ export default function LeavePage() {
                     <div style={{ display: 'grid', gap: 12 }}>
                         <div>
                             <label style={labelStyle}>Member *</label>
-                            <select value={form.member} onChange={e => setForm(f => ({ ...f, member: e.target.value }))} style={{ ...inputStyle, width: '100%' }}>
-                                <option value="">Select member</option>
-                                {members.map(m => <option key={m.id} value={m.id}>{m.candidate_name}</option>)}
-                            </select>
+                            <SearchableSelect
+                                options={members.map(m => ({ value: m.id, label: m.candidate_name }))}
+                                value={form.member}
+                                onChange={v => setForm(f => ({ ...f, member: v }))}
+                                placeholder="Select member"
+                                searchPlaceholder="Search member…"
+                            />
                         </div>
                         <div>
                             <label style={labelStyle}>Leave Type</label>

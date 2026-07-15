@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getTasks, createTask, updateTask, deleteTask, getOnboardingList, getHRDepartments, getWebinarMyAccess, getWebinarAccessGrants, setWebinarAccess } from '../../apiClient';
+import SearchableSelect from '../../components/SearchableSelect';
 
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 const STATUSES = ['todo', 'in_progress', 'review', 'done', 'cancelled'];
@@ -188,10 +189,15 @@ export default function TasksPage() {
 
             {/* Filters */}
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
-                <select value={filterMember} onChange={e => setFilterMember(e.target.value)} style={selectStyle}>
-                    <option value="">All members</option>
-                    {members.map(m => <option key={m.id} value={m.id}>{m.candidate_name}</option>)}
-                </select>
+                <SearchableSelect
+                    options={members.map(m => ({ value: m.id, label: m.candidate_name }))}
+                    value={filterMember}
+                    onChange={setFilterMember}
+                    clearable
+                    allLabel="All members"
+                    searchPlaceholder="Search member…"
+                    style={{ minWidth: 200 }}
+                />
                 {view === 'list' && (
                     <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selectStyle}>
                         <option value="">All statuses</option>
@@ -307,10 +313,13 @@ export default function TasksPage() {
                         </div>
                         <div>
                             <label style={labelStyle}>Assign to Member (individual)</label>
-                            <select value={form.assigned_to} onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value, assigned_to_department: e.target.value ? '' : f.assigned_to_department }))} style={{ ...inputStyle, width: '100%' }}>
-                                <option value="">— select member —</option>
-                                {members.map(m => <option key={m.id} value={m.id}>{m.candidate_name}</option>)}
-                            </select>
+                            <SearchableSelect
+                                options={members.map(m => ({ value: m.id, label: m.candidate_name }))}
+                                value={form.assigned_to}
+                                onChange={v => setForm(f => ({ ...f, assigned_to: v, assigned_to_department: v ? '' : f.assigned_to_department }))}
+                                placeholder="— select member —"
+                                searchPlaceholder="Search member…"
+                            />
                         </div>
                         <div>
                             <label style={labelStyle}>Or Assign to Department (all members)</label>

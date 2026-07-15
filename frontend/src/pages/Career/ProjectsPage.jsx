@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getProjects, createProject, getHRDepartments, getOnboardingList } from '../../apiClient';
 import { usePermissions } from '../../context/PermissionContext';
+import SearchableSelect from '../../components/SearchableSelect';
 import {
   Plus, Loader2, FolderKanban, Users, CalendarClock, AlertTriangle, X, Search, UserPlus,
 } from 'lucide-react';
@@ -225,10 +226,14 @@ function CreateProjectModal({ depts, members = [], onClose, onCreated, onError }
           <div>
             <div style={{ ...lbl, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><UserPlus size={14} /> Add specific people (optional)</div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <select value={personSel} onChange={(e) => setPersonSel(e.target.value)} style={field}>
-                <option value="">— Select a person —</option>
-                {members.filter((m) => !people.includes(m.id)).map((m) => <option key={m.id} value={m.id}>{m.candidate_name}{(m.assigned_departments || []).length ? ` · ${(m.assigned_departments || []).join(', ')}` : ''}</option>)}
-              </select>
+              <SearchableSelect
+                options={members.filter((m) => !people.includes(m.id)).map((m) => ({ value: m.id, label: m.candidate_name, sub: (m.assigned_departments || []).join(', ') }))}
+                value={personSel}
+                onChange={setPersonSel}
+                placeholder="— Select a person —"
+                searchPlaceholder="Search person…"
+                style={{ flex: 1, minWidth: 0 }}
+              />
               <button onClick={addPerson} disabled={!personSel} style={btn()}><Plus size={14} /> Add</button>
             </div>
             {people.length > 0 && (

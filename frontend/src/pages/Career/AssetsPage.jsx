@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getAssets, createAsset, updateAsset, deleteAsset, assignAsset, getOnboardingList } from '../../apiClient';
+import SearchableSelect from '../../components/SearchableSelect';
 
 const CATEGORIES = ['laptop', 'phone', 'id_card', 'charger', 'headset', 'monitor', 'other'];
 const CONDITIONS = ['new', 'good', 'fair', 'poor'];
@@ -222,10 +223,14 @@ export default function AssetsPage() {
                         Currently: {assignModal.assigned_to_name || 'unassigned'}
                     </p>
                     <label style={labelStyle}>Assign to member (leave blank to return)</label>
-                    <select value={assignMember} onChange={e => setAssignMember(e.target.value)} style={{ ...inputStyle, width: '100%' }}>
-                        <option value="">— Return asset —</option>
-                        {members.map(m => <option key={m.id} value={m.id}>{m.candidate_name}</option>)}
-                    </select>
+                    <SearchableSelect
+                        options={members.map(m => ({ value: m.id, label: m.candidate_name }))}
+                        value={assignMember}
+                        onChange={setAssignMember}
+                        clearable
+                        allLabel="— Return asset —"
+                        searchPlaceholder="Search member…"
+                    />
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
                         <button onClick={() => setAssignModal(null)} style={ghostBtn}>Cancel</button>
                         <button onClick={handleAssign} disabled={saving} style={primaryBtn}>{saving ? 'Saving...' : assignMember ? 'Assign' : 'Return'}</button>
