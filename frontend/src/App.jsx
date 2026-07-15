@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { PermissionProvider } from './context/PermissionContext';
@@ -6,6 +6,13 @@ import { MeProvider } from './context/MeContext';
 import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 import DarkReaderGuard from './components/DarkReaderGuard';
+import ChunkErrorBoundary from './components/ChunkErrorBoundary';
+// Use a resilient lazy(): if a route chunk 404s after a new deploy (stale
+// index.html referencing an old hash), it retries once then hard-reloads so the
+// user gets fresh chunks instead of a blank page. Aliased to `lazy` so the
+// existing lazy(() => import(...)) calls below all get this behaviour.
+import lazyWithReload from './lib/lazyWithReload';
+const lazy = lazyWithReload;
 
 // Route pages are lazy-loaded (code-split) so first-load pages like /login and
 // /signup only download their own small chunk instead of the whole admin app.
@@ -113,6 +120,7 @@ function App() {
           <MeProvider>
           <Router>
           <DarkReaderGuard />
+          <ChunkErrorBoundary>
           <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -246,6 +254,7 @@ function App() {
             </Route>
           </Routes>
           </Suspense>
+          </ChunkErrorBoundary>
         </Router>
           </MeProvider>
       </PermissionProvider>
