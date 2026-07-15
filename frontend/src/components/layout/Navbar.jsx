@@ -90,9 +90,9 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
 
 const paletteBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 8, width: 'auto',
-  padding: '7px 10px', borderRadius: 10, cursor: 'pointer',
-  border: '1px solid var(--border,#e5e7eb)', background: 'transparent',
-  color: 'var(--text-muted,#6b7280)',
+  height: 36, boxSizing: 'border-box', padding: '0 12px', borderRadius: 10, cursor: 'pointer',
+  border: '1px solid var(--outline-variant)', background: 'transparent',
+  color: 'var(--text-muted)',
 };
 const paletteBtnText = { fontSize: 13, fontWeight: 500 };
 const paletteBtnKbd = {

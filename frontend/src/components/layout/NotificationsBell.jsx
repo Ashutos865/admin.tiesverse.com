@@ -38,8 +38,8 @@ export default function NotificationsBell() {
   const Icon = (k) => (k === 'mention' ? AtSign : k === 'dm' ? MessageSquare : Bell);
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button type="button" onClick={openPanel} aria-label="Notifications" title="Notifications" style={{ position: 'relative' }}>
+    <div ref={ref} className="portal-bell-wrap" style={{ position: 'relative', display: 'inline-flex' }}>
+      <button type="button" className="portal-bell-btn" onClick={openPanel} aria-label="Notifications" title="Notifications" style={{ position: 'relative' }}>
         <Bell size={19} />
         {unread > 0 && <span style={{ position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 9, background: '#dc2626', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center', lineHeight: 1 }}>{unread > 9 ? '9+' : unread}</span>}
       </button>
