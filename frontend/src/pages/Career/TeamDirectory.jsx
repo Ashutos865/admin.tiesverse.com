@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { getOnboardingList, getHRDepartments, verifyOnboarding, addTeamMember, issueCertificate, sendCertificateEmail, getEmailTemplates, fetchDocBlobUrl, viewDoc } from '../../apiClient';
+import { getOnboardingList, getHRDepartments, verifyOnboarding, addTeamMember, issueCertificate, sendCertificateEmail, getEmailTemplates, fetchDocBlobUrl, viewDoc, getWorkSessions } from '../../apiClient';
 import { previewTemplate } from '../../lib/emailPreview';
 import { usePermissions } from '../../context/PermissionContext';
 import {
@@ -225,6 +225,43 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
     const [certMsg, setCertMsg] = useState(null);
     const [sendModal, setSendModal] = useState(null);   // { cert } to email
 
+    // ── Working hours: all-history per-day log (scoped server-side to who may see it) ──
+    const [worklog, setWorklog] = useState(null);   // null = loading
+    useEffect(() => {
+        let alive = true;
+        getWorkSessions({ member: member.id })
+            .then((res) => { if (alive) setWorklog(res || { sessions: [], daily: [] }); })
+            .catch(() => { if (alive) setWorklog({ sessions: [], daily: [] }); });
+        return () => { alive = false; };
+    }, [member.id]);
+
+    // Build per-day rows: { date, minutes, items:[{title, note}] }. Uses the locked
+    // finalized breakdown when present, else the day's raw sessions. No timings shown.
+    const workDays = useMemo(() => {
+        if (!worklog) return null;
+        const daily = worklog.daily || [];
+        const sessions = worklog.sessions || [];
+        const days = {};
+        daily.forEach((d) => {
+            days[d.date] = {
+                date: d.date, minutes: d.minutes || 0, finalized: !!d.finalized,
+                items: (d.tasks || []).map((t) => ({ title: t.title || t.custom_task || 'Work', note: t.note || '' })),
+            };
+        });
+        sessions.forEach((s) => {
+            const day = days[s.date] || (days[s.date] = { date: s.date, minutes: 0, finalized: false, items: [] });
+            if (day.finalized) return;                 // finalized days already have their task breakdown
+            day.items.push({ title: s.task_title || s.custom_task || 'Work', note: s.note || '' });
+        });
+        return Object.values(days).sort((a, b) => (a.date < b.date ? 1 : -1));
+    }, [worklog]);
+
+    const totalMinutes = (workDays || []).reduce((sum, d) => sum + (d.minutes || 0), 0);
+    const fmtHM = (m) => {
+        const h = Math.floor(m / 60), mm = m % 60;
+        return h ? (mm ? `${h}h ${mm}m` : `${h}h`) : `${mm}m`;
+    };
+
     // Check localStorage for offer status
     const offerSentMap = (() => {
         try { return JSON.parse(localStorage.getItem('tv_offers_sent') || '{}'); } catch { return {}; }
@@ -310,6 +347,45 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
 
                 {/* ── Body sections ── */}
                 <div style={{ padding: '0 28px 28px', display: 'flex', flexDirection: 'column', gap: 0 }}>
+
+                    {/* Working Hours — per-day total + what they did (no clock-in/out times) */}
+                    <ProfileSection
+                        title={`Working Hours${workDays && workDays.length ? ` · ${fmtHM(totalMinutes)} total` : ''}`}
+                        icon={<Clock size={14} />}
+                    >
+                        {worklog === null ? (
+                            <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '10px 2px' }}>Loading…</div>
+                        ) : !workDays || workDays.length === 0 ? (
+                            <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '12px 14px', borderRadius: 10, background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)' }}>
+                                No work logged yet for this member.
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
+                                {workDays.map((d) => (
+                                    <div key={d.date} style={{ display: 'flex', gap: 12, padding: '11px 14px', borderRadius: 10, background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)' }}>
+                                        <div style={{ flex: 'none', width: 96 }}>
+                                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-main)' }}>{fmtDate(d.date)}</div>
+                                            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--primary)', marginTop: 2 }}>{fmtHM(d.minutes)}</div>
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            {d.items.length ? (
+                                                <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                                    {d.items.map((it, i) => (
+                                                        <li key={i} style={{ fontSize: 13, color: 'var(--text-main)', lineHeight: 1.4 }}>
+                                                            <span style={{ fontWeight: 600 }}>{it.title}</span>
+                                                            {it.note ? <span style={{ color: 'var(--text-muted)' }}> — {it.note}</span> : null}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>No note added.</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </ProfileSection>
 
                     {/* Offer / Joining Letter */}
                     <ProfileSection title="Offer Letter" icon={<FileText size={14} />}>
