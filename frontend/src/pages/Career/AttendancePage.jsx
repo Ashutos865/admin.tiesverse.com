@@ -50,6 +50,7 @@ export default function AttendancePage() {
     const [workReport, setWorkReport] = useState('');
     const [approveModal, setApproveModal] = useState(null);
     const [approveNote, setApproveNote] = useState('');
+    const [viewReport, setViewReport] = useState(null);   // record whose full work report is being viewed
     // Check-in modal state
     const [showCheckIn, setShowCheckIn] = useState(false);
     const [checkInMember, setCheckInMember] = useState('');
@@ -199,10 +200,23 @@ export default function AttendancePage() {
                                                 background: badge.bg, color: badge.color,
                                             }}>{badge.label}</span>
                                         </td>
-                                        <td style={{ padding: '10px 12px', color: 'var(--text-muted)', maxWidth: 200 }}>
-                                            <span title={r.work_report} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                {r.work_report || '—'}
-                                            </span>
+                                        <td style={{ padding: '10px 12px', color: 'var(--text-muted)', maxWidth: 220 }}>
+                                            {r.work_report ? (
+                                                <button
+                                                    onClick={() => setViewReport(r)}
+                                                    title="Click to read the full work report"
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: 6, maxWidth: '100%',
+                                                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                                        color: 'var(--primary)', font: 'inherit', textAlign: 'left',
+                                                    }}
+                                                >
+                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-main)' }}>
+                                                        {r.work_report}
+                                                    </span>
+                                                    <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 600, color: 'var(--primary)' }}>View</span>
+                                                </button>
+                                            ) : '—'}
                                         </td>
                                         <td style={{ padding: '10px 12px' }}>
                                             <div style={{ display: 'flex', gap: 6 }}>
@@ -290,6 +304,38 @@ export default function AttendancePage() {
                         <button onClick={() => handleApprove('approved')} disabled={saving} style={primaryBtn}>
                             {saving ? 'Saving...' : 'Approve'}
                         </button>
+                    </div>
+                </Modal>
+            )}
+
+            {/* View full work report (read-only — works for past/approved records too) */}
+            {viewReport && (
+                <Modal title={`Work Report — ${viewReport.member_name}`} onClose={() => setViewReport(null)}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14, fontSize: 12.5, color: 'var(--text-muted)' }}>
+                        <span><strong style={{ color: 'var(--text-main)' }}>Date:</strong> {viewReport.date}</span>
+                        {viewReport.check_in && <span><strong style={{ color: 'var(--text-main)' }}>In:</strong> {new Date(viewReport.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                        {viewReport.check_out && <span><strong style={{ color: 'var(--text-main)' }}>Out:</strong> {new Date(viewReport.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                        <span style={{
+                            padding: '1px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                            background: (APPROVAL_BADGE[viewReport.approval_status] || APPROVAL_BADGE.pending).bg,
+                            color: (APPROVAL_BADGE[viewReport.approval_status] || APPROVAL_BADGE.pending).color,
+                        }}>{(APPROVAL_BADGE[viewReport.approval_status] || APPROVAL_BADGE.pending).label}</span>
+                    </div>
+                    <div style={{
+                        whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 14, lineHeight: 1.6,
+                        color: 'var(--text-main)', background: 'var(--surface-container-lowest, var(--surface-container-low))',
+                        border: '1px solid var(--outline-variant)', borderRadius: 10, padding: '14px 16px',
+                        maxHeight: '50vh', overflowY: 'auto',
+                    }}>
+                        {viewReport.work_report}
+                    </div>
+                    {viewReport.approval_note && (
+                        <p style={{ margin: '12px 0 0', fontSize: 12.5, color: 'var(--text-muted)' }}>
+                            <strong style={{ color: 'var(--text-main)' }}>Reviewer note:</strong> {viewReport.approval_note}
+                        </p>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+                        <button onClick={() => setViewReport(null)} style={ghostBtn}>Close</button>
                     </div>
                 </Modal>
             )}
