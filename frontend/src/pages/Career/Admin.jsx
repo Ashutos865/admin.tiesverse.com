@@ -523,6 +523,18 @@ const CareerAdmin = ({ tab = 'positions' }) => {
         return matchSearch && matchDept && matchStatus;
     });
 
+    // Applications: show the newest application on top. D1 returns rows oldest-first
+    // (ORDER BY id ASC); sort by the strongest recency signal available — created_at /
+    // timestamp when present, else the auto-incrementing row id — highest first.
+    if (tab === 'applications') {
+        const recency = (c) => {
+            const t = Date.parse(c.created_at || c.timestamp || '');
+            if (!Number.isNaN(t)) return t;
+            return Number(c.id ?? c.row_index ?? 0);
+        };
+        filteredItems.sort((a, b) => recency(b) - recency(a));
+    }
+
     const handleGeneratePDF = () => {
         const doc = new jsPDF('landscape');
         doc.setFont('helvetica', 'bold');

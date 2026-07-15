@@ -16,6 +16,12 @@ class D1Error(RuntimeError):
     pass
 
 
+# The candidates table's extra columns only need to be created once. Adding them
+# on every read fired 5 pointless ALTER TABLE round-trips to D1 per page load —
+# the main reason the Application Tracker felt slow. Ensure them once per process.
+_COLUMNS_ENSURED = False
+
+
 def _query(sql, params=None):
     account_id = getattr(settings, 'CLOUDFLARE_ACCOUNT_ID', '')
     db_id = getattr(settings, 'CLOUDFLARE_D1_DATABASE_ID', '')
@@ -57,10 +63,19 @@ def _query(sql, params=None):
     return first.get('results') or []
 
 
+def _ensure_columns_once():
+    """Create the candidates table's optional columns at most once per process."""
+    global _COLUMNS_ENSURED
+    if _COLUMNS_ENSURED:
+        return
+    _ensure_certificate_columns()
+    _ensure_interview_columns()
+    _COLUMNS_ENSURED = True
+
+
 def get_candidates():
     try:
-        _ensure_certificate_columns()
-        _ensure_interview_columns()
+        _ensure_columns_once()
         return _query(
             """SELECT id, timestamp, department, roles, first_name, last_name, email,
                       phone, city, linkedin, portfolio, why_join, answers, resume_name,
@@ -68,7 +83,7 @@ def get_candidates():
                       offer_certificate_id,
                       interview_at, meeting_link, calendar_event_id, interviewer_email,
                       created_at
-               FROM candidates ORDER BY id ASC"""
+               FROM candidates ORDER BY id DESC"""
         )
     except D1Error as exc:
         logger.error('get_candidates failed: %s', exc)
