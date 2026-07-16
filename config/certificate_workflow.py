@@ -11,9 +11,12 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 from django.http import HttpResponse, JsonResponse
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
@@ -45,6 +48,50 @@ def _now_suffix() -> str:
 def _certificate_id(source_type: str, subject: str, source_ref: str) -> str:
     prefix = 'TV-WEB' if source_type == 'webinar' else 'TV-OFFER' if source_type == 'offer' else 'TV-CERT'
     return f'{prefix}-{_slug(subject)}-{_slug(source_ref, "row")}-{_now_suffix()}'.upper()
+
+
+def record_certificate(cert_id, person_name, subject_title, *, source_type='hr',
+                       source_ref='', person_email='', template_id='', template_name='',
+                       position='', extra=None):
+    """Insert one certificate into `certificate_records` so the public verify page
+    can confirm it. Idempotent on certificate_id (skips duplicates). Safe no-op if
+    Turso isn't configured. `position` and any `extra` go into data_json so the
+    verify page can show the person's role. Returns True if written."""
+    cert_id = (cert_id or '').strip()
+    if not cert_id or not turso_client.is_configured():
+        return False
+    try:
+        turso_client.setup_tables()
+        data = {'certificate_id': cert_id, 'cert_id': cert_id, 'position': position or ''}
+        if extra:
+            data.update(extra)
+        now = datetime.now(timezone.utc).isoformat()
+        turso_client.execute(
+            """INSERT INTO certificate_records
+               (id,certificate_id,source_type,source_ref,person_name,person_email,
+                subject_title,template_id,template_name,data_json,email_status,
+                created_at,updated_at)
+               VALUES (:id,:certificate_id,:source_type,:source_ref,:person_name,:person_email,
+                       :subject_title,:template_id,:template_name,:data_json,'sent',
+                       :created_at,:updated_at)""",
+            {
+                'id': str(uuid4()), 'certificate_id': cert_id, 'source_type': source_type,
+                'source_ref': str(source_ref or ''), 'person_name': person_name or '',
+                'person_email': person_email or '', 'subject_title': subject_title or '',
+                'template_id': str(template_id or ''), 'template_name': template_name or '',
+                'data_json': json.dumps(data, ensure_ascii=False),
+                'created_at': now, 'updated_at': now,
+            },
+        )
+        return True
+    except turso_client.TursoError as exc:
+        if 'UNIQUE' in str(exc).upper():
+            return False   # already recorded
+        logger.warning('record_certificate failed for %s: %s', cert_id, exc)
+        return False
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('record_certificate error for %s: %s', cert_id, exc)
+        return False
 
 
 def _record_key_set(template_id: str, source_type: str) -> set[str]:
@@ -256,7 +303,7 @@ def verify_certificate(request):
     try:
         turso_client.setup_tables()
         rows = turso_client.execute(
-            """SELECT certificate_id, source_type, person_name, subject_title, created_at
+            """SELECT certificate_id, source_type, person_name, subject_title, created_at, data_json
                FROM certificate_records WHERE UPPER(certificate_id)=:cid LIMIT 1""",
             {'cid': cert_id},
         )
@@ -266,11 +313,17 @@ def verify_certificate(request):
         return JsonResponse({'valid': False, 'certificate_id': cert_id})
     r = rows[0]
     source_type = r.get('source_type') or ''
+    position = ''
+    try:
+        position = (json.loads(r.get('data_json') or '{}') or {}).get('position') or ''
+    except Exception:  # noqa: BLE001
+        position = ''
     return JsonResponse({
         'valid': True,
         'certificate_id': r.get('certificate_id') or cert_id,
         'name': r.get('person_name') or '',
         'title': r.get('subject_title') or '',
+        'position': position,
         'type': source_type,
         'type_label': _VERIFY_TYPE_LABEL.get(source_type, 'Certificate'),
         'issued_on': _verify_date(r.get('created_at')),

@@ -282,11 +282,55 @@ def generate_single_certificate(template_id, values, id_var=None):
                (str(v.get('name')).lower() for v in cert_vars) if name not in gen_names}
     try:
         pdf = overlay_values(pdf, cert_els, overlay, design_w, design_h)
+        # A cert with an ID gets a verification QR (bottom-right) → /verify?id=<id>.
+        if cert_id:
+            pdf = add_verify_qr(pdf, cert_id, design_w, design_h)
         pdf = compress_pdf(pdf, target_kb=int(getattr(settings, 'CERT_MAX_KB', 600)))
     except Exception:  # noqa: BLE001
         pass   # overlay/compress never fatal — worst case the base PDF still sends
 
     return pdf, cert_id, ''
+
+
+def add_verify_qr(pdf_bytes, cert_id, design_w, design_h):
+    """Stamp a small QR code in the bottom-right of page 1 that opens the public
+    verification page for this certificate. Never raises — returns the input PDF
+    on any error so a QR problem can't block the send."""
+    try:
+        import qrcode
+        from io import BytesIO
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.utils import ImageReader
+        from pypdf import PdfReader, PdfWriter
+
+        base = getattr(settings, 'VERIFY_URL', '') or 'https://tiesverse.com/verify'
+        url = f'{base.rstrip("/")}?id={cert_id}'
+        qr = qrcode.QRCode(box_size=10, border=1)
+        qr.add_data(url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color='black', back_color='white').convert('RGB')
+        img_buf = BytesIO(); img.save(img_buf, format='PNG'); img_buf.seek(0)
+
+        reader = PdfReader(BytesIO(pdf_bytes))
+        writer = PdfWriter()
+        for pi, page in enumerate(reader.pages):
+            if pi == 0:
+                pw, ph = float(page.mediabox.width), float(page.mediabox.height)
+                size = min(64.0, pw * 0.11)     # ~64pt, scales down on small pages
+                margin = 30.0
+                buf = BytesIO()
+                c = canvas.Canvas(buf, pagesize=(pw, ph))
+                c.drawImage(ImageReader(img_buf), pw - margin - size, margin, size, size, mask='auto')
+                c.setFont('Helvetica', 6)
+                c.setFillColorRGB(0.4, 0.4, 0.4)
+                c.drawCentredString(pw - margin - size / 2, margin - 8, 'Scan to verify')
+                c.save(); buf.seek(0)
+                page.merge_page(PdfReader(buf).pages[0])
+            writer.add_page(page)
+        out = BytesIO(); writer.write(out)
+        return out.getvalue()
+    except Exception:  # noqa: BLE001
+        return pdf_bytes
 
 
 def _make_cert_id(cert_vars, name):

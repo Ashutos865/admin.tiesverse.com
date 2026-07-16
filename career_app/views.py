@@ -842,6 +842,20 @@ class SendCertificateEmailView(APIView):
                     sub.set_certificate_id(cert_key, cert_id)
             except Exception:  # noqa: BLE001
                 pass
+        # Record the certificate so the public /verify page can confirm it (name,
+        # title, position, ID). Only when we actually issued one with an ID.
+        if ok and cert_id:
+            try:
+                from config.certificate_workflow import record_certificate
+                record_certificate(
+                    cert_id, sub.candidate_name, label,
+                    source_type='hr', source_ref=str(sub.id),
+                    person_email=sub.candidate_email,
+                    template_id=(cert_cfg or {}).get('template_id', '') if cert_cfg else '',
+                    position=sub.role_offered or '',
+                )
+            except Exception:  # noqa: BLE001
+                pass
         # Log the send for the paper trail.
         DocumentAuditLog.objects.create(
             submission=sub, doc_type=cert_key or 'offer_letter',

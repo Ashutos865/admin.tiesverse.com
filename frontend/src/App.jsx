@@ -48,6 +48,7 @@ const DataApi = lazy(() => import('./pages/Tiesverse/DataApi.jsx'));
 const CareerAdmin = lazy(() => import('./pages/Career/Admin.jsx'));
 const OnboardingManagement = lazy(() => import('./pages/Career/OnboardingManagement.jsx'));
 const HRDepartments = lazy(() => import('./pages/Career/HRDepartments.jsx'));
+const CertificatesMatrix = lazy(() => import('./pages/Career/CertificatesMatrix.jsx'));
 const TeamDirectory = lazy(() => import('./pages/Career/TeamDirectory.jsx'));
 const MasterDirectory = lazy(() => import('./pages/Career/MasterDirectory.jsx'));
 const AttendancePage = lazy(() => import('./pages/Career/AttendancePage.jsx'));
@@ -199,6 +200,7 @@ function App() {
               <Route path="/hr/directory" element={<MasterDirectory />} />
               <Route path="/hr/team" element={<TeamDirectory />} />
               <Route path="/hr/departments" element={<HRDepartments />} />
+              <Route path="/hr/certificates" element={<CertificatesMatrix />} />
               <Route path="/hr/attendance" element={<AttendancePage />} />
               <Route path="/hr/leave" element={<LeavePage />} />
               <Route path="/hr/offboarding" element={<OffboardingPage />} />
