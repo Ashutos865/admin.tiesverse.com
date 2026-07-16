@@ -196,6 +196,89 @@ def build_cert_data(cert_vars, mapping, row):
     return data
 
 
+def generate_single_certificate(template_id, values, id_var=None):
+    """Generate ONE certificate the same reliable way the campaign does: ask the
+    generator for a blank PDF, then STAMP the real values on top (the external
+    generator does not substitute {{tokens}} reliably). Auto-generated variables
+    (``generator_enabled``) are produced by the generator; their rendered value
+    becomes the certificate ID.
+
+    Args:
+        template_id: certificate template id.
+        values: {variable_name: value} — real values to stamp (any case).
+        id_var:  which generator-enabled variable to treat as the certificate ID.
+                 If None, the first generator-enabled variable is used.
+
+    Returns: (pdf_bytes | None, cert_id: str, error: str)
+    """
+    try:
+        tpl = generator_get_template(template_id) or {}
+    except Exception as exc:  # noqa: BLE001
+        return None, '', f'template load failed: {exc}'[:300]
+    cert_vars = tpl.get('variables') or []
+    cert_els = tpl.get('text_elements') or []
+    pgs = tpl.get('pages') or []
+    design_w, design_h = 842.0, 595.0
+    if pgs:
+        design_w = float(pgs[0].get('width') or design_w)
+        design_h = float(pgs[0].get('height') or design_h)
+
+    lc_values = {str(k).lower(): ('' if v is None else str(v)) for k, v in (values or {}).items()}
+
+    # Generator-enabled vars are produced by the generator (e.g. a sequence). Send
+    # a real (non-ZW) placeholder so the generator emits the pattern; everything
+    # else is blank (ZW) — we stamp real values ourselves.
+    gen_data = {}
+    for v in cert_vars:
+        name = str(v.get('name')).lower()
+        gen_data[name] = '' if v.get('generator_enabled') else ZW
+
+    pdf, gen_error = None, ''
+    for _ in range(2):   # one retry on transient failure
+        try:
+            pdf = generator_generate(template_id, gen_data)
+            break
+        except Exception as exc:  # noqa: BLE001
+            gen_error = str(exc)[:200]
+    if pdf is None:
+        return None, '', f'certificate not generated: {gen_error}'[:300]
+
+    # Stamp the real values onto the placeholders (skip generator-enabled ones —
+    # the generator already rendered those).
+    gen_names = {str(v.get('name')).lower() for v in cert_vars if v.get('generator_enabled')}
+    overlay = {}
+    for v in cert_vars:
+        name = str(v.get('name')).lower()
+        if name in gen_names:
+            continue
+        overlay[name] = lc_values.get(name, '')
+    try:
+        pdf = overlay_values(pdf, cert_els, overlay, design_w, design_h)
+        pdf = compress_pdf(pdf, target_kb=int(getattr(settings, 'CERT_MAX_KB', 600)))
+    except Exception:  # noqa: BLE001
+        pass   # overlay/compress never fatal — worst case the base PDF still sends
+
+    # Derive the certificate ID from the chosen (or first) generator-enabled var.
+    cert_id = ''
+    gen_var_names = [str(v.get('name')) for v in cert_vars if v.get('generator_enabled')]
+    if gen_var_names:
+        pick = id_var if (id_var and id_var in gen_var_names) else gen_var_names[0]
+        # The generator fills the pattern; if the client already supplied a value
+        # for it (rare), honour that, else fall back to the rendered pattern name.
+        cert_id = lc_values.get(str(pick).lower(), '') or _render_generator_pattern(cert_vars, pick)
+    return pdf, cert_id, ''
+
+
+def _render_generator_pattern(cert_vars, name):
+    """Best-effort readable ID from a generator variable's pattern/default when the
+    generator's own value wasn't captured (single-send path has no batch row)."""
+    for v in cert_vars:
+        if str(v.get('name')) == str(name):
+            pat = (v.get('generator_pattern') or v.get('default_value') or '').strip()
+            return pat
+    return ''
+
+
 def _ses_rate():
     """Live SES max send rate (emails/sec) — sizes each batch to what SES will
     accept, so large sends 'send as many as they can' without tripping the rate

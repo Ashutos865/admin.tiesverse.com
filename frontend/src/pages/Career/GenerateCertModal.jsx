@@ -1,53 +1,47 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { X, FileText, Loader2, CheckCircle, Wand2, Download } from 'lucide-react';
-import { sendCertificateEmail } from '../../apiClient';
-import { listCertificateTemplates, getCertificateTemplate, generateCertificate } from '../Certificates/certificateApi';
+import { useState, useEffect, useMemo } from 'react';
+import { X, FileText, Loader2, CheckCircle, Wand2, Hash } from 'lucide-react';
+import { sendCertificateEmail, getEmailTemplates } from '../../apiClient';
+import { listCertificateTemplates, getCertificateTemplate } from '../Certificates/certificateApi';
 import { variableNamesFromElements } from '../Certificates/certificateUtils';
 
-// The variables a template actually PLACES on the page (the ones worth filling),
-// mirroring MailAutomation's usableCertVars so behaviour is consistent.
-const usableVars = (t) => {
+// The variables a template actually PLACES on the page and expects filled — the
+// non-generator ones (generator_enabled vars are produced automatically and give
+// the certificate its ID). Mirrors MailAutomation's usableCertVars.
+const placedNonGenVars = (t) => {
   const used = new Set(variableNamesFromElements(t?.text_elements || []));
   const nonGen = (t?.variables || []).filter((v) => !v.generator_enabled);
   const placed = nonGen.filter((v) => used.has(String(v.name).toLowerCase()));
   return placed.length ? placed : nonGen;
 };
+const generatorVars = (t) => (t?.variables || []).filter((v) => v.generator_enabled);
 
 const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-// A blob → base64 (no data: prefix), for the send endpoint.
-const blobToB64 = (blob) => new Promise((resolve, reject) => {
-  const r = new FileReader();
-  r.onload = () => resolve(String(r.result).split(',')[1] || '');
-  r.onerror = reject;
-  r.readAsDataURL(blob);
-});
-
 /**
- * Generate a certificate/letter/offer-letter for a member from a template and
- * send it by email. The template's variables auto-fill from the member's known
- * fields (name, email, department, role, joining date); you only edit whatever
- * couldn't be matched. A manual PDF upload is kept as a fallback.
+ * Generate a certificate/letter/offer letter for a member from a template and
+ * send it by email. Variables auto-fill from the member (name, department, role,
+ * dates); you edit only what's missing. The BACKEND does the actual generation
+ * (stamps values reliably + captures the auto-generated certificate ID), so the
+ * PDF is always correct. Pick which email carries it, and — if the template has
+ * more than one auto-generation field — which one is the certificate ID.
  *
- * Props:
- *   member    : { id, candidate_name, candidate_email, assigned_departments, role_offered, member_type, joining_date, verified_at }
- *   docLabel  : e.g. "Offer Letter" / "Internship Certificate"
- *   certKey   : the backend cert_key ('internship_cert'|'lor'|'noc'|'offer_letter'|'') — passed through to the send endpoint
- *   templateKey : email template key hint (default 'certificate_issue')
- *   onClose, onSent
+ * Props: member, docLabel, certKey, onClose, onSent
  */
 export default function GenerateCertModal({ member, docLabel = 'Certificate', certKey = '', onClose, onSent }) {
-  const [templates, setTemplates] = useState(null);   // null = loading
+  const [templates, setTemplates] = useState(null);
   const [templateId, setTemplateId] = useState('');
   const [template, setTemplate] = useState(null);
   const [loadingTpl, setLoadingTpl] = useState(false);
-  const [values, setValues] = useState({});           // { varName: value }
-  const [manualPdf, setManualPdf] = useState(null);    // { base64, name } fallback
+  const [values, setValues] = useState({});
+
+  const [emailTemplates, setEmailTemplates] = useState([]);
+  const [emailTemplateKey, setEmailTemplateKey] = useState('certificate_issue');
+
+  const [idVar, setIdVar] = useState('');            // chosen auto-gen ID field (when >1)
+  const [manualPdf, setManualPdf] = useState(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
-  const restore = useRef(false);
 
-  // The member fields available to auto-fill from.
   const memberSources = useMemo(() => ({
     name: member.candidate_name || '',
     full_name: member.candidate_name || '',
@@ -65,57 +59,48 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
   useEffect(() => {
     let alive = true;
     listCertificateTemplates()
+      .then((list) => { if (alive) setTemplates(Array.isArray(list) ? list : (list?.templates || [])); })
+      .catch(() => { if (alive) setTemplates([]); });
+    getEmailTemplates()
       .then((list) => {
         if (!alive) return;
-        const arr = Array.isArray(list) ? list : (list?.templates || []);
-        setTemplates(arr);
+        const arr = Array.isArray(list) ? list : [];
+        setEmailTemplates(arr);
+        const def = arr.find((t) => t.key === 'certificate_issue') || arr[0];
+        if (def) setEmailTemplateKey(def.key);
       })
-      .catch(() => { if (alive) setTemplates([]); });
+      .catch(() => {});
     return () => { alive = false; };
   }, []);
 
-  // Load the chosen template + auto-fill its variables from the member.
+  // Load the chosen certificate template + auto-fill its variables from the member.
   useEffect(() => {
-    if (!templateId) { setTemplate(null); setValues({}); return; }
+    if (!templateId) { setTemplate(null); setValues({}); setIdVar(''); return; }
     let alive = true;
     setLoadingTpl(true);
     getCertificateTemplate(templateId)
       .then((t) => {
         if (!alive) return;
         setTemplate(t);
-        const vars = usableVars(t);
+        const vars = placedNonGenVars(t);
         const auto = {};
         vars.forEach((v) => {
-          // match the variable name to a member source field by normalized name
           const key = Object.keys(memberSources).find((s) => norm(s) === norm(v.name));
-          const fromMember = key ? memberSources[key] : '';
-          auto[v.name] = fromMember || (v.default_value || '');
+          auto[v.name] = (key ? memberSources[key] : '') || (v.default_value || '');
         });
         setValues(auto);
+        const gens = generatorVars(t);
+        setIdVar(gens.length ? gens[0].name : '');
       })
-      .catch(() => { if (alive) { setTemplate(null); setValues({}); } })
+      .catch(() => { if (alive) { setTemplate(null); setValues({}); setIdVar(''); } })
       .finally(() => { if (alive) setLoadingTpl(false); });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId]);
 
-  const vars = useMemo(() => usableVars(template), [template]);
+  const vars = useMemo(() => placedNonGenVars(template), [template]);
+  const gens = useMemo(() => generatorVars(template), [template]);
   const missing = vars.filter((v) => !String(values[v.name] || '').trim());
-
-  // Build the generator data dict (every declared variable needs a non-empty value).
-  const buildData = () => {
-    const ZW = String.fromCharCode(0x200B);
-    const data = {};
-    (template?.variables || []).forEach((v) => {
-      let val = String(values[v.name] ?? '');
-      if (val.trim() === '') {
-        const def = v.default_value == null ? '' : String(v.default_value);
-        val = def.trim() !== '' ? def : ZW;
-      }
-      data[String(v.name).toLowerCase()] = val;
-    });
-    return data;
-  };
 
   const onPickPdf = (file) => {
     const r = new FileReader();
@@ -123,50 +108,28 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
     r.readAsDataURL(file);
   };
 
-  // Generate the PDF (from template) and download it, without sending.
-  const doGenerateOnly = async () => {
-    if (!template) return;
-    setBusy(true); setResult(null);
-    try {
-      const { blob } = await generateCertificate(templateId, buildData());
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${docLabel} - ${member.candidate_name || 'member'}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setResult({ ok: true, msg: 'Generated & downloaded.' });
-    } catch (e) {
-      setResult({ ok: false, msg: e?.message || 'Could not generate the PDF.' });
-    }
-    setBusy(false);
-  };
-
   const doSend = async () => {
     setBusy(true); setResult(null);
     try {
-      let pdf_base64 = '';
-      let filename = `${docLabel}.pdf`;
+      const payload = { template_key: emailTemplateKey, cert_key: certKey, filename: `${docLabel} - ${member.candidate_name || 'member'}.pdf` };
       if (manualPdf) {
-        pdf_base64 = manualPdf.base64;
-        filename = manualPdf.name;
+        payload.pdf_base64 = manualPdf.base64;
+        payload.filename = manualPdf.name;
       } else if (template) {
-        const { blob } = await generateCertificate(templateId, buildData());
-        pdf_base64 = await blobToB64(blob);
-        filename = `${docLabel} - ${member.candidate_name || 'member'}.pdf`;
+        // Backend generates the PDF (reliable stamping) + captures the cert ID.
+        payload.certificate = {
+          template_id: templateId,
+          values: Object.fromEntries(vars.map((v) => [v.name, values[v.name] || ''])),
+          id_var: idVar || undefined,
+        };
       } else {
         setResult({ ok: false, msg: 'Pick a template or attach a PDF first.' });
         setBusy(false);
         return;
       }
-      const res = await sendCertificateEmail(member.id, {
-        template_key: 'certificate_issue',
-        cert_key: certKey,
-        pdf_base64,
-        filename,
-      });
+      const res = await sendCertificateEmail(member.id, payload);
       if (res?.sent) {
-        setResult({ ok: true, msg: `Sent to ${res.to}` });
+        setResult({ ok: true, msg: `Sent to ${res.to}${res.certificate_id ? ` · ID ${res.certificate_id}` : ''}` });
         onSent && onSent(res);
       } else if (res && 'sent' in res) {
         setResult({ ok: false, msg: 'Not sent — check the address or SES sender.' });
@@ -194,7 +157,7 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
         </div>
 
         <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Template dropdown */}
+          {/* Certificate template */}
           <div>
             <Lbl>Certificate template</Lbl>
             {templates === null ? (
@@ -208,6 +171,31 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
               </select>
             )}
           </div>
+
+          {/* Email template (which email carries the certificate) */}
+          <div>
+            <Lbl>Email template</Lbl>
+            <select value={emailTemplateKey} onChange={(e) => setEmailTemplateKey(e.target.value)} style={{ ...F, cursor: 'pointer' }}>
+              {emailTemplates.length === 0 && <option value="certificate_issue">Certificate issue (default)</option>}
+              {emailTemplates.map((t) => <option key={t.id} value={t.key}>{t.name}{t.is_custom ? ' (custom)' : ''}</option>)}
+            </select>
+          </div>
+
+          {/* Auto-gen ID picker — only when the template has MORE THAN ONE generator field */}
+          {gens.length > 1 && (
+            <div>
+              <Lbl><Hash size={11} style={{ verticalAlign: -1, marginRight: 3 }} />Certificate ID field</Lbl>
+              <select value={idVar} onChange={(e) => setIdVar(e.target.value)} style={{ ...F, cursor: 'pointer' }}>
+                {gens.map((v) => <option key={v.name} value={v.name}>{v.name}{v.generator_pattern ? ` (${v.generator_pattern})` : ''}</option>)}
+              </select>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>This template has {gens.length} auto-generated fields — choose which one is the certificate’s ID.</div>
+            </div>
+          )}
+          {gens.length === 1 && (
+            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Hash size={12} style={{ color: 'var(--primary)' }} /> Certificate ID auto-generated from <b style={{ color: 'var(--text-main)' }}>{gens[0].name}</b>.
+            </div>
+          )}
 
           {/* Auto-filled variables */}
           {loadingTpl ? (
@@ -226,12 +214,7 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
                   return (
                     <div key={v.name}>
                       <Lbl>{v.name}{empty ? ' *' : ''}</Lbl>
-                      <input
-                        value={values[v.name] || ''}
-                        onChange={(e) => setValues((p) => ({ ...p, [v.name]: e.target.value }))}
-                        placeholder={v.default_value || v.name}
-                        style={{ ...F, borderColor: empty ? '#f59e0b' : 'var(--outline-variant)' }}
-                      />
+                      <input value={values[v.name] || ''} onChange={(e) => setValues((p) => ({ ...p, [v.name]: e.target.value }))} placeholder={v.default_value || v.name} style={{ ...F, borderColor: empty ? '#f59e0b' : 'var(--outline-variant)' }} />
                     </div>
                   );
                 })}
@@ -264,13 +247,8 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 22px', borderTop: '1px solid var(--outline-variant)' }}>
           <button onClick={onClose} style={{ padding: '9px 16px', borderRadius: 9, border: '1px solid var(--outline-variant)', background: 'transparent', color: 'var(--text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-          {template && !manualPdf && (
-            <button onClick={doGenerateOnly} disabled={busy} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 9, border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', color: 'var(--text-main)', fontSize: 13, fontWeight: 600, cursor: busy ? 'wait' : 'pointer' }}>
-              <Download size={14} /> Preview PDF
-            </button>
-          )}
-          <button onClick={doSend} disabled={busy || (!template && !manualPdf) || !member.candidate_email} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 9, border: 'none', background: 'var(--primary)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: (busy || (!template && !manualPdf)) ? 'not-allowed' : 'pointer', opacity: (busy || (!template && !manualPdf)) ? 0.6 : 1 }}>
-            {busy ? <Loader2 size={14} className="ma-spin" /> : <FileText size={14} />} {busy ? 'Working…' : `Send ${docLabel}`}
+          <button onClick={doSend} disabled={busy || (!template && !manualPdf) || !member.candidate_email} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 9, border: 'none', background: 'var(--primary)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: (busy || (!template && !manualPdf)) ? 'not-allowed' : 'pointer', opacity: (busy || (!template && !manualPdf) || !member.candidate_email) ? 0.6 : 1 }}>
+            {busy ? <Loader2 size={14} className="ma-spin" /> : <FileText size={14} />} {busy ? 'Generating & sending…' : `Send ${docLabel}`}
           </button>
         </div>
       </div>

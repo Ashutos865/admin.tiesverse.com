@@ -124,10 +124,11 @@ function Detail({ p }) {
                     {p.certificate_list.length ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                             {p.certificate_list.slice(0, 10).map((cert, i) => (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5 }}>
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, flexWrap: 'wrap' }}>
                                     <CheckCircle2 size={13} style={{ color: '#067a50', flexShrink: 0 }} />
                                     <span style={{ color: 'var(--text-main)' }}>{cert.title}</span>
                                     {cert.status && <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>· {cert.status}</span>}
+                                    {cert.id && <span style={{ color: 'var(--primary)', fontSize: 11, fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>· {cert.id}</span>}
                                 </div>
                             ))}
                         </div>

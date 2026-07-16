@@ -788,29 +788,56 @@ class SendCertificateEmailView(APIView):
             'department': ', '.join(sub.assigned_departments or []),
         }
         attachments = None
-        pdf_base64 = request.data.get('pdf_base64') or ''
-        if pdf_base64:
-            try:
-                fname = request.data.get('filename') or f'{label}.pdf'
-                attachments = [(fname, base64.b64decode(pdf_base64), 'pdf')]
-            except Exception:  # noqa: BLE001
-                attachments = None
+        cert_id = ''
+        fname = request.data.get('filename') or f'{label}.pdf'
 
+        # 1) A certificate config → generate the PDF the reliable way (stamp real
+        #    values + capture the auto-generated certificate ID).
+        cert_cfg = request.data.get('certificate') or None
+        if cert_cfg and cert_cfg.get('template_id'):
+            from accounts_app.campaign_jobs import generate_single_certificate
+            pdf_bytes, cert_id, gen_err = generate_single_certificate(
+                cert_cfg.get('template_id'),
+                cert_cfg.get('values') or {},
+                id_var=cert_cfg.get('id_var') or None,
+            )
+            if pdf_bytes is None:
+                return Response({'error': gen_err or 'Certificate generation failed.'}, status=502)
+            attachments = [(fname, pdf_bytes, 'pdf')]
+        else:
+            # 2) Fallback: a manually-uploaded PDF.
+            pdf_base64 = request.data.get('pdf_base64') or ''
+            if pdf_base64:
+                try:
+                    attachments = [(fname, base64.b64decode(pdf_base64), 'pdf')]
+                except Exception:  # noqa: BLE001
+                    attachments = None
+
+        ctx['certificate_id'] = cert_id
         subject = render_tokens(tpl.subject, ctx)
         body = render_tokens(tpl.body_html, ctx)
         ok = send_email(
             sub.candidate_email, subject, body,
             from_email=resolve_from(tpl), attachments=attachments, enabled=True,
         )
+        # Persist the generated certificate ID on the member so it shows in the
+        # Master Directory and can be looked up later.
+        if ok and cert_id and cert_key:
+            try:
+                sub.set_certificate_id(cert_key, cert_id)
+            except Exception:  # noqa: BLE001
+                pass
         # Log the send for the paper trail.
         DocumentAuditLog.objects.create(
             submission=sub, doc_type=cert_key or 'offer_letter',
             action=DocumentAuditLog.ACTION_ISSUED,
             performed_by_name=_actor_name(request.user), performed_by_user=request.user,
             note=f"{label} emailed via template '{tpl.name}'"
+                 + (f' · ID {cert_id}' if cert_id else '')
                  + (' with PDF' if attachments else ''),
         )
-        return Response({'sent': bool(ok), 'to': sub.candidate_email, 'template': tpl.name})
+        return Response({'sent': bool(ok), 'to': sub.candidate_email,
+                         'template': tpl.name, 'certificate_id': cert_id})
 
 
 class DocumentAuditLogListView(APIView):
@@ -903,12 +930,14 @@ class DirectorySearchView(APIView):
             }
             b['attendance_days'] = s.attendance_records.filter(
                 status=AttendanceRecord.STATUS_PRESENT).count()
-            for title, val in [('Internship Certificate', s.cert_internship_issued_at),
-                               ('Letter of Recommendation', s.cert_lor_issued_at),
-                               ('No Objection Certificate', s.cert_noc_issued_at)]:
+            cert_ids = s.certificate_ids or {}
+            for title, key, val in [('Internship Certificate', 'internship_cert', s.cert_internship_issued_at),
+                                    ('Letter of Recommendation', 'lor', s.cert_lor_issued_at),
+                                    ('No Objection Certificate', 'noc', s.cert_noc_issued_at)]:
                 if val:
                     b['certificates'] += 1
-                    b['certificate_list'].append({'title': title, 'status': 'issued', 'id': ''})
+                    b['certificate_list'].append({'title': title, 'status': 'issued',
+                                                  'id': cert_ids.get(key, '')})
 
         # 2) Webinar registrations + 3) certificate records (remote Turso)
         try:

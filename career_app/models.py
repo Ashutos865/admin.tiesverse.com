@@ -117,6 +117,10 @@ class OnboardingSubmission(models.Model):
     cert_lor_issued_by = models.CharField(max_length=255, blank=True)
     cert_noc_issued_at = models.DateTimeField(null=True, blank=True)
     cert_noc_issued_by = models.CharField(max_length=255, blank=True)
+    # Auto-generated certificate ID/number per doc type: {cert_key: "TIES-..."}.
+    # Populated when a certificate is generated from a template that has an
+    # auto-generation (generator_enabled) variable.
+    certificate_ids = models.JSONField(default=dict, blank=True)
     # ──────────────────────────────────────────────────────────────────────────
 
     # Secure one-time token for upload link
@@ -154,6 +158,13 @@ class OnboardingSubmission(models.Model):
 
     def __str__(self):
         return f"{self.candidate_name} ({self.status})"
+
+    def set_certificate_id(self, cert_key, cert_id):
+        """Record the auto-generated ID for a certificate type (e.g. 'internship_cert')."""
+        ids = dict(self.certificate_ids or {})
+        ids[cert_key] = cert_id
+        self.certificate_ids = ids
+        self.save(update_fields=['certificate_ids'])
 
 
 # ── Portal user account linked to a verified member ───────────────────────────
