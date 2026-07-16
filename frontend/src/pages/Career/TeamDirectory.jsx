@@ -6,7 +6,7 @@ import {
     Users, Plus, Search, Edit2, X, CheckCircle, Building2,
     Mail, Calendar, Briefcase, Phone, FileText, RefreshCw,
     ChevronRight, Award, Shield, BookOpen, ScrollText,
-    Clock, AlertCircle, Crown, ExternalLink, UserCheck,
+    Clock, AlertCircle, Crown, ExternalLink, UserCheck, Download,
 } from 'lucide-react';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -227,6 +227,7 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
 
     // ── Working hours: all-history per-day log (scoped server-side to who may see it) ──
     const [worklog, setWorklog] = useState(null);   // null = loading
+    const [showHistory, setShowHistory] = useState(false);   // full-detail history modal
     useEffect(() => {
         let alive = true;
         getWorkSessions({ member: member.id })
@@ -260,6 +261,32 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
     const fmtHM = (m) => {
         const h = Math.floor(m / 60), mm = m % 60;
         return h ? (mm ? `${h}h ${mm}m` : `${h}h`) : `${mm}m`;
+    };
+
+    // Download the full work history as a CSV: one line per work item (Date, Hours,
+    // Task, Details). Handles quoting for commas/newlines in the notes.
+    const downloadHistory = () => {
+        const rows = [['Date', 'Hours', 'Task', 'Details']];
+        (workDays || []).forEach((d) => {
+            if (d.items.length) {
+                d.items.forEach((it, i) => rows.push([
+                    i === 0 ? fmtDate(d.date) : '',
+                    i === 0 ? fmtHM(d.minutes) : '',
+                    it.title || '', it.note || '',
+                ]));
+            } else {
+                rows.push([fmtDate(d.date), fmtHM(d.minutes), '', '']);
+            }
+        });
+        const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+        const csv = rows.map((r) => r.map(esc).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `work-history-${(member.candidate_name || 'member').replace(/\s+/g, '-')}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
     };
 
     // Check localStorage for offer status
@@ -348,7 +375,8 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
                 {/* ── Body sections ── */}
                 <div style={{ padding: '0 28px 28px', display: 'flex', flexDirection: 'column', gap: 0 }}>
 
-                    {/* Working Hours — per-day total + what they did (no clock-in/out times) */}
+                    {/* Working Hours — compact per-day total (date + time only). Full
+                        work detail + download lives behind "View full history". */}
                     <ProfileSection
                         title={`Working Hours${workDays && workDays.length ? ` · ${fmtHM(totalMinutes)} total` : ''}`}
                         icon={<Clock size={14} />}
@@ -360,30 +388,30 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
                                 No work logged yet for this member.
                             </div>
                         ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
-                                {workDays.map((d) => (
-                                    <div key={d.date} style={{ display: 'flex', gap: 12, padding: '11px 14px', borderRadius: 10, background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)' }}>
-                                        <div style={{ flex: 'none', width: 96 }}>
-                                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-main)' }}>{fmtDate(d.date)}</div>
-                                            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--primary)', marginTop: 2 }}>{fmtHM(d.minutes)}</div>
+                            <>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
+                                    {workDays.map((d) => (
+                                        <div key={d.date} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 14px', borderRadius: 10, background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)' }}>
+                                            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-main)' }}>{fmtDate(d.date)}</span>
+                                            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>{fmtHM(d.minutes)}</span>
                                         </div>
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            {d.items.length ? (
-                                                <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                                    {d.items.map((it, i) => (
-                                                        <li key={i} style={{ fontSize: 13, color: 'var(--text-main)', lineHeight: 1.4 }}>
-                                                            <span style={{ fontWeight: 600 }}>{it.title}</span>
-                                                            {it.note ? <span style={{ color: 'var(--text-muted)' }}> — {it.note}</span> : null}
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            ) : (
-                                                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>No note added.</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                                    <button
+                                        onClick={() => setShowHistory(true)}
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', color: 'var(--text-main)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}
+                                    >
+                                        <ScrollText size={14} /> View full history
+                                    </button>
+                                    <button
+                                        onClick={downloadHistory}
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, border: '1px solid var(--outline-variant)', background: 'transparent', color: 'var(--text-muted)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}
+                                    >
+                                        <Download size={14} /> Download CSV
+                                    </button>
+                                </div>
+                            </>
                         )}
                     </ProfileSection>
 
@@ -521,6 +549,67 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
                             </p>
                         </ProfileSection>
                     )}
+                </div>
+            </div>
+
+            {showHistory && (
+                <WorkHistoryModal
+                    memberName={member.candidate_name}
+                    workDays={workDays || []}
+                    totalMinutes={totalMinutes}
+                    fmtHM={fmtHM}
+                    onDownload={downloadHistory}
+                    onClose={() => setShowHistory(false)}
+                />
+            )}
+        </div>
+    );
+}
+
+// Full per-day work history — date + hours + everything the member did that day,
+// with a download. Opened from the compact Working Hours list.
+function WorkHistoryModal({ memberName, workDays, totalMinutes, fmtHM, onDownload, onClose }) {
+    return (
+        <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 10300, background: 'rgba(15,20,25,0.72)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px 16px', overflowY: 'auto' }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 640, background: 'var(--surface-container-lowest, var(--surface))', borderRadius: 16, border: '1px solid var(--outline-variant)', boxShadow: '0 24px 60px -20px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--outline-variant)' }}>
+                    <div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>Work history — {memberName}</div>
+                        <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>{workDays.length} day{workDays.length === 1 ? '' : 's'} · {fmtHM(totalMinutes)} total</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={onDownload} title="Download CSV" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, border: 'none', background: 'var(--primary)', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+                            <Download size={14} /> Download
+                        </button>
+                        <button onClick={onClose} style={{ display: 'grid', placeItems: 'center', width: 34, height: 34, borderRadius: 9, border: '1px solid var(--outline-variant)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                            <X size={16} />
+                        </button>
+                    </div>
+                </div>
+                <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {workDays.length === 0 ? (
+                        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No work logged yet.</div>
+                    ) : workDays.map((d) => (
+                        <div key={d.date} style={{ display: 'flex', gap: 14, padding: '12px 14px', borderRadius: 10, background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)' }}>
+                            <div style={{ flex: 'none', width: 100 }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-main)' }}>{fmtDate(d.date)}</div>
+                                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--primary)', marginTop: 2 }}>{fmtHM(d.minutes)}</div>
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                {d.items.length ? (
+                                    <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                        {d.items.map((it, i) => (
+                                            <li key={i} style={{ fontSize: 13, color: 'var(--text-main)', lineHeight: 1.5 }}>
+                                                {it.note || <span style={{ color: 'var(--text-muted)' }}>{it.title || 'Work'}</span>}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>No note added.</span>
+                                )}
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
         </div>
