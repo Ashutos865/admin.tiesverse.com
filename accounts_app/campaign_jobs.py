@@ -280,11 +280,15 @@ def generate_single_certificate(template_id, values, id_var=None):
     gen_names = {str(v.get('name')).lower() for v in cert_vars if v.get('generator_enabled')}
     overlay = {name: lc_values.get(name, '') for name in
                (str(v.get('name')).lower() for v in cert_vars) if name not in gen_names}
+    # The {{qr}} placeholder is drawn as an image (below), not as text — keep it
+    # out of the text overlay so its literal token never gets stamped.
+    text_els = [e for e in (cert_els or []) if '{{qr}}' not in (e.get('content', '') or '').lower()]
     try:
-        pdf = overlay_values(pdf, cert_els, overlay, design_w, design_h)
-        # A cert with an ID gets a verification QR (bottom-right) → /verify?id=<id>.
+        pdf = overlay_values(pdf, text_els, overlay, design_w, design_h)
+        # A cert with an ID gets a verification QR → /verify?id=<id>. It goes where a
+        # {{qr}} field is placed in the template, else the bottom-right corner.
         if cert_id:
-            pdf = add_verify_qr(pdf, cert_id, design_w, design_h)
+            pdf = add_verify_qr(pdf, cert_id, design_w, design_h, cert_els)
         pdf = compress_pdf(pdf, target_kb=int(getattr(settings, 'CERT_MAX_KB', 600)))
     except Exception:  # noqa: BLE001
         pass   # overlay/compress never fatal — worst case the base PDF still sends
@@ -292,10 +296,11 @@ def generate_single_certificate(template_id, values, id_var=None):
     return pdf, cert_id, ''
 
 
-def add_verify_qr(pdf_bytes, cert_id, design_w, design_h):
-    """Stamp a small QR code in the bottom-right of page 1 that opens the public
-    verification page for this certificate. Never raises — returns the input PDF
-    on any error so a QR problem can't block the send."""
+def add_verify_qr(pdf_bytes, cert_id, design_w, design_h, text_elements=None):
+    """Stamp a QR code on page 1 that opens the public verification page for this
+    certificate. If the template has a {{qr}} field, the QR goes at THAT element's
+    position/size (add a text field with {{qr}} in the editor and drag it); with no
+    {{qr}} field it defaults to the bottom-right corner. Never raises."""
     try:
         import qrcode
         from io import BytesIO
@@ -311,19 +316,38 @@ def add_verify_qr(pdf_bytes, cert_id, design_w, design_h):
         img = qr.make_image(fill_color='black', back_color='white').convert('RGB')
         img_buf = BytesIO(); img.save(img_buf, format='PNG'); img_buf.seek(0)
 
+        # A {{qr}} field placed on page 1 sets the QR's position + size.
+        qr_el = next((e for e in (text_elements or [])
+                      if '{{qr}}' in (e.get('content', '') or '').lower()
+                      and int(e.get('page_number', 1) or 1) == 1), None)
+
         reader = PdfReader(BytesIO(pdf_bytes))
         writer = PdfWriter()
         for pi, page in enumerate(reader.pages):
             if pi == 0:
                 pw, ph = float(page.mediabox.width), float(page.mediabox.height)
-                size = min(64.0, pw * 0.11)     # ~64pt, scales down on small pages
-                margin = 30.0
+                sx = pw / (design_w or pw); sy = ph / (design_h or ph)
                 buf = BytesIO()
                 c = canvas.Canvas(buf, pagesize=(pw, ph))
-                c.drawImage(ImageReader(img_buf), pw - margin - size, margin, size, size, mask='auto')
-                c.setFont('Helvetica', 6)
-                c.setFillColorRGB(0.4, 0.4, 0.4)
-                c.drawCentredString(pw - margin - size / 2, margin - 8, 'Scan to verify')
+                if qr_el is not None:
+                    # square QR that fits the placed box, top-left anchored like text
+                    ex = float(qr_el.get('x', 0)) * sx
+                    ey = float(qr_el.get('y', 0)) * sy
+                    ew = float(qr_el.get('width', 60)) * sx
+                    eh = float(qr_el.get('height', 60)) * sy
+                    size = max(24.0, min(ew, eh) if eh else ew)
+                    qx = ex
+                    qy = ph - ey - size          # PDF bottom-origin
+                    c.drawImage(ImageReader(img_buf), qx, qy, size, size, mask='auto')
+                else:
+                    size = min(64.0, pw * 0.11)
+                    margin = 30.0
+                    qx = pw - margin - size
+                    qy = margin
+                    c.drawImage(ImageReader(img_buf), qx, qy, size, size, mask='auto')
+                    c.setFont('Helvetica', 6)
+                    c.setFillColorRGB(0.4, 0.4, 0.4)
+                    c.drawCentredString(qx + size / 2, qy - 8, 'Scan to verify')
                 c.save(); buf.seek(0)
                 page.merge_page(PdfReader(buf).pages[0])
             writer.add_page(page)
