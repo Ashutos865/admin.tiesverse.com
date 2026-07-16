@@ -848,13 +848,23 @@ class SendCertificateEmailView(APIView):
         if ok and cert_id:
             try:
                 from config.certificate_workflow import record_certificate
+                # The member's profile picture (public Cloudinary URL from their
+                # UserProfile) — shown on the verification page.
+                avatar = ''
+                try:
+                    if hasattr(sub, 'account') and sub.account and sub.account.user_id:
+                        from accounts_app.models import UserProfile
+                        pr = UserProfile.objects.filter(user_id=sub.account.user_id).first()
+                        avatar = (pr.avatar_url if pr else '') or ''
+                except Exception:  # noqa: BLE001
+                    avatar = ''
                 record_certificate(
                     cert_id, sub.candidate_name, label,
                     source_type='hr', source_ref=str(sub.id),
                     person_email=sub.candidate_email,
                     template_id=(cert_cfg or {}).get('template_id', '') if cert_cfg else '',
                     position=sub.role_offered or '',
-                    extra={'doc_type': label, 'has_photo': bool(sub.has_photo)},
+                    extra={'doc_type': label, 'avatar_url': avatar},
                 )
             except Exception:  # noqa: BLE001
                 pass

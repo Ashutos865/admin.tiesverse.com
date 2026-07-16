@@ -323,10 +323,8 @@ def verify_certificate(request):
     # Certificate / …) is the subject_title; other sources use their category label.
     doc_type = data.get('doc_type') or r.get('subject_title') or ''
     type_label = doc_type or _VERIFY_TYPE_LABEL.get(source_type, 'Certificate')
-    # A public photo URL (only reachable with a valid cert ID, so no enumeration).
-    photo_url = ''
-    if data.get('has_photo'):
-        photo_url = f'/api/public/verify-certificate/photo/?id={cert_id}'
+    # The holder's profile picture — a public Cloudinary URL stored at record time.
+    photo_url = data.get('avatar_url') or ''
     return JsonResponse({
         'valid': True,
         'certificate_id': r.get('certificate_id') or cert_id,
