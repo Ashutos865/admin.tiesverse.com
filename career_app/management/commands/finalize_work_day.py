@@ -14,7 +14,8 @@ import datetime
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from career_app.models import WorkSession, DailyWorkSummary
+from career_app.models import WorkSession, DailyWorkSummary, AttendanceRecord
+from career_app.work_sessions import _compose_day_report
 
 
 class Command(BaseCommand):
@@ -85,6 +86,16 @@ class Command(BaseCommand):
                 },
             )
             written += 1
+
+            # Backfill the day-level Attendance report from the session notes, so
+            # the Attendance table shows what was done even when a member forgot to
+            # check out (nightly auto-close) — matching the manual-checkout path.
+            report = _compose_day_report(e['member'], day)
+            if report:
+                rec = AttendanceRecord.objects.filter(member=e['member'], date=day).first()
+                if rec and not (rec.work_report or '').strip():
+                    rec.work_report = report
+                    rec.save(update_fields=['work_report'])
 
         self.stdout.write(self.style.SUCCESS(
             f'Finalized {written} member-day summaries for {day} '

@@ -42,6 +42,35 @@ def _resolve_member(request, member_id):
     return me, None
 
 
+def _compose_day_report(member, day):
+    """Build the day-level work report from that day's session notes.
+
+    Each checked-out session contributes its note, labelled with the task title
+    (or the ad-hoc custom label). Sessions with no note are skipped. Returns a
+    newline-joined string suitable for AttendanceRecord.work_report. If nothing
+    was written, returns '' so we don't overwrite an existing manual report with
+    blank text (see the caller — it only assigns when there IS something).
+    """
+    sessions = (
+        WorkSession.objects
+        .filter(member=member, date=day, check_out__isnull=False)
+        .select_related('task')
+        .order_by('check_in')
+    )
+    lines = []
+    for s in sessions:
+        note = (s.note or '').strip()
+        if not note:
+            continue
+        label = ''
+        if s.task_id and s.task:
+            label = (s.task.title or '').strip()
+        elif s.custom_task:
+            label = s.custom_task.strip()
+        lines.append(f'{label}: {note}' if label else note)
+    return '\n'.join(lines)
+
+
 class WorkSessionCheckInView(APIView):
     """Start a work session. Body: {member?, task?, custom_task?}.
 
@@ -125,6 +154,15 @@ class WorkSessionCheckOutView(APIView):
         rec = AttendanceRecord.objects.filter(member=sub, date=session.date).first()
         if rec:
             rec.check_out = now
+            # Surface what the member actually did on the day-level Attendance row.
+            # Work notes live on each WorkSession; the AttendanceRecord.work_report
+            # column stayed empty, so the Attendance table showed "—". Compose the
+            # report from all of the day's session notes (each labelled with its
+            # task / custom label) so the report is visible there too. Only assign
+            # when there's something, so we never blank an existing manual report.
+            day_report = _compose_day_report(sub, session.date)
+            if day_report:
+                rec.work_report = day_report
             if member_self_approves(sub):
                 rec.approval_status = AttendanceRecord.APPROVAL_APPROVED
                 rec.approved_by_name = 'Auto (team lead / advisory)'
