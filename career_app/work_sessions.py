@@ -95,12 +95,28 @@ class WorkSessionCheckInView(APIView):
         if task and task.status == Task.STATUS_TODO:
             task.status = Task.STATUS_IN_PROGRESS
             task.save(update_fields=['status'])
-        # keep the day-level record in sync (first session sets its check_in)
+        # Keep the day-level record in sync. A member can work several sessions a
+        # day against ONE AttendanceRecord. The first session sets check_in; every
+        # new session means they're actively working again, so clear the day's
+        # check_out (set by the previous session's checkout) and reset approval —
+        # otherwise the Attendance table keeps showing them "checked out /
+        # approved" while they're still working.
         record, _ = AttendanceRecord.objects.get_or_create(
             member=sub, date=today, defaults={'status': AttendanceRecord.STATUS_PRESENT})
+        fields = []
         if not record.check_in:
             record.check_in = now
-            record.save(update_fields=['check_in'])
+            fields.append('check_in')
+        if record.check_out is not None:
+            record.check_out = None
+            fields.append('check_out')
+        if record.approval_status != AttendanceRecord.APPROVAL_PENDING:
+            record.approval_status = AttendanceRecord.APPROVAL_PENDING
+            record.approved_by_name = ''
+            record.approved_at = None
+            fields += ['approval_status', 'approved_by_name', 'approved_at']
+        if fields:
+            record.save(update_fields=fields)
         session = WorkSession.objects.create(
             member=sub, date=today, check_in=now, task=task, custom_task=custom_task)
         return Response(WorkSessionSerializer(session).data, status=201)
