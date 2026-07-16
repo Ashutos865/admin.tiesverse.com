@@ -143,24 +143,43 @@ def overlay_values(pdf_bytes, text_elements, values, design_w, design_h):
                                          e.get('content', '') or '').strip()
                     if not text:
                         continue
+                    # Match the editor's box model: (x,y) is the element box's TOP-LEFT,
+                    # text is laid out inside it honouring padding, vertical_align and
+                    # line_height (top-anchored by default — NOT centred).
                     ex, ey = float(e.get('x', 0)) * sx, float(e.get('y', 0)) * sy
                     ew, eh = float(e.get('width', 0)) * sx, float(e.get('height', 0)) * sy
+                    pl = float(e.get('padding_left', 0) or 0) * sx
+                    pr = float(e.get('padding_right', 0) or 0) * sx
+                    pt = float(e.get('padding_top', 0) or 0) * sy
+                    pb = float(e.get('padding_bottom', 0) or 0) * sy
                     fs = max(6.0, float(e.get('font_size', 24)) * sy)
                     font = _font_for(e)
+                    inner_w = max(0.0, ew - pl - pr)
                     # Shrink to fit the box width (the design's auto-fit behaviour).
-                    while fs > 7 and ew and stringWidth(text, font, fs) > ew:
+                    while fs > 7 and inner_w and stringWidth(text, font, fs) > inner_w:
                         fs -= 0.5
                     tw = stringWidth(text, font, fs)
                     align = (e.get('text_align') or 'left').lower()
                     if align == 'center':
-                        tx = ex + max(0, (ew - tw) / 2)
+                        tx = ex + pl + max(0, (inner_w - tw) / 2)
                     elif align == 'right':
-                        tx = ex + max(0, ew - tw)
+                        tx = ex + pl + max(0, inner_w - tw)
                     else:
-                        tx = ex
-                    # vertical: box is top-origin; PDF is bottom-origin. Centre the text.
-                    center_from_top = ey + eh / 2.0
-                    baseline = ph - center_from_top - fs * 0.33
+                        tx = ex + pl
+                    # Vertical: the CSS line box height is font_size * line_height; the
+                    # glyph baseline sits ~0.8 of the font size below the line-box top.
+                    line_h = fs * float(e.get('line_height', 1.2) or 1.2)
+                    valign = (e.get('vertical_align') or 'top').lower()
+                    inner_h = max(0.0, eh - pt - pb)
+                    if valign == 'middle':
+                        top_from_box = pt + max(0.0, (inner_h - line_h) / 2.0)
+                    elif valign == 'bottom':
+                        top_from_box = pt + max(0.0, inner_h - line_h)
+                    else:                       # top (default)
+                        top_from_box = pt
+                    # distance from the page top down to the glyph baseline
+                    baseline_from_top = ey + top_from_box + (line_h - fs) / 2.0 + fs * 0.80
+                    baseline = ph - baseline_from_top
                     try:
                         c.setFillColor(HexColor(e.get('text_color') or '#000000'))
                     except Exception:  # noqa: BLE001
@@ -225,13 +244,26 @@ def generate_single_certificate(template_id, values, id_var=None):
 
     lc_values = {str(k).lower(): ('' if v is None else str(v)) for k, v in (values or {}).items()}
 
-    # Generator-enabled vars are produced by the generator (e.g. a sequence). Send
-    # a real (non-ZW) placeholder so the generator emits the pattern; everything
-    # else is blank (ZW) — we stamp real values ourselves.
+    # Pick the generator-enabled variable that gives the certificate its ID, and
+    # build a CONCRETE id from its pattern (e.g. TIES-BH-{######} → TIES-BH-047318).
+    # We generate the number ourselves so the stored ID matches what's on the PDF.
+    gen_var_names = [str(v.get('name')) for v in cert_vars if v.get('generator_enabled')]
+    id_pick = (id_var if (id_var and id_var in gen_var_names) else (gen_var_names[0] if gen_var_names else None))
+    cert_id = ''
+    if id_pick:
+        cert_id = lc_values.get(id_pick.lower(), '') or _make_cert_id(cert_vars, id_pick)
+
+    # Send data to the generator: the concrete ID for the id variable, blank/pattern
+    # for other generator vars, and ZW for the vars WE stamp (the generator requires
+    # a non-empty value — a plain space is rejected 422 — and ZW is invisible; if it
+    # shows as a ⊠ box our overlay covers it).
     gen_data = {}
     for v in cert_vars:
         name = str(v.get('name')).lower()
-        gen_data[name] = '' if v.get('generator_enabled') else ZW
+        if v.get('generator_enabled'):
+            gen_data[name] = cert_id if (id_pick and name == id_pick.lower()) else ''
+        else:
+            gen_data[name] = ZW
 
     pdf, gen_error = None, ''
     for _ in range(2):   # one retry on transient failure
@@ -243,30 +275,44 @@ def generate_single_certificate(template_id, values, id_var=None):
     if pdf is None:
         return None, '', f'certificate not generated: {gen_error}'[:300]
 
-    # Stamp the real values onto the placeholders (skip generator-enabled ones —
-    # the generator already rendered those).
+    # Stamp the real values onto the placeholders (generator-enabled vars, incl. the
+    # ID, are rendered by the generator itself, so we skip them here).
     gen_names = {str(v.get('name')).lower() for v in cert_vars if v.get('generator_enabled')}
-    overlay = {}
-    for v in cert_vars:
-        name = str(v.get('name')).lower()
-        if name in gen_names:
-            continue
-        overlay[name] = lc_values.get(name, '')
+    overlay = {name: lc_values.get(name, '') for name in
+               (str(v.get('name')).lower() for v in cert_vars) if name not in gen_names}
     try:
         pdf = overlay_values(pdf, cert_els, overlay, design_w, design_h)
         pdf = compress_pdf(pdf, target_kb=int(getattr(settings, 'CERT_MAX_KB', 600)))
     except Exception:  # noqa: BLE001
         pass   # overlay/compress never fatal — worst case the base PDF still sends
 
-    # Derive the certificate ID from the chosen (or first) generator-enabled var.
-    cert_id = ''
-    gen_var_names = [str(v.get('name')) for v in cert_vars if v.get('generator_enabled')]
-    if gen_var_names:
-        pick = id_var if (id_var and id_var in gen_var_names) else gen_var_names[0]
-        # The generator fills the pattern; if the client already supplied a value
-        # for it (rare), honour that, else fall back to the rendered pattern name.
-        cert_id = lc_values.get(str(pick).lower(), '') or _render_generator_pattern(cert_vars, pick)
     return pdf, cert_id, ''
+
+
+def _make_cert_id(cert_vars, name):
+    """Turn a generator pattern into a concrete ID: every {…} run of hash marks (or
+    a bare {seq}/{number}) becomes a random digit string of that length. Non-hash
+    braces are filled with a 6-digit number. e.g. 'TIES-BH-{######}' → 'TIES-BH-483920'."""
+    import re
+    import secrets
+    pat = ''
+    for v in cert_vars:
+        if str(v.get('name')) == str(name):
+            pat = (v.get('generator_pattern') or v.get('default_value') or '').strip()
+            break
+    if not pat:
+        return ''
+
+    def _rand(n):
+        return ''.join(secrets.choice('0123456789') for _ in range(n))
+
+    def _sub(m):
+        inner = m.group(1)
+        hashes = inner.count('#')
+        return _rand(hashes if hashes else 6)
+
+    out = re.sub(r'\{([^}]*)\}', _sub, pat)
+    return out or pat
 
 
 def _render_generator_pattern(cert_vars, name):
