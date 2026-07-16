@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getOnboardingList, getHRDepartments, verifyOnboarding, addTeamMember, issueCertificate, sendCertificateEmail, getEmailTemplates, fetchDocBlobUrl, viewDoc, getWorkSessions } from '../../apiClient';
+import GenerateCertModal from './GenerateCertModal';
 import { previewTemplate } from '../../lib/emailPreview';
 import { usePermissions } from '../../context/PermissionContext';
 import {
@@ -223,7 +224,8 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
     }));
     const [certSaving, setCertSaving] = useState(null);
     const [certMsg, setCertMsg] = useState(null);
-    const [sendModal, setSendModal] = useState(null);   // { cert } to email
+    const [sendModal, setSendModal] = useState(null);   // { cert } to generate & email
+    const [offerModal, setOfferModal] = useState(false); // issue offer letter
 
     // ── Working hours: all-history per-day log (scoped server-side to who may see it) ──
     const [worklog, setWorklog] = useState(null);   // null = loading
@@ -422,14 +424,22 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
                                 ? <CheckCircle size={16} color="#067a50" />
                                 : <Clock size={16} color="var(--text-muted)" />
                             }
-                            <div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontSize: '0.875rem', fontWeight: 700, color: offerSent ? '#067a50' : 'var(--text-muted)' }}>
                                     {offerSent ? 'Offer Letter Sent' : 'No offer letter on record'}
                                 </div>
                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 1 }}>
-                                    {offerSent ? 'Sent to ' + member.candidate_email : 'May have been added manually or before tracking was enabled.'}
+                                    {offerSent ? 'Sent to ' + member.candidate_email : 'Issue one now — the member’s name & department fill in automatically.'}
                                 </div>
                             </div>
+                            <button
+                                onClick={() => setOfferModal(true)}
+                                disabled={!member.candidate_email}
+                                title={member.candidate_email ? '' : 'This member has no email on file'}
+                                style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, border: 'none', background: 'var(--primary)', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: member.candidate_email ? 'pointer' : 'not-allowed', opacity: member.candidate_email ? 1 : 0.5 }}
+                            >
+                                <Mail size={13} /> {offerSent ? 'Send again' : 'Issue offer letter'}
+                            </button>
                         </div>
                     </ProfileSection>
 
@@ -520,7 +530,15 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
                                 {certMsg}
                             </div>
                         )}
-                        {sendModal && <SendCertModal member={member} cert={sendModal.cert} onClose={() => setSendModal(null)} />}
+                        {sendModal && (
+                            <GenerateCertModal
+                                member={member}
+                                docLabel={sendModal.cert.label}
+                                certKey={sendModal.cert.key}
+                                onClose={() => setSendModal(null)}
+                                onSent={() => { setCerts(c => ({ ...c, [sendModal.cert.key]: c[sendModal.cert.key] || new Date().toISOString() })); }}
+                            />
+                        )}
                     </ProfileSection>
 
                     {/* Emergency Contact */}
@@ -560,6 +578,23 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
                     fmtHM={fmtHM}
                     onDownload={downloadHistory}
                     onClose={() => setShowHistory(false)}
+                />
+            )}
+
+            {offerModal && (
+                <GenerateCertModal
+                    member={member}
+                    docLabel="Offer Letter"
+                    certKey="offer_letter"
+                    onClose={() => setOfferModal(false)}
+                    onSent={() => {
+                        try {
+                            const map = JSON.parse(localStorage.getItem('tv_offers_sent') || '{}');
+                            map[member.candidate_email] = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                            localStorage.setItem('tv_offers_sent', JSON.stringify(map));
+                        } catch { /* ignore */ }
+                        setOfferModal(false);
+                    }}
                 />
             )}
         </div>
