@@ -95,28 +95,15 @@ class WorkSessionCheckInView(APIView):
         if task and task.status == Task.STATUS_TODO:
             task.status = Task.STATUS_IN_PROGRESS
             task.save(update_fields=['status'])
-        # Keep the day-level record in sync. A member can work several sessions a
-        # day against ONE AttendanceRecord. The first session sets check_in; every
-        # new session means they're actively working again, so clear the day's
-        # check_out (set by the previous session's checkout) and reset approval —
-        # otherwise the Attendance table keeps showing them "checked out /
-        # approved" while they're still working.
+        # Keep the day-level record in sync — but approval now lives PER SESSION,
+        # so a new session must NOT touch the day record's approval (doing so would
+        # wipe an already-reviewed earlier session). The day record just holds the
+        # day's first check_in; the Attendance view reads live state per session.
         record, _ = AttendanceRecord.objects.get_or_create(
             member=sub, date=today, defaults={'status': AttendanceRecord.STATUS_PRESENT})
-        fields = []
         if not record.check_in:
             record.check_in = now
-            fields.append('check_in')
-        if record.check_out is not None:
-            record.check_out = None
-            fields.append('check_out')
-        if record.approval_status != AttendanceRecord.APPROVAL_PENDING:
-            record.approval_status = AttendanceRecord.APPROVAL_PENDING
-            record.approved_by_name = ''
-            record.approved_at = None
-            fields += ['approval_status', 'approved_by_name', 'approved_at']
-        if fields:
-            record.save(update_fields=fields)
+            record.save(update_fields=['check_in'])
         session = WorkSession.objects.create(
             member=sub, date=today, check_in=now, task=task, custom_task=custom_task)
         return Response(WorkSessionSerializer(session).data, status=201)
@@ -165,6 +152,12 @@ class WorkSessionCheckOutView(APIView):
                 elif prog > 0:
                     t.status = Task.STATUS_IN_PROGRESS
                 t.save(update_fields=fields)
+        # Approval is per-session. Leads/advisory self-approve their own sessions;
+        # everyone else's session starts Pending (the field default) for review.
+        if member_self_approves(sub):
+            session.approval_status = WorkSession.APPROVAL_APPROVED
+            session.approved_by_name = 'Auto (team lead / advisory)'
+            session.approved_at = now
         session.save()
         # day-level record: latest checkout; leads self-approve, others await review
         rec = AttendanceRecord.objects.filter(member=sub, date=session.date).first()
@@ -247,6 +240,231 @@ class WorkSessionListView(APIView):
             'sessions': WorkSessionSerializer(sessions, many=True).data,
             'daily': sorted(daily.values(), key=lambda x: x['date'], reverse=True),
         })
+
+
+def _session_report(session):
+    """The single-session work text, labelled with its task / custom label."""
+    note = (session.note or '').strip()
+    if not note:
+        return ''
+    label = ''
+    if session.task_id and session.task:
+        label = (session.task.title or '').strip()
+    elif session.custom_task:
+        label = session.custom_task.strip()
+    return f'{label}: {note}' if label else note
+
+
+def _rollup_day_approval(member, day, sessions_by_day, fallback):
+    """Approval to show for a finalized day: rejected if any session rejected,
+    approved if all approved, else pending. Pre-migration days have sessions all
+    at the default 'pending' — fall back to the day AttendanceRecord's approval
+    (which legacy code set) so already-approved past days still read approved."""
+    day_sessions = sessions_by_day.get((member.id, day), [])
+    statuses = [s.approval_status for s in day_sessions]
+    if not statuses:
+        return fallback
+    if any(s == WorkSession.APPROVAL_REJECTED for s in statuses):
+        return WorkSession.APPROVAL_REJECTED
+    if all(s == WorkSession.APPROVAL_APPROVED for s in statuses):
+        return WorkSession.APPROVAL_APPROVED
+    # every session still at the default 'pending' + a legacy approved day → trust the day
+    if all(s == WorkSession.APPROVAL_PENDING for s in statuses) and fallback == AttendanceRecord.APPROVAL_APPROVED:
+        return AttendanceRecord.APPROVAL_APPROVED
+    return WorkSession.APPROVAL_PENDING
+
+
+class AttendanceRowsView(APIView):
+    """The Attendance page's rows. While a day is LIVE (today, not yet finalized)
+    each work session is its own row; once a day is FINALIZED (a DailyWorkSummary
+    exists, or the date is in the past) its sessions collapse into a single
+    day-summary row. Returns one flat array with a `row_type` discriminator."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        today = timezone.localdate()
+        member_id = request.query_params.get('member')
+        date = request.query_params.get('date')
+        month = request.query_params.get('month')      # YYYY-MM
+        dept = request.query_params.get('dept')
+        approval = request.query_params.get('approval')
+
+        def apply_common(qs, field_prefix=''):
+            qs = access.scope_member_queryset(qs, request.user, field='member')
+            if member_id:
+                qs = qs.filter(member_id=member_id)
+            if date:
+                qs = qs.filter(date=date)
+            if month:
+                y, mo = month.split('-')
+                qs = qs.filter(date__year=y, date__month=mo)
+            if dept:
+                qs = qs.filter(member__assigned_departments__contains=dept)
+            return qs
+
+        rows = []
+
+        # ---- Finalized days → one day-summary row each ----
+        summaries = apply_common(DailyWorkSummary.objects.select_related('member'))
+        summ_list = list(summaries)
+        # matching AttendanceRecords (for status + composed work_report) and the
+        # day's sessions (to roll up approval), fetched in bulk.
+        summ_keys = [(su.member_id, su.date) for su in summ_list]
+        recs_by_key, sessions_by_day = {}, {}
+        if summ_keys:
+            member_ids = {su.member_id for su in summ_list}
+            dates = {su.date for su in summ_list}
+            for r in AttendanceRecord.objects.filter(member_id__in=member_ids, date__in=dates):
+                recs_by_key[(r.member_id, r.date)] = r
+            for s in WorkSession.objects.filter(member_id__in=member_ids, date__in=dates).select_related('member'):
+                sessions_by_day.setdefault((s.member_id, s.date), []).append(s)
+
+        for su in summ_list:
+            rec = recs_by_key.get((su.member_id, su.date))
+            fallback = rec.approval_status if rec else AttendanceRecord.APPROVAL_PENDING
+            appr = _rollup_day_approval(su.member, su.date, sessions_by_day, fallback)
+            if approval and appr != approval:
+                continue
+            rows.append({
+                'row_type': 'day',
+                'id': f'd-{su.id}',
+                'summary_id': su.id,
+                'attendance_id': rec.id if rec else None,
+                'member': su.member_id,
+                'member_name': su.member.candidate_name,
+                'date': su.date.isoformat(),
+                'check_in': su.first_check_in,
+                'check_out': su.last_check_out,
+                'is_ongoing': False,
+                'status': rec.status if rec else AttendanceRecord.STATUS_PRESENT,
+                'approval_status': appr,
+                'approval_note': rec.approval_note if rec else '',
+                'work_report': (rec.work_report if rec else '') or '',
+                'total_minutes': su.total_minutes,
+                'session_count': su.session_count,
+                'auto_closed_count': su.auto_closed_count,
+                'duration_minutes': su.total_minutes,
+                'can_checkout': False,
+                'can_review': False,
+            })
+
+        finalized_days = {(su.member_id, su.date) for su in summ_list}
+
+        # ---- Live today → one row per session ----
+        # (only today; older un-summarized days are rare but still show as day rows
+        #  via the summary branch once finalize runs — for safety they fall here only
+        #  if date==today.)
+        live_sessions = apply_common(
+            WorkSession.objects.select_related('member', 'task').filter(date=today))
+        # day AttendanceRecords for today, for status
+        today_recs = {}
+        if not date or date == today.isoformat():
+            for r in AttendanceRecord.objects.filter(date=today):
+                today_recs[r.member_id] = r
+        seen_members_today = set()
+        for s in live_sessions:
+            if (s.member_id, s.date) in finalized_days:
+                continue  # a summary already exists (early finalize) — skip session rows
+            if approval and s.approval_status != approval:
+                continue
+            seen_members_today.add(s.member_id)
+            rec = today_recs.get(s.member_id)
+            is_ongoing = s.check_out is None
+            closed_pending = (not is_ongoing) and s.approval_status == WorkSession.APPROVAL_PENDING
+            rows.append({
+                'row_type': 'session',
+                'id': f's-{s.id}',
+                'session_id': s.id,
+                'attendance_id': rec.id if rec else None,
+                'member': s.member_id,
+                'member_name': s.member.candidate_name,
+                'date': s.date.isoformat(),
+                'check_in': s.check_in,
+                'check_out': s.check_out,
+                'is_ongoing': is_ongoing,
+                'status': rec.status if rec else AttendanceRecord.STATUS_PRESENT,
+                'approval_status': s.approval_status,
+                'approval_note': s.approval_note,
+                'work_report': _session_report(s),
+                'task_title': s.task.title if s.task_id and s.task else (s.custom_task or None),
+                'duration_minutes': s.duration_minutes,
+                'can_checkout': is_ongoing,
+                'can_review': closed_pending,
+            })
+
+        # ---- Legacy: checked in today via the day flow but no WorkSession yet ----
+        if not date or date == today.isoformat():
+            for mid, rec in today_recs.items():
+                if mid in seen_members_today or (mid, today) in finalized_days:
+                    continue
+                if not rec.check_in:
+                    continue
+                if member_id and str(mid) != str(member_id):
+                    continue
+                # scope check: only include if the member is in the caller's scope
+                if not access.scope_member_queryset(
+                        AttendanceRecord.objects.filter(pk=rec.pk), request.user, field='member').exists():
+                    continue
+                appr = rec.approval_status
+                if approval and appr != approval:
+                    continue
+                is_ongoing = rec.check_out is None
+                rows.append({
+                    'row_type': 'session',
+                    'id': f'a-{rec.id}',
+                    'session_id': None,
+                    'attendance_id': rec.id,
+                    'member': mid,
+                    'member_name': rec.member.candidate_name,
+                    'date': rec.date.isoformat(),
+                    'check_in': rec.check_in,
+                    'check_out': rec.check_out,
+                    'is_ongoing': is_ongoing,
+                    'status': rec.status,
+                    'approval_status': appr,
+                    'approval_note': rec.approval_note,
+                    'work_report': rec.work_report or '',
+                    'task_title': None,
+                    'duration_minutes': 0,
+                    'can_checkout': is_ongoing,
+                    'can_review': (not is_ongoing) and appr == AttendanceRecord.APPROVAL_PENDING,
+                })
+
+        rows.sort(key=lambda r: (r['date'], r['check_in'].isoformat() if r['check_in'] else ''), reverse=True)
+        return Response(rows)
+
+
+class WorkSessionApproveView(APIView):
+    """Team lead approves / rejects ONE work session (per-session review)."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        session = WorkSession.objects.filter(pk=pk).select_related('member').first()
+        if not session:
+            return Response({'error': 'Session not found'}, status=404)
+
+        scope, me = access.get_access_scope(request.user)
+        if scope == 'self':
+            return Response({'error': 'You are not allowed to review attendance.'}, status=403)
+        if scope == 'team' and session.member_id not in access.team_member_ids(me):
+            return Response({'error': 'You can only review your own team.'}, status=403)
+
+        # A finalized day is locked — its sessions can't be re-reviewed.
+        if DailyWorkSummary.objects.filter(member_id=session.member_id, date=session.date).exists():
+            return Response({'error': 'This day is finalized and can no longer be reviewed.'}, status=400)
+
+        decision = request.data.get('decision')
+        if decision not in ('approved', 'rejected'):
+            return Response({'error': 'decision must be approved or rejected'}, status=400)
+
+        session.approval_status = decision
+        session.approved_by_name = (request.user.get_full_name() or request.user.username)
+        session.approved_by_user = request.user
+        session.approved_at = timezone.now()
+        session.approval_note = request.data.get('note', '')
+        session.save(update_fields=['approval_status', 'approved_by_name',
+                                    'approved_by_user', 'approved_at', 'approval_note'])
+        return Response(WorkSessionSerializer(session).data)
 
 
 def _week_bounds(today):

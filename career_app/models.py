@@ -923,8 +923,22 @@ class ProjectMilestone(models.Model):
 
 class WorkSession(models.Model):
     """One check-in → check-out work session. A person can have several per day,
-    each optionally tied to a task. The day's total = sum of its sessions; the
-    day's approval lives on the matching AttendanceRecord (approved as a whole)."""
+    each optionally tied to a task. The day's total = sum of its sessions.
+
+    Approval lives PER SESSION (each session is reviewed on its own): while a day
+    is live the Attendance view shows one row per session, each independently
+    approved/rejected; once the day is finalized the sessions collapse into a
+    single day summary. The matching AttendanceRecord still carries the day-level
+    identity for backward compatibility."""
+    APPROVAL_PENDING = 'pending'
+    APPROVAL_APPROVED = 'approved'
+    APPROVAL_REJECTED = 'rejected'
+    APPROVAL_CHOICES = [
+        (APPROVAL_PENDING, 'Pending'),
+        (APPROVAL_APPROVED, 'Approved'),
+        (APPROVAL_REJECTED, 'Rejected'),
+    ]
+
     member = models.ForeignKey(
         OnboardingSubmission, on_delete=models.CASCADE, related_name='work_sessions',
     )
@@ -939,6 +953,19 @@ class WorkSession(models.Model):
     completed_task = models.BooleanField(default=False)   # marked the task done at checkout
     progress_after = models.PositiveSmallIntegerField(null=True, blank=True)  # task progress % set at this checkout
     auto_closed = models.BooleanField(default=False)   # system-closed at day end (member forgot to check out)
+
+    # Team-lead approval, per session.
+    approval_status = models.CharField(
+        max_length=10, choices=APPROVAL_CHOICES, default=APPROVAL_PENDING,
+    )
+    approved_by_name = models.CharField(max_length=255, blank=True)
+    approved_by_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
+        related_name='+',
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approval_note = models.TextField(blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -210,8 +210,9 @@ class WorkSessionSerializer(serializers.ModelSerializer):
         model = WorkSession
         fields = ['id', 'member', 'member_name', 'date', 'check_in', 'check_out', 'task',
                   'task_title', 'task_progress', 'custom_task', 'note', 'completed_task',
-                  'progress_after', 'auto_closed', 'duration_minutes', 'created_at']
-        read_only_fields = ['id', 'member_name', 'task_title', 'task_progress', 'duration_minutes', 'created_at']
+                  'progress_after', 'auto_closed', 'duration_minutes', 'created_at',
+                  'approval_status', 'approved_by_name', 'approved_at', 'approval_note']
+        read_only_fields = ['id', 'member_name', 'task_title', 'task_progress', 'duration_minutes', 'created_at', 'approved_at']
 
     def get_task_title(self, obj):
         return obj.task.title if obj.task else (obj.custom_task or None)

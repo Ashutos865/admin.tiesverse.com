@@ -10,7 +10,7 @@ from .project_views import (
 )
 from .work_sessions import (
     WorkSessionCheckInView, WorkSessionCheckOutView, WorkSessionActiveView,
-    WorkSessionListView, WorkLeaderboardView,
+    WorkSessionListView, WorkLeaderboardView, AttendanceRowsView, WorkSessionApproveView,
 )
 from .views import (
     CandidateListView, CandidateDetailView, FormGateView, ResumeDownloadView, SendOfferLetterView,
@@ -86,6 +86,7 @@ urlpatterns = [
 
     # ── Attendance ─────────────────────────────────────────────────────────
     path('attendance/', AttendanceListView.as_view(), name='attendance-list'),
+    path('attendance/rows/', AttendanceRowsView.as_view(), name='attendance-rows'),
     path('attendance/<int:pk>/', AttendanceDetailView.as_view(), name='attendance-detail'),
     path('attendance/<int:pk>/approve/', AttendanceApproveView.as_view(), name='attendance-approve'),
     path('attendance/member/<int:member_id>/checkin/', AttendanceCheckInView.as_view(), name='attendance-checkin'),
@@ -96,6 +97,7 @@ urlpatterns = [
     path('work-sessions/checkin/', WorkSessionCheckInView.as_view(), name='work-session-checkin'),
     path('work-sessions/checkout/', WorkSessionCheckOutView.as_view(), name='work-session-checkout'),
     path('work-sessions/active/', WorkSessionActiveView.as_view(), name='work-session-active'),
+    path('work-sessions/<int:pk>/approve/', WorkSessionApproveView.as_view(), name='work-session-approve'),
     path('work-leaderboard/', WorkLeaderboardView.as_view(), name='work-leaderboard'),
 
     # ── Leave Management ───────────────────────────────────────────────────

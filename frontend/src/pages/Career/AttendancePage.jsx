@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-    getAttendanceList, approveAttendance, checkIn, checkOut,
+    getAttendanceRows, approveAttendance, approveSession, checkIn, checkOut, sessionCheckout,
     getOnboardingList,
 } from '../../apiClient';
 import SearchableSelect from '../../components/SearchableSelect';
@@ -68,7 +68,7 @@ export default function AttendancePage() {
         if (filterMember) params.member = filterMember;
         if (filterApproval) params.approval = filterApproval;
         const [recs, mems] = await Promise.all([
-            getAttendanceList(params),
+            getAttendanceRows(params),
             getOnboardingList(),
         ]);
         setRecords(Array.isArray(recs) ? recs : []);
@@ -93,7 +93,11 @@ export default function AttendancePage() {
     const handleCheckout = async () => {
         if (!workReport.trim()) { showToast('Work report is required', true); return; }
         setSaving(true);
-        const res = await checkOut(checkoutModal.member, { work_report: workReport });
+        // A real session row → close the session (note carries the report). A
+        // legacy day-flow row (session_id null) → the day-level checkout.
+        const res = checkoutModal.session_id != null
+            ? await sessionCheckout({ member: checkoutModal.member, note: workReport })
+            : await checkOut(checkoutModal.member, { work_report: workReport });
         setSaving(false);
         if (res?.error) { showToast(res.error, true); return; }
         showToast('Checked out');
@@ -104,7 +108,11 @@ export default function AttendancePage() {
 
     const handleApprove = async (decision) => {
         setSaving(true);
-        const res = await approveAttendance(approveModal.id, { decision, note: approveNote });
+        // Approve the specific session; legacy day-flow rows fall back to the
+        // day-level approve endpoint.
+        const res = approveModal.session_id != null
+            ? await approveSession(approveModal.session_id, { decision, note: approveNote })
+            : await approveAttendance(approveModal.attendance_id, { decision, note: approveNote });
         setSaving(false);
         if (res?.error) { showToast(res.error, true); return; }
         showToast(decision === 'approved' ? 'Approved' : 'Rejected');
@@ -127,9 +135,9 @@ export default function AttendancePage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
                 <div>
                     <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>Attendance</h1>
-                    <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4, maxWidth: 560 }}>
-                        Daily attendance and end-of-day work reports. Check a member in below; they
-                        (or you) submit the work report at check-out, and team leads review and approve.
+                    <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4, maxWidth: 600 }}>
+                        Today shows each work session on its own row (review or check out each one);
+                        past days collapse into a single locked summary with total hours and session count.
                     </p>
                 </div>
                 <button onClick={() => { setCheckInMember(filterMember || ''); setShowCheckIn(true); }} style={{
@@ -178,15 +186,27 @@ export default function AttendancePage() {
                         <tbody>
                             {records.map(r => {
                                 const badge = APPROVAL_BADGE[r.approval_status] || APPROVAL_BADGE.pending;
+                                const isDay = r.row_type === 'day';
+                                const hrs = (r.total_minutes || r.duration_minutes || 0) / 60;
                                 return (
-                                    <tr key={r.id} style={{ borderBottom: '1px solid var(--outline-variant)' }}>
+                                    <tr key={r.id} style={{ borderBottom: '1px solid var(--outline-variant)', background: isDay ? 'color-mix(in srgb, var(--surface-container-low) 40%, transparent)' : 'transparent' }}>
                                         <td style={{ padding: '10px 12px', color: 'var(--text-main)', fontWeight: 500 }}>{r.member_name}</td>
-                                        <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>{r.date}</td>
+                                        <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>
+                                            {r.date}
+                                            {isDay && (
+                                                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                                                    <span title="This day is finalized (locked)">🔒</span>
+                                                    {r.session_count} session{r.session_count === 1 ? '' : 's'} · {hrs ? `${hrs.toFixed(hrs < 10 ? 1 : 0)}h` : '0h'}
+                                                </div>
+                                            )}
+                                        </td>
                                         <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>
                                             {r.check_in ? new Date(r.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
                                         </td>
                                         <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>
-                                            {r.check_out ? new Date(r.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                                            {r.is_ongoing
+                                                ? <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: '#16a34a22', color: '#16a34a' }}>Ongoing</span>
+                                                : (r.check_out ? new Date(r.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—')}
                                         </td>
                                         <td style={{ padding: '10px 12px' }}>
                                             <span style={{
@@ -220,16 +240,17 @@ export default function AttendancePage() {
                                         </td>
                                         <td style={{ padding: '10px 12px' }}>
                                             <div style={{ display: 'flex', gap: 6 }}>
-                                                {r.check_in && !r.check_out && (
+                                                {r.can_checkout && (
                                                     <button onClick={() => { setCheckoutModal(r); setWorkReport(''); }} style={btnStyle('#f59e0b')}>
                                                         Check Out
                                                     </button>
                                                 )}
-                                                {r.approval_status === 'pending' && r.check_out && (
+                                                {r.can_review && (
                                                     <button onClick={() => { setApproveModal(r); setApproveNote(''); }} style={btnStyle('var(--primary)')}>
                                                         Review
                                                     </button>
                                                 )}
+                                                {isDay && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Finalized</span>}
                                             </div>
                                         </td>
                                     </tr>

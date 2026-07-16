@@ -490,6 +490,14 @@ export const getAttendanceList = (params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return adminFetch(`/api/career/attendance${qs ? '?' + qs : ''}`).catch(() => []);
 };
+// Attendance rows: one row per work SESSION while a day is live, collapsing to
+// one row per DAY once finalized. This backs the Attendance page.
+export const getAttendanceRows = (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return adminFetch(`/api/career/attendance/rows${qs ? '?' + qs : ''}`).catch(() => []);
+};
+export const approveSession = (id, data) => adminFetch(`/api/career/work-sessions/${id}/approve`, 'PATCH', data);
+export const sessionCheckout = (data) => adminFetch('/api/career/work-sessions/checkout/', 'POST', data);
 export const createAttendanceRecord = (data) => adminFetch('/api/career/attendance', 'POST', data);
 export const getAttendanceDetail = (id) => adminFetch(`/api/career/attendance/${id}`);
 export const updateAttendanceRecord = (id, data) => adminFetch(`/api/career/attendance/${id}`, 'PATCH', data);
