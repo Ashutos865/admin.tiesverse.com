@@ -17,9 +17,12 @@ const AUTO_EMAIL_TOKENS = new Set(['name', 'document', 'issued_by', 'portal_url'
 // The variables a template actually PLACES on the page and expects filled — the
 // non-generator ones (generator_enabled vars are produced automatically and give
 // the certificate its ID). Mirrors MailAutomation's usableCertVars.
+// Variables handled automatically — never asked of the sender.
+const AUTO_VARS = new Set(['qr', 'cert_id', 'certificate_id']);
 const placedNonGenVars = (t) => {
   const used = new Set(variableNamesFromElements(t?.text_elements || []));
-  const nonGen = (t?.variables || []).filter((v) => !v.generator_enabled);
+  const nonGen = (t?.variables || []).filter(
+    (v) => !v.generator_enabled && !AUTO_VARS.has(String(v.name).toLowerCase()));
   const placed = nonGen.filter((v) => used.has(String(v.name).toLowerCase()));
   return placed.length ? placed : nonGen;
 };

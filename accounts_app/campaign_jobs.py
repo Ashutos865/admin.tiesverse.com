@@ -338,6 +338,14 @@ def add_verify_qr(pdf_bytes, cert_id, design_w, design_h, text_elements=None):
                     size = max(24.0, min(ew, eh) if eh else ew)
                     qx = ex
                     qy = ph - ey - size          # PDF bottom-origin
+                    # White-cover the whole {{qr}} box first: the generator renders
+                    # the token's placeholder (a "?") which would otherwise peek out
+                    # beside the square QR. (The box sits on the white letter body.)
+                    from reportlab.lib.colors import HexColor
+                    c.setFillColor(HexColor('#FFFFFF'))
+                    pad = 2.0
+                    c.rect(ex - pad, ph - ey - (eh or size) - pad,
+                           (ew or size) + 2 * pad, (eh or size) + 2 * pad, stroke=0, fill=1)
                     c.drawImage(ImageReader(img_buf), qx, qy, size, size, mask='auto')
                 else:
                     size = min(64.0, pw * 0.11)
