@@ -170,6 +170,28 @@ def public_tech_products(request):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+def public_brands(request):
+    """Admin-managed 'mastheads' brands for the website. Cached ~2 min."""
+    cached = cache.get('public_brands')
+    if cached is None:
+        try:
+            from tiesverse_app.models import Brand
+            cached = [
+                {
+                    'id': b.id, 'name': b.name, 'description': b.description or '',
+                    'image_url': b.image_url or '', 'url': b.url or '/',
+                    'domain': b.domain or '', 'color': b.color or '#FE7A00',
+                }
+                for b in Brand.objects.using('turso_db').filter(is_active=True).order_by('order', 'id')
+            ]
+        except Exception:  # noqa: BLE001
+            cached = []
+        cache.set('public_brands', cached, 120)
+    return JsonResponse({'brands': cached})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def public_site_images(request):
     """Per-slot website image overrides {key: {url, mode}}. Cached ~2 min."""
     cached = cache.get('public_site_images')

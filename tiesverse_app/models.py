@@ -331,6 +331,27 @@ class TechProduct(models.Model):
         return self.name
 
 
+class Brand(models.Model):
+    """A masthead/brand shown in the website's 'One house, N mastheads' section."""
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)                  # the row blurb
+    image_url = models.CharField(max_length=500, blank=True)    # logo (Cloudinary WebP)
+    url = models.CharField(max_length=500, blank=True, default='/')  # where the row links
+    domain = models.CharField(max_length=120, blank=True)       # e.g. "Geopolitics"
+    color = models.CharField(max_length=20, blank=True, default='#FE7A00')  # accent colour
+    order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'brands'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return self.name
+
+
 class SiteImage(models.Model):
     """A per-slot override for a website image (see site_image_slots.SLOTS).
     mode='manual' uses image_url; mode='auto' lets the website pull from a feed."""

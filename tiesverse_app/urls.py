@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     DepartmentViewSet, TeamMemberViewSet, TeamMemberSocialViewSet,
     EventViewSet, EventSpeakerViewSet, EventRegistrationViewSet,
-    WebinarListingViewSet, TechProductViewSet,
+    WebinarListingViewSet, TechProductViewSet, BrandViewSet,
 )
 from .views import site_images_admin, site_image_upload
 from .data_api import (
@@ -19,6 +19,7 @@ router.register(r'event_speakers', EventSpeakerViewSet)
 router.register(r'event_registrations', EventRegistrationViewSet)
 router.register(r'webinars', WebinarListingViewSet)
 router.register(r'tech-products', TechProductViewSet, basename='tech-product')
+router.register(r'brands', BrandViewSet, basename='brand')
 
 urlpatterns = [
     path('site-images/', site_images_admin, name='site-images-admin'),

@@ -2,12 +2,12 @@ from rest_framework import viewsets
 from rest_framework.permissions import DjangoModelPermissions, IsAuthenticated
 from .models import (
     Department, Event, EventSpeaker, EventRegistration,
-    TeamMember, TeamMemberSocial, WebinarListing, TechProduct,
+    TeamMember, TeamMemberSocial, WebinarListing, TechProduct, Brand,
 )
 from .serializers import (
     DepartmentSerializer, EventSerializer, EventSpeakerSerializer,
     EventRegistrationSerializer, TeamMemberSerializer, TeamMemberSocialSerializer,
-    WebinarListingSerializer, TechProductSerializer,
+    WebinarListingSerializer, TechProductSerializer, BrandSerializer,
 )
 from . import supabase_sync
 
@@ -84,6 +84,13 @@ class TechProductViewSet(viewsets.ModelViewSet):
     """Admin CRUD for the website's Technology-section products."""
     queryset = TechProduct.objects.all().order_by('order', 'id')
     serializer_class = TechProductSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class BrandViewSet(viewsets.ModelViewSet):
+    """Admin CRUD for the website's 'mastheads' brands."""
+    queryset = Brand.objects.all().order_by('order', 'id')
+    serializer_class = BrandSerializer
     permission_classes = [IsAuthenticated]
 
 

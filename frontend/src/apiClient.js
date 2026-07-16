@@ -192,6 +192,10 @@ export const getTechProducts = () => adminFetch('/api/landing/tech-products/').c
 export const createTechProduct = (data) => adminFetch('/api/landing/tech-products/', 'POST', data);
 export const updateTechProduct = (id, data) => adminFetch(`/api/landing/tech-products/${id}/`, 'PATCH', data);
 export const deleteTechProduct = (id) => adminFetch(`/api/landing/tech-products/${id}/`, 'DELETE');
+export const getBrands = () => adminFetch('/api/landing/brands/').catch(() => []);
+export const createBrand = (data) => adminFetch('/api/landing/brands/', 'POST', data);
+export const updateBrand = (id, data) => adminFetch(`/api/landing/brands/${id}/`, 'PATCH', data);
+export const deleteBrand = (id) => adminFetch(`/api/landing/brands/${id}/`, 'DELETE');
 
 // DEPARTMENTS
 export const getDepartments = () => adminFetch('/api/landing/departments');
