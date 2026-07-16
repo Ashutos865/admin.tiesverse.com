@@ -772,7 +772,8 @@ class SendCertificateEmailView(APIView):
 
         template_key = request.data.get('template_key') or 'certificate_issue'
         cert_key = request.data.get('cert_key') or ''
-        label = CertificateIssueView.CERT_LABELS.get(cert_key, 'Certificate')
+        DOC_LABELS = {**CertificateIssueView.CERT_LABELS, 'offer_letter': 'Offer Letter'}
+        label = DOC_LABELS.get(cert_key, 'Certificate')
         tpl = get_template(template_key)
         if tpl is None:
             return Response({'error': 'Unknown template.'}, status=400)
@@ -853,6 +854,7 @@ class SendCertificateEmailView(APIView):
                     person_email=sub.candidate_email,
                     template_id=(cert_cfg or {}).get('template_id', '') if cert_cfg else '',
                     position=sub.role_offered or '',
+                    extra={'doc_type': label, 'has_photo': bool(sub.has_photo)},
                 )
             except Exception:  # noqa: BLE001
                 pass

@@ -18,7 +18,7 @@ from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, Http404
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.throttling import SimpleRateThrottle
@@ -313,22 +313,69 @@ def verify_certificate(request):
         return JsonResponse({'valid': False, 'certificate_id': cert_id})
     r = rows[0]
     source_type = r.get('source_type') or ''
-    position = ''
+    data = {}
     try:
-        position = (json.loads(r.get('data_json') or '{}') or {}).get('position') or ''
+        data = json.loads(r.get('data_json') or '{}') or {}
     except Exception:  # noqa: BLE001
-        position = ''
+        data = {}
+    position = data.get('position') or ''
+    # The document type: for HR certs the exact doc name (Offer Letter / Internship
+    # Certificate / …) is the subject_title; other sources use their category label.
+    doc_type = data.get('doc_type') or r.get('subject_title') or ''
+    type_label = doc_type or _VERIFY_TYPE_LABEL.get(source_type, 'Certificate')
+    # A public photo URL (only reachable with a valid cert ID, so no enumeration).
+    photo_url = ''
+    if data.get('has_photo'):
+        photo_url = f'/api/public/verify-certificate/photo/?id={cert_id}'
     return JsonResponse({
         'valid': True,
         'certificate_id': r.get('certificate_id') or cert_id,
         'name': r.get('person_name') or '',
-        'title': r.get('subject_title') or '',
         'position': position,
-        'type': source_type,
-        'type_label': _VERIFY_TYPE_LABEL.get(source_type, 'Certificate'),
+        'type_label': type_label,
+        'photo_url': photo_url,
         'issued_on': _verify_date(r.get('created_at')),
         'issuer': 'TIESVERSE',
     })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([VerifyRateThrottle])
+def verify_certificate_photo(request):
+    """Public: the certificate holder's profile photo, reachable ONLY with a valid
+    certificate ID (via the record's source_ref → member). No listing/enumeration."""
+    cert_id = (request.query_params.get('id') or '').strip().upper()
+    if not cert_id or not turso_client.is_configured():
+        raise Http404
+    try:
+        turso_client.setup_tables()
+        rows = turso_client.execute(
+            """SELECT source_ref, source_type FROM certificate_records
+               WHERE UPPER(certificate_id)=:cid LIMIT 1""",
+            {'cid': cert_id},
+        )
+    except turso_client.TursoError:
+        raise Http404
+    if not rows or (rows[0].get('source_type') or '') != 'hr':
+        raise Http404
+    try:
+        from career_app.models import OnboardingSubmission
+        from career_app.providers import R2Storage
+        sub = OnboardingSubmission.objects.filter(pk=int(rows[0].get('source_ref') or 0)).first()
+        if not sub or not sub.photo_key:
+            raise Http404
+        content = R2Storage().get_object(sub.photo_key)
+        ext = sub.photo_key.rsplit('.', 1)[-1].lower() if '.' in sub.photo_key else 'jpg'
+        ctype = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+                 'gif': 'image/gif', 'webp': 'image/webp'}.get(ext, 'image/jpeg')
+        resp = HttpResponse(content, content_type=ctype)
+        resp['Cache-Control'] = 'public, max-age=3600'
+        return resp
+    except Http404:
+        raise
+    except Exception:  # noqa: BLE001
+        raise Http404
 
 
 @api_view(['GET'])
