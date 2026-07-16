@@ -80,7 +80,10 @@ export default function WorkSessionsPanel({ memberId, showToast }) {
 
   const todayKey = new Date().toISOString().slice(0, 10);
   const todaySessions = sessions.filter((s) => s.date === todayKey);
-  const todayMins = todaySessions.reduce((a, s) => a + (s.duration_minutes || 0), 0);
+  // Sum closed sessions; add the live elapsed of the open one so the day total
+  // reflects time worked so far (not just finished sessions).
+  const todayClosedMins = todaySessions.reduce((a, s) => a + (s.check_out ? (s.duration_minutes || 0) : 0), 0);
+  const todayMins = todayClosedMins + (active ? Math.floor(elapsed / 60) : 0);
 
   if (loading) return <div style={{ color: 'var(--text-muted)', padding: 20, display: 'flex', gap: 8 }}><Loader2 size={18} className="ma-spin" /> Loading…</div>;
 
@@ -150,17 +153,23 @@ export default function WorkSessionsPanel({ memberId, showToast }) {
         <h3 style={{ margin: '0 0 10px', fontSize: 15, color: 'var(--text-main)' }}>Today · {todaySessions.length} session{todaySessions.length === 1 ? '' : 's'} · <span style={{ color: 'var(--primary)' }}>{fmtDur(todayMins)}</span></h3>
         {todaySessions.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>No sessions yet today.</p> : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {todaySessions.map((s) => (
+            {todaySessions.map((s) => {
+              const isOngoing = !s.check_out;
+              return (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '6px 0', borderBottom: '1px solid var(--outline-variant)' }}>
-                <span style={{ color: 'var(--text-muted)', minWidth: 120 }}>{fmtTime(s.check_in)} → {s.check_out ? fmtTime(s.check_out) : <em style={{ color: '#16a34a' }}>ongoing</em>}</span>
-                <span style={{ flex: 1, color: 'var(--text-main)' }}>
-                  {s.task_title || '—'}
+                <span style={{ color: 'var(--text-muted)', minWidth: 120 }}>{fmtTime(s.check_in)} → {isOngoing ? <em style={{ color: '#16a34a' }}>ongoing</em> : fmtTime(s.check_out)}</span>
+                <span style={{ flex: 1, color: s.task_title ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                  {s.task_title || 'No task'}
                   {typeof s.progress_after === 'number' && <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontSize: 12 }}>→ {s.progress_after}%</span>}
                   {s.completed_task && <CheckCircle2 size={12} style={{ color: '#16a34a', marginLeft: 6, verticalAlign: -1 }} />}
                 </span>
-                <strong style={{ color: 'var(--text-main)' }}>{fmtDur(s.duration_minutes)}</strong>
+                {/* Ongoing session: show the live running time, not a frozen 0m. */}
+                <strong style={{ color: isOngoing ? '#16a34a' : 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>
+                  {isOngoing ? fmtClock(elapsed) : fmtDur(s.duration_minutes)}
+                </strong>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

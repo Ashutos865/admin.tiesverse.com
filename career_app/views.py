@@ -1045,14 +1045,29 @@ class AttendanceCheckOutView(APIView):
         if not work_report:
             return Response({'error': 'work_report is required on checkout'}, status=400)
 
-        record.check_out = timezone.now()
+        now = timezone.now()
+
+        # This day record and the member's live WorkSession(s) are the SAME day of
+        # work tracked two ways. Checking out here must also close any open session,
+        # otherwise the member's MyWork timer keeps running after a lead checks them
+        # out. Put the report on the open session as its note so it isn't lost.
+        from .models import WorkSession
+        open_sessions = WorkSession.objects.filter(
+            member=sub, date=today, check_out__isnull=True)
+        for s in open_sessions:
+            s.check_out = now
+            if not (s.note or '').strip():
+                s.note = work_report
+            s.save(update_fields=['check_out', 'note'])
+
+        record.check_out = now
         record.work_report = work_report
         # Team leads / advisory mark their own attendance without needing review.
         from .work_sessions import member_self_approves
         if member_self_approves(sub):
             record.approval_status = AttendanceRecord.APPROVAL_APPROVED
             record.approved_by_name = 'Auto (team lead / advisory)'
-            record.approved_at = timezone.now()
+            record.approved_at = now
         else:
             record.approval_status = AttendanceRecord.APPROVAL_PENDING
         record.save()
