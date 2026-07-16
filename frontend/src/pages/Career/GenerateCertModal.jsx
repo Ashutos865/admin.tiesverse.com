@@ -1,8 +1,18 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, FileText, Loader2, CheckCircle, Wand2, Hash } from 'lucide-react';
+import { X, FileText, Loader2, CheckCircle, Wand2, Hash, Mail } from 'lucide-react';
 import { sendCertificateEmail, getEmailTemplates } from '../../apiClient';
 import { listCertificateTemplates, getCertificateTemplate } from '../Certificates/certificateApi';
 import { variableNamesFromElements } from '../Certificates/certificateUtils';
+
+// Extract the {{tokens}} an email template uses (from its subject + body).
+const emailTokens = (t) => {
+  const src = `${t?.subject || ''} ${t?.body_html || ''}`;
+  const names = new Set();
+  for (const m of src.matchAll(/\{\{\s*([a-z][a-z0-9_]*)\s*\}\}/gi)) names.add(m[1].toLowerCase());
+  return [...names];
+};
+// Tokens the backend always fills itself — no need to ask the user for these.
+const AUTO_EMAIL_TOKENS = new Set(['name', 'document', 'issued_by', 'portal_url', 'subject_title', 'certificate_id', 'role', 'department']);
 
 // The variables a template actually PLACES on the page and expects filled — the
 // non-generator ones (generator_enabled vars are produced automatically and give
@@ -36,6 +46,7 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
 
   const [emailTemplates, setEmailTemplates] = useState([]);
   const [emailTemplateKey, setEmailTemplateKey] = useState('certificate_issue');
+  const [emailValues, setEmailValues] = useState({});   // extra email tokens the sender fills
 
   const [idVar, setIdVar] = useState('');            // chosen auto-gen ID field (when >1)
   const [manualPdf, setManualPdf] = useState(null);
@@ -102,6 +113,27 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
   const gens = useMemo(() => generatorVars(template), [template]);
   const missing = vars.filter((v) => !String(values[v.name] || '').trim());
 
+  // The email template's {{tokens}} that AREN'T auto-filled by the backend —
+  // these are the ones the sender may need to fill (e.g. a custom {{message}}).
+  const selectedEmail = useMemo(() => emailTemplates.find((t) => t.key === emailTemplateKey), [emailTemplates, emailTemplateKey]);
+  const emailVars = useMemo(
+    () => emailTokens(selectedEmail).filter((tok) => !AUTO_EMAIL_TOKENS.has(tok)),
+    [selectedEmail]);
+  // Seed email values from the member where a token name matches a known field.
+  useEffect(() => {
+    setEmailValues((prev) => {
+      const next = { ...prev };
+      emailVars.forEach((tok) => {
+        if (next[tok] == null) {
+          const key = Object.keys(memberSources).find((s) => norm(s) === norm(tok));
+          next[tok] = key ? memberSources[key] : '';
+        }
+      });
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emailVars]);
+
   const onPickPdf = (file) => {
     const r = new FileReader();
     r.onload = () => setManualPdf({ base64: String(r.result).split(',')[1] || '', name: file.name });
@@ -111,7 +143,11 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
   const doSend = async () => {
     setBusy(true); setResult(null);
     try {
-      const payload = { template_key: emailTemplateKey, cert_key: certKey, filename: `${docLabel} - ${member.candidate_name || 'member'}.pdf` };
+      const payload = {
+        template_key: emailTemplateKey, cert_key: certKey,
+        filename: `${docLabel} - ${member.candidate_name || 'member'}.pdf`,
+        email_values: emailValues,
+      };
       if (manualPdf) {
         payload.pdf_base64 = manualPdf.base64;
         payload.filename = manualPdf.name;
@@ -179,7 +215,31 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
               {emailTemplates.length === 0 && <option value="certificate_issue">Certificate issue (default)</option>}
               {emailTemplates.map((t) => <option key={t.id} value={t.key}>{t.name}{t.is_custom ? ' (custom)' : ''}</option>)}
             </select>
+            {selectedEmail?.subject && (
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 6 }}>
+                <b style={{ color: 'var(--text-main)' }}>Subject:</b> {selectedEmail.subject}
+              </div>
+            )}
           </div>
+
+          {/* Email variables the sender may need to fill (member name/dept/etc are
+              filled automatically by the server; only the rest show here). */}
+          {emailVars.length > 0 && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <Mail size={13} style={{ color: 'var(--primary)' }} />
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Email fields — auto-filled where known, edit as needed.</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {emailVars.map((tok) => (
+                  <div key={tok}>
+                    <Lbl>{tok.replace(/_/g, ' ')}</Lbl>
+                    <input value={emailValues[tok] || ''} onChange={(e) => setEmailValues((p) => ({ ...p, [tok]: e.target.value }))} placeholder={tok} style={F} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Auto-gen ID picker — only when the template has MORE THAN ONE generator field */}
           {gens.length > 1 && (

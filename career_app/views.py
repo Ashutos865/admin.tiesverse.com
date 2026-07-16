@@ -787,6 +787,11 @@ class SendCertificateEmailView(APIView):
             'role': sub.role_offered or '',
             'department': ', '.join(sub.assigned_departments or []),
         }
+        # Any email variables the sender filled/edited on the form override the
+        # auto-values (blank overrides are ignored so we never wipe a good default).
+        for k, v in (request.data.get('email_values') or {}).items():
+            if str(v).strip() != '':
+                ctx[str(k)] = v
         attachments = None
         cert_id = ''
         fname = request.data.get('filename') or f'{label}.pdf'
@@ -820,11 +825,21 @@ class SendCertificateEmailView(APIView):
             sub.candidate_email, subject, body,
             from_email=resolve_from(tpl), attachments=attachments, enabled=True,
         )
-        # Persist the generated certificate ID on the member so it shows in the
-        # Master Directory and can be looked up later.
-        if ok and cert_id and cert_key:
+        # On a successful send, mark the certificate ISSUED (so it counts in the
+        # Master Directory) and persist its auto-generated ID. Sending IS issuing —
+        # the member now has the document — so we no longer require a separate
+        # "Mark Issued" click.
+        if ok and cert_key:
             try:
-                sub.set_certificate_id(cert_key, cert_id)
+                fields = CertificateIssueView.CERT_FIELD_MAP.get(cert_key)
+                if fields:
+                    at_field, by_field = fields
+                    if not getattr(sub, at_field, None):   # don't overwrite an earlier issue date
+                        setattr(sub, at_field, timezone.now())
+                        setattr(sub, by_field, _actor_name(request.user))
+                        sub.save(update_fields=[at_field, by_field])
+                if cert_id:
+                    sub.set_certificate_id(cert_key, cert_id)
             except Exception:  # noqa: BLE001
                 pass
         # Log the send for the paper trail.
