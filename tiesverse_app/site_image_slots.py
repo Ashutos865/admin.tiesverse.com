@@ -131,6 +131,7 @@ SLOTS = (
         {'key': 'hero', 'label': 'Homepage hero', 'group': 'Hero & backdrops', 'aspect': 16 / 9, 'auto': False},
         {'key': 'cta-backdrop', 'label': 'CTA band backdrop', 'group': 'Hero & backdrops', 'aspect': 16 / 9, 'auto': False},
         {'key': 'letter-backdrop', 'label': 'Founders letter backdrop', 'group': 'Hero & backdrops', 'aspect': 16 / 9, 'auto': False},
+        {'key': 'tech-bg', 'label': 'Technology section background', 'group': 'Hero & backdrops', 'aspect': 16 / 9, 'auto': False},
         {'key': 'team-group', 'label': 'About: team group photo', 'group': 'About', 'aspect': 16 / 9, 'auto': False},
     ]
     + _rows2(_BRAND_PAGE, 'Brand page')
