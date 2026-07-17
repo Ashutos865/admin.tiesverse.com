@@ -1894,10 +1894,11 @@ class SendOfferLetterView(APIView):
         if not email:
             return Response({'status': 'error', 'message': 'Recipient email is required.'}, status=400)
 
-        # Managed 'offer_letter' template drives sender, subject, and body design.
-        # The candidate's offer details fill the {{placeholders}} so the sent
-        # email matches the in-app preview. A per-send subject may still override.
-        tpl = get_template('offer_letter')
+        # The mail template drives sender/subject/body. Default to the managed
+        # 'offer_letter' template, but allow a chosen one (template_key) like the
+        # HR certificate flow.
+        template_key = request.data.get('template_key') or 'offer_letter'
+        tpl = get_template(template_key) or get_template('offer_letter')
         today = timezone.now().strftime('%d %B %Y')
         ctx = {
             'name': name,
@@ -1905,18 +1906,43 @@ class SendOfferLetterView(APIView):
             'department': request.data.get('department') or 'N/A',
             'status': request.data.get('status') or 'Selected',
             'effective_date': request.data.get('effective_date') or today,
+            'document': 'Offer Letter',
+            'certificate_id': '',
         }
+        # Sender-filled email variables override auto-values (blank ignored).
+        for k, v in (request.data.get('email_values') or {}).items():
+            if str(v).strip() != '':
+                ctx[str(k)] = v
+
+        attachments = None
+        cert_id = ''
+        # A certificate config → generate the offer-letter PDF the reliable way
+        # (stamp real values + auto-generate the certificate ID + verify QR), just
+        # like the HR page. Candidates have no member id, so we key by email/name.
+        cert_cfg = request.data.get('certificate') or None
+        if cert_cfg and cert_cfg.get('template_id'):
+            from accounts_app.campaign_jobs import generate_single_certificate
+            pdf_bytes, cert_id, gen_err = generate_single_certificate(
+                cert_cfg.get('template_id'),
+                cert_cfg.get('values') or {},
+                id_var=cert_cfg.get('id_var') or None,
+            )
+            if pdf_bytes is None:
+                return Response({'status': 'error', 'message': gen_err or 'Certificate generation failed.'}, status=502)
+            attachments = [(f'Offer Letter - {name}.pdf', pdf_bytes, 'pdf')]
+        elif pdf_base64:
+            # Fallback: a manually-built/uploaded PDF (the old jsPDF path).
+            attachments = [('Offer-Letter.pdf', base64.b64decode(pdf_base64), 'pdf')]
+
+        ctx['certificate_id'] = cert_id
         subject = request.data.get('subject') or render_tokens(tpl.subject, ctx)
         body_html = render_tokens(tpl.body_html, ctx)
-        attachments = None
-        if pdf_base64:
-            attachments = [('Offer-Letter.pdf', base64.b64decode(pdf_base64), 'pdf')]
 
         if not tpl.is_enabled:
             print(f"[OFFER EMAIL STUB] would send to {email}")
             return Response({
                 'status': 'stubbed',
-                'message': f"The Offer Letter email template is disabled — nothing sent to {email}.",
+                'message': f"The mail template is disabled — nothing sent to {email}.",
             })
 
         ok = send_email(
@@ -1925,7 +1951,21 @@ class SendOfferLetterView(APIView):
         )
         if not ok:
             return Response({'status': 'error', 'message': 'SES send failed.'}, status=502)
-        return Response({'status': 'sent', 'message': f'Offer letter sent to {email}.'})
+        # Record the offer letter so it verifies (name, position, ID, QR target).
+        if cert_id:
+            try:
+                from config.certificate_workflow import record_certificate
+                record_certificate(
+                    cert_id, name, 'Offer Letter',
+                    source_type='hr', source_ref=str(submission_id or ''),
+                    person_email=email,
+                    position=request.data.get('role') or '',
+                    extra={'doc_type': 'Offer Letter'},
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        return Response({'status': 'sent', 'message': f'Offer letter sent to {email}.',
+                         'certificate_id': cert_id})
 
 
 class ResumeDownloadView(APIView):

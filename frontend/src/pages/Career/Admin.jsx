@@ -9,6 +9,7 @@ import {
 import { Plus, Edit2, Trash2, X, Sparkles, Briefcase, FileText, Mail, ToggleRight, CheckCircle, ExternalLink, Search, Download, Eye, UserCheck, Award, Send, CalendarDays, List as ListIcon } from 'lucide-react';
 import ScheduleCalendar from '../../components/ScheduleCalendar.jsx';
 import SearchableSelect from '../../components/SearchableSelect';
+import GenerateCertModal from './GenerateCertModal';
 import jsPDF from 'jspdf';
 
 const viewToggleStyle = (active) => ({
@@ -322,6 +323,7 @@ const CareerAdmin = ({ tab = 'positions' }) => {
     // Offer Letters sub-tab + preview modals
     const [offerSubTab, setOfferSubTab] = useState('pending'); // 'pending' | 'sent'
     const [previewModal, setPreviewModal] = useState({ open: false, type: null, candidate: null });
+    const [offerCertModal, setOfferCertModal] = useState(null);   // candidate whose offer we're generating & sending
 
     // Modals
     const [pdfModalOpen, setPdfModalOpen] = useState(false);
@@ -1287,10 +1289,9 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                                                             {/* Send action column (Pending) */}
                                                             <td style={{ padding: '13px 16px' }}>
                                                                 <button
-                                                                    disabled={sendingOffer === c.email}
-                                                                    onClick={() => handleSendOffer(c)}
-                                                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, fontSize: '0.8125rem', fontWeight: 800, cursor: sendingOffer === c.email ? 'wait' : 'pointer', opacity: sendingOffer === c.email ? 0.65 : 1, transition: 'opacity 150ms ease' }}>
-                                                                    <Send size={13} /> {sendingOffer === c.email ? 'Sending…' : 'Send Offer'}
+                                                                    onClick={() => setOfferCertModal(c)}
+                                                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, fontSize: '0.8125rem', fontWeight: 800, cursor: 'pointer', transition: 'opacity 150ms ease' }}>
+                                                                    <Send size={13} /> Send Offer
                                                                 </button>
                                                             </td>
                                                         </>
@@ -1553,6 +1554,47 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                     </div>
                 </div>
             )}
+
+            {/* ── Offer Letter: generate & send (template + cert ID + QR + verify) ── */}
+            {offerCertModal && (() => {
+                const c = offerCertModal;
+                const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.email;
+                const role = c.roles || '';
+                const dept = c.department || '';
+                const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+                return (
+                    <GenerateCertModal
+                        member={{ candidate_name: fullName, candidate_email: c.email }}
+                        docLabel="Offer Letter"
+                        certKey="offer_letter"
+                        recipientLabel={c.email}
+                        sources={{
+                            name: fullName, full_name: fullName, email: c.email,
+                            role, position: role, department: dept,
+                            date: today, effective_date: today, r_name: '',
+                        }}
+                        sendFn={(payload) => sendOffer({
+                            ...payload,
+                            email: c.email, name: fullName,
+                            role: role || 'Tiesverse', department: dept || 'N/A', status: 'Selected',
+                            effective_date: today,
+                            submission_id: c.row_index || c.id || undefined,
+                        })}
+                        onClose={() => setOfferCertModal(null)}
+                        onSent={(res) => {
+                            const sentDate = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                            setOfferSent(prev => ({ ...prev, [c.email]: sentDate }));
+                            showNotice(`Offer letter sent to ${c.email}!`);
+                            // Auto-initiate onboarding (same as the old flow).
+                            initiateOnboarding({
+                                candidate_id: String(c.row_index || c.id || c.email),
+                                candidate_name: fullName, candidate_email: c.email, role_offered: role,
+                            }).then(r => { if (r?.id || r?.token) setOnboardingInitiated(prev => ({ ...prev, [c.email]: true })); }).catch(() => {});
+                            setTimeout(() => setOfferCertModal(null), 1200);
+                        }}
+                    />
+                );
+            })()}
 
             {/* ── Mail Template Preview Modal ──────────────────────────────────── */}
             {previewModal.open && previewModal.type === 'mail' && previewModal.candidate && (() => {

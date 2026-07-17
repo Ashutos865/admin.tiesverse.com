@@ -31,16 +31,22 @@ const generatorVars = (t) => (t?.variables || []).filter((v) => v.generator_enab
 const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /**
- * Generate a certificate/letter/offer letter for a member from a template and
- * send it by email. Variables auto-fill from the member (name, department, role,
- * dates); you edit only what's missing. The BACKEND does the actual generation
- * (stamps values reliably + captures the auto-generated certificate ID), so the
- * PDF is always correct. Pick which email carries it, and — if the template has
- * more than one auto-generation field — which one is the certificate ID.
+ * Generate a certificate/letter/offer letter from a template and send it by email.
+ * Variables auto-fill from the person (name, department, role, dates); you edit
+ * only what's missing. The BACKEND does the actual generation (stamps values
+ * reliably + captures the auto-generated certificate ID — whose style comes from
+ * each template's own generator pattern), so the PDF is always correct.
  *
- * Props: member, docLabel, certKey, onClose, onSent
+ * Props:
+ *   member    : { id, candidate_name, candidate_email, assigned_departments, role_offered, ... }
+ *   docLabel, certKey, onClose, onSent
+ *   sendFn?   : optional (payload) => Promise<res>. When given, used INSTEAD of
+ *               sendCertificateEmail(member.id, …) — this lets the same modal serve
+ *               career CANDIDATES (who have no member id) via the offer endpoint.
+ *   sources?  : optional {field: value} overrides for auto-fill (else built from member).
+ *   recipientLabel? : e.g. the candidate's email, shown in the header.
  */
-export default function GenerateCertModal({ member, docLabel = 'Certificate', certKey = '', onClose, onSent }) {
+export default function GenerateCertModal({ member, docLabel = 'Certificate', certKey = '', onClose, onSent, sendFn = null, sources = null, recipientLabel = null }) {
   const [templates, setTemplates] = useState(null);
   const [templateId, setTemplateId] = useState('');
   const [template, setTemplate] = useState(null);
@@ -56,7 +62,7 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
 
-  const memberSources = useMemo(() => ({
+  const memberSources = useMemo(() => (sources || {
     name: member.candidate_name || '',
     full_name: member.candidate_name || '',
     email: member.candidate_email || '',
@@ -68,7 +74,7 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
     joining_date: member.joining_date
       ? new Date(member.joining_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
       : '',
-  }), [member]);
+  }), [member, sources]);
 
   useEffect(() => {
     let alive = true;
@@ -166,14 +172,18 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
         setBusy(false);
         return;
       }
-      const res = await sendCertificateEmail(member.id, payload);
-      if (res?.sent) {
-        setResult({ ok: true, msg: `Sent to ${res.to}${res.certificate_id ? ` · ID ${res.certificate_id}` : ''}` });
+      // Custom sender (career candidates via the offer endpoint) or the default
+      // member certificate-email endpoint.
+      const res = sendFn ? await sendFn(payload) : await sendCertificateEmail(member.id, payload);
+      const sentOk = res?.sent || res?.status === 'sent';
+      if (sentOk) {
+        const to = res.to || recipientLabel || member.candidate_email || '';
+        setResult({ ok: true, msg: `Sent${to ? ` to ${to}` : ''}${res.certificate_id ? ` · ID ${res.certificate_id}` : ''}` });
         onSent && onSent(res);
-      } else if (res && 'sent' in res) {
-        setResult({ ok: false, msg: 'Not sent — check the address or SES sender.' });
+      } else if (res && ('sent' in res || 'status' in res)) {
+        setResult({ ok: false, msg: res.message || 'Not sent — check the address or SES sender.' });
       } else {
-        setResult({ ok: false, msg: res?.error || 'Send failed.' });
+        setResult({ ok: false, msg: res?.error || res?.message || 'Send failed.' });
       }
     } catch (e) {
       setResult({ ok: false, msg: e?.message || 'Send failed.' });
@@ -190,7 +200,7 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 22px', borderBottom: '1px solid var(--outline-variant)' }}>
           <div>
             <strong style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>Generate & send {docLabel}</strong>
-            <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--text-muted)' }}>To {member.candidate_name} · {member.candidate_email || 'no email'}</p>
+            <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--text-muted)' }}>To {member.candidate_name} · {recipientLabel || member.candidate_email || 'no email'}</p>
           </div>
           <button onClick={onClose} style={{ background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'grid', placeItems: 'center' }}><X size={14} /></button>
         </div>
@@ -310,9 +320,11 @@ export default function GenerateCertModal({ member, docLabel = 'Certificate', ce
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 22px', borderTop: '1px solid var(--outline-variant)' }}>
           <button onClick={onClose} style={{ padding: '9px 16px', borderRadius: 9, border: '1px solid var(--outline-variant)', background: 'transparent', color: 'var(--text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-          <button onClick={doSend} disabled={busy || (!template && !manualPdf) || !member.candidate_email} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 9, border: 'none', background: 'var(--primary)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: (busy || (!template && !manualPdf)) ? 'not-allowed' : 'pointer', opacity: (busy || (!template && !manualPdf) || !member.candidate_email) ? 0.6 : 1 }}>
+          {(() => { const noEmail = !(member.candidate_email || recipientLabel); const disabled = busy || (!template && !manualPdf) || noEmail; return (
+          <button onClick={doSend} disabled={disabled} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 9, border: 'none', background: 'var(--primary)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1 }}>
             {busy ? <Loader2 size={14} className="ma-spin" /> : <FileText size={14} />} {busy ? 'Generating & sending…' : `Send ${docLabel}`}
           </button>
+          ); })()}
         </div>
       </div>
     </div>
