@@ -21,9 +21,21 @@ export default function CertificatesMatrix() {
   const [members, setMembers] = useState(null);
   const [q, setQ] = useState('');
 
+  // Has this person had ANY document issued (offer / internship / LOR / NOC)?
+  const hasAnyDoc = (m) => {
+    const ids = m.certificate_ids || {};
+    return Boolean(
+      ids.offer_letter || ids.internship_cert || ids.lor || ids.noc ||
+      m.cert_internship_issued_at || m.cert_lor_issued_at || m.cert_noc_issued_at,
+    );
+  };
+
   useEffect(() => {
     getOnboardingList()
-      .then((r) => setMembers((Array.isArray(r) ? r : []).filter((m) => m.status === 'verified')))
+      // Show verified members AND anyone (e.g. still-pending candidates) who has
+      // already been issued a document, so an offer sent before verification shows.
+      .then((r) => setMembers((Array.isArray(r) ? r : []).filter(
+        (m) => m.status === 'verified' || hasAnyDoc(m))))
       .catch(() => setMembers([]));
   }, []);
 
