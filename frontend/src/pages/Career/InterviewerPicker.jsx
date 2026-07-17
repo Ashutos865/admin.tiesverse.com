@@ -43,6 +43,22 @@ export default function InterviewerPicker({ options = [], emails = '', names = '
     return options.filter((o) => `${o.name} ${o.email} ${o.role || ''}`.toLowerCase().includes(q));
   }, [options, query]);
 
+  const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  // The typed query is a valid email not already picked and not a known member →
+  // offer to add it as a direct invite.
+  const typedEmail = query.trim().toLowerCase();
+  const canAddEmail = EMAIL_RE.test(typedEmail)
+    && !selectedEmails.some((e) => e.toLowerCase() === typedEmail)
+    && !options.some((o) => (o.email || '').toLowerCase() === typedEmail);
+
+  const addEmail = () => {
+    if (!canAddEmail) return;
+    const nextEmails = [...selectedEmails, query.trim()];
+    const nextNames = [...chips.map((c) => c.name), query.trim()];
+    onChange && onChange({ emails: nextEmails.join(', '), names: nextNames.join(', ') });
+    setQuery('');
+  };
+
   const toggle = (o) => {
     const has = selectedEmails.includes(o.email);
     let nextEmails, nextNames;
@@ -87,12 +103,19 @@ export default function InterviewerPicker({ options = [], emails = '', names = '
         <div style={{ position: 'absolute', zIndex: 10050, top: 'calc(100% + 4px)', left: 0, right: 0, background: 'var(--surface-container-lowest, #fff)', border: '1px solid var(--outline-variant, #e5e7eb)', borderRadius: 12, boxShadow: '0 20px 50px -20px rgba(0,0,0,.35)', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderBottom: '1px solid var(--outline-variant, #eee)' }}>
             <Search size={15} style={{ color: 'var(--text-muted, #6b7280)', flex: 'none' }} />
-            <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search people…" style={{ flex: 1, border: 0, outline: 'none', background: 'transparent', fontSize: 14, color: 'var(--text-main, #161616)' }} />
+            <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && canAddEmail) { e.preventDefault(); addEmail(); } }} placeholder="Search people or type an email…" style={{ flex: 1, border: 0, outline: 'none', background: 'transparent', fontSize: 14, color: 'var(--text-main, #161616)' }} />
             {chips.length > 0 && <span style={{ fontSize: 11, color: 'var(--text-muted, #6b7280)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Users size={12} /> {chips.length}</span>}
           </div>
           <div style={{ maxHeight: 260, overflowY: 'auto', padding: 4 }}>
-            {filtered.length === 0 ? (
-              <div style={{ padding: '14px 12px', fontSize: 13, color: 'var(--text-muted, #6b7280)', textAlign: 'center' }}>No match</div>
+            {canAddEmail && (
+              <button type="button" onClick={addEmail}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', padding: '9px 10px', borderRadius: 8, border: 0, cursor: 'pointer', background: 'color-mix(in srgb, var(--primary, #fe7a00) 8%, transparent)', color: 'var(--text-main, #161616)', fontSize: 13.5, fontFamily: 'inherit' }}>
+                <span style={{ fontSize: 15, color: 'var(--primary, #fe7a00)', fontWeight: 700, width: 16, textAlign: 'center' }}>+</span>
+                <span>Invite <b>{query.trim()}</b> by email</span>
+              </button>
+            )}
+            {filtered.length === 0 && !canAddEmail ? (
+              <div style={{ padding: '14px 12px', fontSize: 13, color: 'var(--text-muted, #6b7280)', textAlign: 'center' }}>No match{query.trim() ? ' — type a full email to invite externally' : ''}</div>
             ) : filtered.map((o) => {
               const sel = selectedEmails.includes(o.email);
               return (
