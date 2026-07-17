@@ -363,6 +363,9 @@ class EnrollmentViewSet(viewsets.ViewSet):
             return Response({'error': 'Pick an interview date and time.'}, status=400)
         interviewer_email = str(request.data.get('interviewer_email') or '').strip()
         interviewer = str(request.data.get('interviewer') or cand.get('interviewer') or '').strip()
+        # One or more interviewers may be chosen (comma-separated). All valid
+        # emails are invited to the calendar event.
+        interviewer_emails = [e.strip() for e in interviewer_email.split(',') if e.strip()]
         duration = int(request.data.get('duration_min') or 30)
         status_label = str(request.data.get('interview_status') or 'Interview Scheduled').strip()
 
@@ -378,7 +381,7 @@ class EnrollmentViewSet(viewsets.ViewSet):
                     description=f"Interview for {role}.\nCandidate: {cand_name} <{cand_email}>",
                     start_iso=interview_at,
                     duration_min=duration,
-                    attendees=[cand_email, interviewer_email],
+                    attendees=[cand_email, *interviewer_emails],
                 )
                 meet_link, event_id = res['meet_link'], res['event_id']
             except Exception as exc:  # noqa: BLE001

@@ -10,6 +10,7 @@ import { Plus, Edit2, Trash2, X, Sparkles, Briefcase, FileText, Mail, ToggleRigh
 import ScheduleCalendar from '../../components/ScheduleCalendar.jsx';
 import SearchableSelect from '../../components/SearchableSelect';
 import GenerateCertModal from './GenerateCertModal';
+import InterviewerPicker from './InterviewerPicker';
 import jsPDF from 'jspdf';
 
 const viewToggleStyle = (active) => ({
@@ -339,10 +340,13 @@ const CareerAdmin = ({ tab = 'positions' }) => {
     useEffect(() => {
         getOnboardingList().then((list) => {
             const arr = Array.isArray(list) ? list : [];
+            // Any verified member with an email can be an interviewer — not just
+            // leads/admin/advisory. Leads/HR/admin sort to the top for convenience.
             const verified = arr.filter((m) => m.status === 'verified' && m.candidate_email);
-            const roled = verified.filter((m) => ['hr', 'admin', 'advisory', 'team_lead'].includes(m.portal_role));
-            const use = roled.length ? roled : verified;
-            setHrList(use.map((m) => ({ name: m.candidate_name, email: m.candidate_email, role: m.portal_role || '' })));
+            const rank = (r) => ({ admin: 0, hr: 1, team_lead: 2, advisory: 3 }[r] ?? 9);
+            verified.sort((a, b) => rank(a.portal_role) - rank(b.portal_role)
+                || (a.candidate_name || '').localeCompare(b.candidate_name || ''));
+            setHrList(verified.map((m) => ({ name: m.candidate_name, email: m.candidate_email, role: m.portal_role || '' })));
         }).catch(() => {});
     }, []);
     const [gateDraft, setGateDraft] = useState({});
@@ -995,25 +999,16 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                             </select>
                         </label>
                         <label>
-                            <span>Interviewer</span>
-                            <select
-                                value={hrList.some((h) => h.email === draft.interviewer_email) ? draft.interviewer_email : (draft.interviewer ? '__current__' : '')}
-                                onChange={(event) => {
-                                    const val = event.target.value;
-                                    if (val === '__current__') return;
-                                    const m = hrList.find((h) => h.email === val);
-                                    updateApplicationDraft(item, 'interviewer_email', val);
-                                    updateApplicationDraft(item, 'interviewer', m ? m.name : '');
+                            <span>Interviewer(s)</span>
+                            <InterviewerPicker
+                                options={hrList}
+                                emails={draft.interviewer_email || ''}
+                                names={draft.interviewer || ''}
+                                onChange={({ emails, names }) => {
+                                    updateApplicationDraft(item, 'interviewer_email', emails);
+                                    updateApplicationDraft(item, 'interviewer', names);
                                 }}
-                            >
-                                <option value="">Select interviewer…</option>
-                                {draft.interviewer && !hrList.some((h) => h.email === draft.interviewer_email) && (
-                                    <option value="__current__">{draft.interviewer} (current)</option>
-                                )}
-                                {hrList.map((h) => (
-                                    <option key={h.email} value={h.email}>{h.name}{h.role ? ` · ${h.role.replace('_', ' ')}` : ''}</option>
-                                ))}
-                            </select>
+                            />
                         </label>
                         {(draft.interview_status === 'Scheduled' || draft.interview_status === 'Interview Scheduled') && (
                             <div style={{ display: 'grid', gap: 8, marginTop: 4, paddingTop: 12, borderTop: '1px dashed color-mix(in srgb, var(--text-main) 15%, transparent)' }}>
