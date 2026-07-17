@@ -1953,17 +1953,39 @@ class SendOfferLetterView(APIView):
             return Response({'status': 'error', 'message': 'SES send failed.'}, status=502)
         # Record the offer letter so it verifies (name, position, ID, QR target).
         if cert_id:
+            # Find/attach the member this offer belongs to, so it shows in the HR
+            # Certificates matrix (offer_letter column) with its ID.
+            member = None
+            try:
+                if submission_id:
+                    member = OnboardingSubmission.objects.filter(pk=submission_id).first()
+                if not member and email:
+                    member = OnboardingSubmission.objects.filter(candidate_email__iexact=email).order_by('-id').first()
+            except Exception:  # noqa: BLE001
+                member = None
             try:
                 from config.certificate_workflow import record_certificate
+                # avatar for the verify page, if the member has a linked profile
+                avatar = ''
+                if member and hasattr(member, 'account') and member.account and member.account.user_id:
+                    from accounts_app.models import UserProfile
+                    pr = UserProfile.objects.filter(user_id=member.account.user_id).first()
+                    avatar = (pr.avatar_url if pr else '') or ''
                 record_certificate(
                     cert_id, name, 'Offer Letter',
-                    source_type='hr', source_ref=str(submission_id or ''),
+                    source_type='hr', source_ref=str(member.id if member else (submission_id or '')),
                     person_email=email,
                     position=request.data.get('role') or '',
-                    extra={'doc_type': 'Offer Letter'},
+                    extra={'doc_type': 'Offer Letter', 'avatar_url': avatar},
                 )
             except Exception:  # noqa: BLE001
                 pass
+            # Store the ID on the member so the HR Certificates matrix ticks it.
+            if member:
+                try:
+                    member.set_certificate_id('offer_letter', cert_id)
+                except Exception:  # noqa: BLE001
+                    pass
         return Response({'status': 'sent', 'message': f'Offer letter sent to {email}.',
                          'certificate_id': cert_id})
 
