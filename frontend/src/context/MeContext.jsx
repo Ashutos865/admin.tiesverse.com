@@ -35,6 +35,8 @@ export const MeProvider = ({ children }) => {
     scope: me?.scope || null,
     memberId: me?.member?.id || null,
     member: me?.member || null,
+    // Articles/Reports (WordPress) access tier: 'full' | 'draft' | 'none'.
+    articleAccess: me?.article_access || 'none',
   };
 
   return <MeContext.Provider value={value}>{children}</MeContext.Provider>;

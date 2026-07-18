@@ -196,9 +196,9 @@ export const portals = [
     label: 'Articles & Reports',
     icon: Globe,
     firstPath: '/wordpress/posts',
-    perms: null,   // superuser only (the server-side WP proxy is superuser-gated)
+    contentAccess: true,   // superuser + content writers/leads (proxy enforces draft-only)
     links: [
-      { name: 'Posts',              path: '/wordpress/posts',      icon: FileText,         perms: [], superuserOnly: true },
+      { name: 'Posts',              path: '/wordpress/posts',      icon: FileText,         contentAccess: true },
       { name: 'Pages',              path: '/wordpress/pages',      icon: File,             perms: [], superuserOnly: true },
       { name: 'Media',              path: '/wordpress/media',      icon: Image,            perms: [], superuserOnly: true },
       { name: 'Categories & Tags',  path: '/wordpress/taxonomies', icon: Tag,              perms: [], superuserOnly: true },
@@ -249,13 +249,16 @@ export const portals = [
 
 const Sidebar = ({ activePortal, isOpen, onClose }) => {
   const { hasAnyPermission, isSuperuser } = usePermissions();
-  const { isMember, isLead, isAdvisory, isDeveloper, scope } = useMe();
+  const { isMember, isLead, isAdvisory, isDeveloper, scope, articleAccess } = useMe();
+  // Content writers/leads (or superusers) may see Articles & Reports.
+  const hasArticleAccess = isSuperuser || articleAccess === 'full' || articleAccess === 'draft';
   const navigate = useNavigate();
 
   const isPortalVisible = (portal) => {
     if (portal.everyone) return true;   // open to every authenticated member (e.g. Learn Portal)
     if (portal.developerOnly) return isDeveloper;
     if (portal.memberOnly) return isMember;
+    if (portal.contentAccess) return hasArticleAccess;
     if (portal.advisoryOnly) return isSuperuser || isAdvisory;
     if (portal.advisoryOrLead) return isSuperuser || isAdvisory || isLead;
     if (portal.perms === null) return isSuperuser;
@@ -264,6 +267,7 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
 
   const isLinkVisible = (link) => {
     if (link.developerOnly) return isDeveloper;
+    if (link.contentAccess) return hasArticleAccess;
     if (link.superuserOnly) return isSuperuser;
     if (link.advisoryOnly) return isSuperuser || isAdvisory;
     if (link.advisoryOrLead) return isSuperuser || isAdvisory || isLead;

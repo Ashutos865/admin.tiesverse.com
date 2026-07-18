@@ -814,17 +814,38 @@ class SendCertificateEmailView(APIView):
                 return Response({'error': gen_err or 'Certificate generation failed.'}, status=502)
             attachments = [(fname, pdf_bytes, 'pdf')]
         else:
-            # 2) Fallback: a manually-uploaded PDF.
+            # 2) Fallback: a manually-uploaded PDF. It is already fully rendered,
+            #    so we only compress it toward the size cap (a heavy upload must
+            #    not go out as a multi-MB attachment). Compression never fails.
             pdf_base64 = request.data.get('pdf_base64') or ''
             if pdf_base64:
                 try:
-                    attachments = [(fname, base64.b64decode(pdf_base64), 'pdf')]
+                    from accounts_app.campaign_jobs import compress_pdf
+                    raw = base64.b64decode(pdf_base64)
+                    raw = compress_pdf(raw, target_kb=int(getattr(dj_settings, 'CERT_MAX_KB', 500)))
+                    attachments = [(fname, raw, 'pdf')]
                 except Exception:  # noqa: BLE001
                     attachments = None
+
+        # Every issued document MUST carry a verifiable certificate ID. A plain
+        # uploaded PDF (no certificate template) produces none, so reject it and
+        # tell the user to issue via a certificate template that generates an ID.
+        if not cert_id:
+            return Response({
+                'error': 'This document has no certificate ID. Choose a certificate '
+                         'template (which auto-generates the ID) before sending, so '
+                         'the document can be verified.',
+                'code': 'missing_cert_id',
+            }, status=400)
 
         ctx['certificate_id'] = cert_id
         subject = render_tokens(tpl.subject, ctx)
         body = render_tokens(tpl.body_html, ctx)
+        try:
+            _sz = sum(len(a[1]) for a in (attachments or []))
+            print(f"[HRCERT SEND] to={sub.candidate_email} path=generate id={cert_id} attach={_sz/1024:.1f}KB", flush=True)
+        except Exception:  # noqa: BLE001
+            pass
         ok = send_email(
             sub.candidate_email, subject, body,
             from_email=resolve_from(tpl), attachments=attachments, enabled=True,
@@ -869,8 +890,11 @@ class SendCertificateEmailView(APIView):
                     position=sub.role_offered or '',
                     extra={'doc_type': label, 'avatar_url': avatar},
                 )
-            except Exception:  # noqa: BLE001
-                pass
+                print(f"[CERT RECORDED] {cert_id} ({label}) for {sub.candidate_email}", flush=True)
+            except Exception as exc:  # noqa: BLE001
+                # Never block the send, but make the failure visible — the nightly
+                # reconcile_cert_records backfills it from the member's stored ID.
+                print(f"[CERT RECORD FAILED] {cert_id}: {exc!r}", flush=True)
         # Log the send for the paper trail.
         DocumentAuditLog.objects.create(
             submission=sub, doc_type=cert_key or 'offer_letter',
@@ -902,6 +926,8 @@ class MeView(APIView):
 
     def get(self, request):
         scope, member = access.get_access_scope(request.user)
+        # Article/report (WordPress) access tier: 'full' | 'draft' | 'none'.
+        article_tier, _ = access.get_article_access(request.user)
         return Response({
             'user': {
                 'username': request.user.username,
@@ -915,9 +941,89 @@ class MeView(APIView):
             'is_advisory': _is_advisory(request.user),
             'is_developer': _is_developer(request.user),
             'is_member': member is not None,
+            'article_access': article_tier,       # 'full' | 'draft' | 'none'
             'member': OnboardingSubmissionSerializer(member).data if member else None,
             'led_departments': sorted(access.led_department_names(member)) if member else [],
         })
+
+
+class ArticleAccessManagementView(APIView):
+    """Manage who in the Content team may PUBLISH articles — driven straight from
+    the Articles & Reports page. Only a Content lead or a superuser may use it.
+
+    GET  -> list Content-department members with a login account + whether each
+            currently holds the publish permission.
+    POST -> {member_id | user_id, can_publish: bool} grants/revokes the
+            `accounts_app.can_publish_articles` permission for that member's user.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _guard(self, request):
+        tier, _ = access.get_article_access(request.user)
+        # Only a full-access user who is a lead/superuser manages grants.
+        member = access.get_member_for_user(request.user)
+        allowed = request.user.is_superuser or access._leads_content(member)
+        return allowed, tier
+
+    def _publish_perm(self):
+        from django.contrib.auth.models import Permission
+        return Permission.objects.filter(codename='can_publish_articles').first()
+
+    def get(self, request):
+        allowed, _ = self._guard(request)
+        if not allowed:
+            return Response({'detail': 'Only a Content lead or admin can manage access.'}, status=403)
+        from django.contrib.auth import get_user_model
+        from career_app.models import MemberAccount
+        User = get_user_model()
+        perm = self._publish_perm()
+        # user ids that hold the publish permission (direct grant)
+        holders = set()
+        if perm:
+            holders = set(User.objects.filter(user_permissions=perm).values_list('id', flat=True))
+        rows = []
+        for acct in MemberAccount.objects.select_related('submission').all():
+            m = acct.submission
+            if not (m and access._in_content_department(m) and acct.user_id):
+                continue
+            if access._leads_content(m):
+                continue   # the lead already has full access; not togglable
+            rows.append({
+                'member_id': m.id,
+                'user_id': acct.user_id,
+                'name': m.candidate_name,
+                'email': m.candidate_email,
+                'can_publish': acct.user_id in holders,
+            })
+        rows.sort(key=lambda r: (not r['can_publish'], r['name'].lower()))
+        return Response({'members': rows})
+
+    def post(self, request):
+        allowed, _ = self._guard(request)
+        if not allowed:
+            return Response({'detail': 'Only a Content lead or admin can manage access.'}, status=403)
+        from django.contrib.auth import get_user_model
+        from career_app.models import MemberAccount
+        User = get_user_model()
+        can_publish = bool(request.data.get('can_publish'))
+        user_id = request.data.get('user_id')
+        member_id = request.data.get('member_id')
+        if not user_id and member_id:
+            acct = MemberAccount.objects.filter(submission_id=member_id).first()
+            user_id = acct.user_id if acct else None
+        if not user_id:
+            return Response({'detail': 'No user to update.'}, status=400)
+        u = User.objects.filter(pk=user_id).first()
+        if not u:
+            return Response({'detail': 'User not found.'}, status=404)
+        perm = self._publish_perm()
+        if not perm:
+            return Response({'detail': 'Publish permission is not installed. Run migrations.'}, status=503)
+        if can_publish:
+            u.user_permissions.add(perm)
+        else:
+            u.user_permissions.remove(perm)
+        return Response({'ok': True, 'user_id': user_id, 'can_publish': can_publish})
 
 
 # ── Master Directory (unified people search) ──────────────────────────────────
@@ -1934,8 +2040,27 @@ class SendOfferLetterView(APIView):
                 return Response({'status': 'error', 'message': gen_err or 'Certificate generation failed.'}, status=502)
             attachments = [(f'Offer Letter - {name}.pdf', pdf_bytes, 'pdf')]
         elif pdf_base64:
-            # Fallback: a manually-built/uploaded PDF (the old jsPDF path).
-            attachments = [('Offer-Letter.pdf', base64.b64decode(pdf_base64), 'pdf')]
+            # Fallback: a manually-built/uploaded PDF (the old jsPDF path). Already
+            # rendered, so we only compress it toward the size cap before attaching.
+            try:
+                from django.conf import settings as dj_settings
+                from accounts_app.campaign_jobs import compress_pdf
+                _raw = compress_pdf(base64.b64decode(pdf_base64),
+                                    target_kb=int(getattr(dj_settings, 'CERT_MAX_KB', 500)))
+            except Exception:  # noqa: BLE001
+                _raw = base64.b64decode(pdf_base64)
+            attachments = [('Offer-Letter.pdf', _raw, 'pdf')]
+
+        # Every offer letter MUST carry a verifiable certificate ID. The plain
+        # jsPDF path produces none, so reject it and ask for a certificate template.
+        if not cert_id:
+            return Response({
+                'status': 'error',
+                'message': 'This offer letter has no certificate ID. Choose a '
+                           'certificate template (which auto-generates the ID) '
+                           'before sending, so it can be verified.',
+                'code': 'missing_cert_id',
+            }, status=400)
 
         ctx['certificate_id'] = cert_id
         subject = request.data.get('subject') or render_tokens(tpl.subject, ctx)
@@ -1948,6 +2073,12 @@ class SendOfferLetterView(APIView):
                 'message': f"The mail template is disabled — nothing sent to {email}.",
             })
 
+        try:
+            _sz = sum(len(a[1]) for a in (attachments or []))
+            _path = 'generate' if (cert_cfg and cert_cfg.get('template_id')) else ('upload' if pdf_base64 else 'none')
+            print(f"[OFFER SEND] to={email} path={_path} attach={_sz/1024:.1f}KB", flush=True)
+        except Exception:  # noqa: BLE001
+            pass
         ok = send_email(
             email, subject, body_html,
             from_email=resolve_from(tpl), attachments=attachments, enabled=True,
@@ -1981,8 +2112,10 @@ class SendOfferLetterView(APIView):
                     position=request.data.get('role') or '',
                     extra={'doc_type': 'Offer Letter', 'avatar_url': avatar},
                 )
-            except Exception:  # noqa: BLE001
-                pass
+                print(f"[CERT RECORDED] {cert_id} (Offer Letter) for {email}", flush=True)
+            except Exception as exc:  # noqa: BLE001
+                # Never block the send; nightly reconcile backfills from the member ID.
+                print(f"[CERT RECORD FAILED] {cert_id}: {exc!r}", flush=True)
             # Store the ID on the member so the HR Certificates matrix ticks it.
             if member:
                 try:

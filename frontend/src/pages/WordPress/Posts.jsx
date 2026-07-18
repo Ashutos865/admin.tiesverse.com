@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { wpGet, wpCreate, wpUpdate, wpDelete, qs, stripHtml } from './wpApi';
-import { Plus, Search, Edit2, Trash2, ExternalLink, Loader2, X, Save, Send, Image as ImageIcon, Eye, Code2, Type, Maximize2, Minimize2, Sparkles } from 'lucide-react';
+import { wpGet, wpCreate, wpUpdate, wpDelete, wpUploadMedia, qs, stripHtml } from './wpApi';
+import { Plus, Search, Edit2, Trash2, ExternalLink, Loader2, X, Save, Send, Image as ImageIcon, Eye, Code2, Type, Maximize2, Minimize2, Sparkles, Upload, Users } from 'lucide-react';
 import RichTextEditor from './RichTextEditor.jsx';
+import { useMe } from '../../context/MeContext';
+import { getArticleAccess, setArticleAccess } from '../../apiClient';
 
 // One-click starting layouts so writers don't face a blank page.
 const TEMPLATES = {
@@ -17,12 +19,15 @@ const STATUS_STYLE = { publish: ['#dcfce7', '#166534'], draft: ['#fef3c7', '#924
 
 // This module handles both Posts and Pages (WordPress treats them almost identically).
 export default function Posts({ type = 'posts', label = 'Posts' }) {
+  const { articleAccess } = useMe();
+  const canManageAccess = articleAccess === 'full' && type === 'posts';   // lead/admin only, Posts page
   const [items, setItems] = useState([]);
   const [cats, setCats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [editing, setEditing] = useState(null);   // the post object being edited (or {} for new)
+  const [manageAccess, setManageAccess] = useState(false);
   const [toast, setToast] = useState(null);
   const [params, setParams] = useSearchParams();
 
@@ -70,7 +75,12 @@ export default function Posts({ type = 'posts', label = 'Posts' }) {
     <div style={{ padding: '26px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
         <h1 style={{ margin: 0, fontSize: 21, color: 'var(--text-main)' }}>{label}</h1>
-        <button onClick={openNew} style={btn('var(--primary)', '#fff')}><Plus size={15} /> New {label.replace(/s$/, '')}</button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {canManageAccess && (
+            <button onClick={() => setManageAccess(true)} style={btn()}><Users size={15} /> Manage access</button>
+          )}
+          <button onClick={openNew} style={btn('var(--primary)', '#fff')}><Plus size={15} /> New {label.replace(/s$/, '')}</button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -112,12 +122,89 @@ export default function Posts({ type = 'posts', label = 'Posts' }) {
       )}
 
       {editing && <Editor type={type} label={label} post={editing} cats={cats} onClose={closeEdit} onSaved={(msg) => { showToast(msg); load(); }} />}
+      {manageAccess && <ManageAccessModal onClose={() => setManageAccess(false)} showToast={showToast} />}
       {toast && <div style={{ position: 'fixed', bottom: 22, left: '50%', transform: 'translateX(-50%)', background: toast.err ? '#dc2626' : '#16a34a', color: '#fff', padding: '10px 18px', borderRadius: 10, fontSize: 13.5, zIndex: 1000, boxShadow: '0 8px 24px rgba(0,0,0,.2)' }}>{toast.m}</div>}
     </div>
   );
 }
 
+// Content lead / admin: grant or revoke PUBLISH rights for Content-team writers,
+// straight from the Articles page. Writers are draft-only until granted here.
+function ManageAccessModal({ onClose, showToast }) {
+  const [rows, setRows] = useState(null);
+  const [saving, setSaving] = useState('');
+  const [q, setQ] = useState('');
+
+  useEffect(() => {
+    getArticleAccess()
+      .then((r) => setRows(r?.members || []))
+      .catch((e) => { showToast(e?.message || 'Could not load access list.', true); setRows([]); });
+  }, []); // eslint-disable-line
+
+  const toggle = async (row) => {
+    const next = !row.can_publish;
+    setSaving(row.user_id);
+    try {
+      await setArticleAccess({ user_id: row.user_id, member_id: row.member_id, can_publish: next });
+      setRows((list) => list.map((r) => (r.user_id === row.user_id ? { ...r, can_publish: next } : r)));
+      showToast(next ? `${row.name} can now publish.` : `Publishing revoked for ${row.name}.`);
+    } catch (e) {
+      showToast(e?.message || 'Update failed.', true);
+    }
+    setSaving('');
+  };
+
+  const filtered = (rows || []).filter((r) =>
+    `${r.name} ${r.email}`.toLowerCase().includes(q.trim().toLowerCase()));
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 950, display: 'grid', placeItems: 'center', padding: 16 }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 560, maxHeight: '82vh', display: 'flex', flexDirection: 'column', border: '1px solid var(--outline-variant)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--outline-variant)' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 16, color: 'var(--text-main)' }}>Manage publishing access</h3>
+            <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--text-muted)' }}>Content writers can save drafts. Turn on publishing for people you trust to publish directly.</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+        </div>
+        <div style={{ padding: '12px 20px 0' }}>
+          <div style={{ position: 'relative' }}>
+            <Search size={15} style={{ position: 'absolute', left: 11, top: 11, color: 'var(--text-muted)' }} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search content team…" style={{ ...field, paddingLeft: 34 }} />
+          </div>
+        </div>
+        <div style={{ padding: 16, overflowY: 'auto' }}>
+          {rows === null ? (
+            <div style={{ color: 'var(--text-muted)', padding: 20, textAlign: 'center' }}><Loader2 size={18} className="ma-spin" /></div>
+          ) : filtered.length === 0 ? (
+            <div style={{ color: 'var(--text-muted)', padding: 24, textAlign: 'center', fontSize: 13.5 }}>{q ? 'No one matches your search.' : 'No content-team members with a login account yet.'}</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {filtered.map((r) => (
+                <div key={r.user_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text-main)' }}>{r.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.email}</div>
+                  </div>
+                  <span style={{ fontSize: 12, color: r.can_publish ? '#166534' : 'var(--text-muted)', fontWeight: 600 }}>{r.can_publish ? 'Can publish' : 'Draft only'}</span>
+                  <button onClick={() => toggle(r)} disabled={saving === r.user_id}
+                    title={r.can_publish ? 'Revoke publishing' : 'Allow publishing'}
+                    style={{ width: 44, height: 24, borderRadius: 999, border: 'none', cursor: 'pointer', position: 'relative', background: r.can_publish ? 'var(--primary)' : 'var(--outline-variant)', flex: 'none', transition: 'background .15s' }}>
+                    <span style={{ position: 'absolute', top: 2, left: r.can_publish ? 22 : 2, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,.3)' }} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Editor({ type, label, post, cats, onClose, onSaved }) {
+  const { articleAccess } = useMe();
+  const draftOnly = articleAccess === 'draft';   // content writer: no publishing
   const [f, setF] = useState(post);
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState('visual');   // 'visual' | 'html'
@@ -206,10 +293,16 @@ function Editor({ type, label, post, cats, onClose, onSaved }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <div>
               <label style={{ fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 6 }}>Status</label>
-              <select value={f.status} onChange={e => set('status', e.target.value)} style={{ ...field, cursor: 'pointer' }}>
-                <option value="draft">Draft</option><option value="publish">Published</option>
-                <option value="pending">Pending review</option><option value="private">Private</option>
-              </select>
+              {draftOnly ? (
+                <select value="draft" disabled style={{ ...field, cursor: 'not-allowed', opacity: 0.7 }}>
+                  <option value="draft">Draft (a lead reviews &amp; publishes)</option>
+                </select>
+              ) : (
+                <select value={f.status} onChange={e => set('status', e.target.value)} style={{ ...field, cursor: 'pointer' }}>
+                  <option value="draft">Draft</option><option value="publish">Published</option>
+                  <option value="pending">Pending review</option><option value="private">Private</option>
+                </select>
+              )}
             </div>
             <div>
               <label style={{ fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 6 }}>Featured image</label>
@@ -254,10 +347,15 @@ function Editor({ type, label, post, cats, onClose, onSaved }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, padding: '14px 20px', borderTop: '1px solid var(--outline-variant)', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-          <button onClick={onClose} style={btn()}>Cancel</button>
-          <button onClick={() => save(false)} disabled={saving} style={btn()}><Save size={14} /> Save draft</button>
-          <button onClick={() => save(true)} disabled={saving} style={btn('var(--primary)', '#fff')}>{saving ? <Loader2 size={14} className="ma-spin" /> : <Send size={14} />} {f.status === 'publish' ? 'Update' : 'Publish'}</button>
+        <div style={{ display: 'flex', gap: 10, padding: '14px 20px', borderTop: '1px solid var(--outline-variant)', justifyContent: draftOnly ? 'space-between' : 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
+          {draftOnly && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Your draft is saved under your name for a lead to review and publish.</span>}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={onClose} style={btn()}>Cancel</button>
+            <button onClick={() => save(false)} disabled={saving} style={btn(draftOnly ? 'var(--primary)' : '', draftOnly ? '#fff' : '')}>{saving ? <Loader2 size={14} className="ma-spin" /> : <Save size={14} />} Save draft</button>
+            {!draftOnly && (
+              <button onClick={() => save(true)} disabled={saving} style={btn('var(--primary)', '#fff')}>{saving ? <Loader2 size={14} className="ma-spin" /> : <Send size={14} />} {f.status === 'publish' ? 'Update' : 'Publish'}</button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -289,19 +387,54 @@ function TagChips({ value, onChange }) {
 function MediaPicker({ onClose, onPick }) {
   const [media, setMedia] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState('');
   useEffect(() => { wpGet(`/media${qs({ per_page: 40, media_type: 'image', _fields: 'id,source_url,alt_text,title' })}`).then(r => setMedia(r.data || [])).finally(() => setLoading(false)); }, []);
+
+  // Upload a file from the user's computer, then select it as the featured image.
+  const upload = async (file) => {
+    if (!file) return;
+    setUploadErr('');
+    setUploading(true);
+    try {
+      const res = await wpUploadMedia(file);
+      const m = res.data || res;
+      if (m?.id && m?.source_url) {
+        setMedia(list => [m, ...list]);   // show it at the top of the library too
+        onPick(m);                        // and select it immediately
+      } else {
+        setUploadErr('Upload failed — please try again.');
+      }
+    } catch (e) {
+      setUploadErr(e?.message || 'Upload failed.');
+    }
+    setUploading(false);
+  };
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 950, display: 'grid', placeItems: 'center', padding: 16 }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 720, maxHeight: '80vh', display: 'flex', flexDirection: 'column', border: '1px solid var(--outline-variant)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid var(--outline-variant)' }}>
           <h3 style={{ margin: 0, fontSize: 15, color: 'var(--text-main)' }}>Choose an image</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <label style={{ ...btn('var(--primary)', '#fff'), cursor: uploading ? 'wait' : 'pointer', margin: 0 }}>
+              {uploading ? <Loader2 size={14} className="ma-spin" /> : <Upload size={14} />} {uploading ? 'Uploading…' : 'Upload from computer'}
+              <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploading}
+                onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+            </label>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+          </div>
         </div>
+        {uploadErr && <div style={{ padding: '8px 18px', color: '#dc2626', fontSize: 12.5 }}>{uploadErr}</div>}
         <div style={{ padding: 14, overflowY: 'auto' }}>
           {loading ? <div style={{ color: 'var(--text-muted)', padding: 20, textAlign: 'center' }}><Loader2 size={18} className="ma-spin" /></div> : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 8 }}>
-              {media.map(m => <button key={m.id} onClick={() => onPick(m)} style={{ padding: 0, border: '1px solid var(--outline-variant)', borderRadius: 8, overflow: 'hidden', cursor: 'pointer', aspectRatio: '1', background: 'var(--surface-container-low)' }}><img src={m.source_url} alt={m.alt_text} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></button>)}
-            </div>
+            media.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', padding: 24, textAlign: 'center', fontSize: 13.5 }}>No images yet — use “Upload from computer” above to add one.</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 8 }}>
+                {media.map(m => <button key={m.id} onClick={() => onPick(m)} style={{ padding: 0, border: '1px solid var(--outline-variant)', borderRadius: 8, overflow: 'hidden', cursor: 'pointer', aspectRatio: '1', background: 'var(--surface-container-low)' }}><img src={m.source_url} alt={m.alt_text} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></button>)}
+              </div>
+            )
           )}
         </div>
       </div>

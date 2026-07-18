@@ -82,6 +82,58 @@ def team_member_ids(member):
     return ids
 
 
+CONTENT_DEPARTMENT = 'content'   # matched case-insensitively against assigned_departments
+
+
+def _in_content_department(member):
+    """True if this member belongs to the Content department (case-insensitive)."""
+    if not member:
+        return False
+    return any(str(d).strip().lower() == CONTENT_DEPARTMENT
+               for d in (member.assigned_departments or []))
+
+
+def _leads_content(member):
+    """True if this member leads the Content department."""
+    return any(str(d).strip().lower() == CONTENT_DEPARTMENT
+               for d in led_department_names(member))
+
+
+def get_article_access(user):
+    """Classify a user's access to the Articles/Reports (WordPress) portal.
+
+    Returns one of:
+      'full'  -> superuser, the Content lead, or a member granted
+                 `can_publish_articles`: read + create + publish + edit + delete.
+      'draft' -> a Content-department member (or one granted `can_edit_articles`):
+                 read + create/save DRAFTS under their own name only. No publish,
+                 no delete, no editing others' published posts.
+      'none'  -> everyone else.
+
+    Also returns the member (or None) so the caller can stamp the author name.
+    """
+    if getattr(user, 'is_superuser', False):
+        return ('full', None)
+    # Explicit Django permission grants win (delegated by a lead/admin).
+    if user and user.has_perm('accounts_app.can_publish_articles'):
+        member = get_member_for_user(user)
+        return ('full', member)
+
+    member = get_member_for_user(user)
+    if member is None:
+        # Back-office staff with no member profile: treat like the old superuser
+        # gate only if they are staff; otherwise no article access.
+        return ('none', None)
+
+    if _leads_content(member):
+        return ('full', member)
+    if user and user.has_perm('accounts_app.can_edit_articles'):
+        return ('draft', member)
+    if _in_content_department(member):
+        return ('draft', member)
+    return ('none', member)
+
+
 def get_access_scope(user):
     """Return (scope, member) — scope in {'all', 'team', 'self', 'none'}."""
     if getattr(user, 'is_superuser', False):

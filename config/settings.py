@@ -253,9 +253,10 @@ CAMPAIGN_CERT_RETENTION_DAYS = int(os.environ.get('CAMPAIGN_CERT_RETENTION_DAYS'
 # How many certificates a campaign generates+sends in parallel (server-side).
 CAMPAIGN_CONCURRENCY = int(os.environ.get('CAMPAIGN_CONCURRENCY', '8'))
 
-# Target max size (KB) for an emailed certificate PDF. Generated PDFs are
-# downsampled (via Ghostscript) toward this cap before attaching.
-CERT_MAX_KB = int(os.environ.get('CERT_MAX_KB', '600'))
+# Target max size (KB) for an emailed certificate PDF. Both generated AND
+# manually-uploaded PDFs are downsampled (via Ghostscript) toward this cap
+# before attaching, so a heavy source never goes out as a multi-MB email.
+CERT_MAX_KB = int(os.environ.get('CERT_MAX_KB', '500'))
 
 # ---------------------------------------------------------
 # AWS SES (registration confirmation emails)

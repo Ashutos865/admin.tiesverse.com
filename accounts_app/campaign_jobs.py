@@ -251,7 +251,12 @@ def generate_single_certificate(template_id, values, id_var=None):
     id_pick = (id_var if (id_var and id_var in gen_var_names) else (gen_var_names[0] if gen_var_names else None))
     cert_id = ''
     if id_pick:
-        cert_id = lc_values.get(id_pick.lower(), '') or _make_cert_id(cert_vars, id_pick)
+        # A value explicitly supplied for the id var is used as-is; otherwise generate
+        # a CONCRETE, UNIQUE id from the pattern (regenerate on the rare collision so
+        # short patterns like TIES-BH-{####} never reuse an existing certificate's id).
+        cert_id = lc_values.get(id_pick.lower(), '')
+        if not cert_id:
+            cert_id = _make_unique_cert_id(cert_vars, id_pick)
 
     # Send data to the generator: the concrete ID for the id variable, blank/pattern
     # for other generator vars, and ZW for the vars WE stamp (the generator requires
@@ -283,15 +288,25 @@ def generate_single_certificate(template_id, values, id_var=None):
     # The {{qr}} placeholder is drawn as an image (below), not as text — keep it
     # out of the text overlay so its literal token never gets stamped.
     text_els = [e for e in (cert_els or []) if '{{qr}}' not in (e.get('content', '') or '').lower()]
+    # Render the values (each step independent so one failing never skips the next,
+    # and — critically — never skips compression, which must ALWAYS run last).
     try:
         pdf = overlay_values(pdf, text_els, overlay, design_w, design_h)
+    except Exception:  # noqa: BLE001
+        pass
+    if cert_id:
         # A cert with an ID gets a verification QR → /verify?id=<id>. It goes where a
         # {{qr}} field is placed in the template, else the bottom-right corner.
-        if cert_id:
+        try:
             pdf = add_verify_qr(pdf, cert_id, design_w, design_h, cert_els)
-        pdf = compress_pdf(pdf, target_kb=int(getattr(settings, 'CERT_MAX_KB', 600)))
+        except Exception:  # noqa: BLE001
+            pass
+    # Compression is its OWN step so a failure above can never leave a heavy PDF
+    # uncompressed. compress_pdf itself never raises (falls back to input).
+    try:
+        pdf = compress_pdf(pdf, target_kb=int(getattr(settings, 'CERT_MAX_KB', 500)))
     except Exception:  # noqa: BLE001
-        pass   # overlay/compress never fatal — worst case the base PDF still sends
+        pass
 
     return pdf, cert_id, ''
 
@@ -389,6 +404,59 @@ def _make_cert_id(cert_vars, name):
 
     out = re.sub(r'\{([^}]*)\}', _sub, pat)
     return out or pat
+
+
+# IDs handed out this process but perhaps not yet written to the verify table —
+# prevents two certs in the same bulk run from colliding before either is recorded.
+_ISSUED_THIS_RUN = set()
+
+
+def _cert_id_exists(cert_id):
+    """True if this certificate ID is already used — issued earlier this run, in the
+    verify table, or on any member. Guarantees freshly-generated IDs never collide."""
+    if not cert_id:
+        return False
+    if str(cert_id).upper() in _ISSUED_THIS_RUN:
+        return True
+    try:
+        from webinar_app import turso_client
+        if turso_client.is_configured():
+            rows = turso_client.execute(
+                "SELECT 1 FROM certificate_records WHERE UPPER(certificate_id)=:c LIMIT 1",
+                {'c': str(cert_id).upper()})
+            if rows:
+                return True
+    except Exception:  # noqa: BLE001 — verify table unreachable shouldn't block issuance
+        pass
+    try:
+        from career_app.models import OnboardingSubmission
+        for m in (OnboardingSubmission.objects
+                  .exclude(certificate_ids={}).exclude(certificate_ids__isnull=True)
+                  .only('certificate_ids').iterator()):
+            for v in (m.certificate_ids or {}).values():
+                if v and str(v).upper() == str(cert_id).upper():
+                    return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
+def _make_unique_cert_id(cert_vars, name, attempts=25):
+    """Like _make_cert_id but regenerates until the ID is unused (or the pattern has
+    no random part, in which case the single value is returned as-is)."""
+    cid = _make_cert_id(cert_vars, name)
+    if not cid:
+        return ''
+    for _ in range(attempts):
+        if not _cert_id_exists(cid):
+            _ISSUED_THIS_RUN.add(str(cid).upper())
+            return cid
+        nxt = _make_cert_id(cert_vars, name)
+        if nxt == cid:   # pattern is fixed (no # placeholders) — can't vary, accept it
+            break
+        cid = nxt
+    _ISSUED_THIS_RUN.add(str(cid).upper())
+    return cid
 
 
 def _render_generator_pattern(cert_vars, name):

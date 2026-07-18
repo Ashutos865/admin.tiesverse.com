@@ -34,6 +34,10 @@ class CanDelegate(permissions.BasePermission):
 
 APP_LABELS = ['tiesverse_app', 'career_app', 'webinar_app']
 
+# accounts_app custom permissions that must also appear in the matrix / be
+# delegatable, even though accounts_app isn't in APP_LABELS.
+SPECIAL_CODENAMES = ['can_delegate_permissions', 'can_edit_articles', 'can_publish_articles']
+
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('-date_joined')
@@ -53,7 +57,7 @@ class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         return Permission.objects.filter(
             Q(content_type__app_label__in=APP_LABELS) |
-            Q(codename='can_delegate_permissions')
+            Q(codename__in=SPECIAL_CODENAMES)
         ).select_related('content_type').order_by(
             'content_type__app_label', 'content_type__model', 'codename'
         )
@@ -73,7 +77,7 @@ class DelegatablePermissionsView(views.APIView):
         if request.user.is_superuser:
             perms = Permission.objects.filter(
                 Q(content_type__app_label__in=APP_LABELS) |
-                Q(codename='can_delegate_permissions')
+                Q(codename__in=SPECIAL_CODENAMES)
             ).select_related('content_type').order_by(
                 'content_type__app_label', 'content_type__model', 'codename'
             )
@@ -88,7 +92,7 @@ class DelegatablePermissionsView(views.APIView):
                 codename__in=delegatable
             ).filter(
                 Q(content_type__app_label__in=APP_LABELS) |
-                Q(codename='can_delegate_permissions')
+                Q(codename__in=SPECIAL_CODENAMES)
             ).select_related('content_type').order_by(
                 'content_type__app_label', 'content_type__model', 'codename'
             )
@@ -155,9 +159,9 @@ class DelegatePermissionsView(views.APIView):
         requested = set(request.data.get('permissions', []))
 
         if request.user.is_superuser:
-            perms = Permission.objects.filter(
-                codename__in=requested,
-                content_type__app_label__in=APP_LABELS,
+            perms = Permission.objects.filter(codename__in=requested).filter(
+                Q(content_type__app_label__in=APP_LABELS)
+                | Q(codename__in=SPECIAL_CODENAMES)
             )
             target.user_permissions.set(perms)
         else:
@@ -174,9 +178,9 @@ class DelegatePermissionsView(views.APIView):
             # Preserve target's permissions that are outside our scope
             preserved = list(target.user_permissions.exclude(codename__in=my_scope))
             in_scope = list(
-                Permission.objects.filter(
-                    codename__in=to_grant,
-                    content_type__app_label__in=APP_LABELS,
+                Permission.objects.filter(codename__in=to_grant).filter(
+                    Q(content_type__app_label__in=APP_LABELS)
+                    | Q(codename__in=SPECIAL_CODENAMES)
                 )
             )
             target.user_permissions.set(preserved + in_scope)

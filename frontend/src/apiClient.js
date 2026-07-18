@@ -386,6 +386,10 @@ export const addTeamMember = (data) => adminFetch('/api/career/onboarding/manual
 // CURRENT MEMBER — who am I + my access scope (drives self-service + role-aware nav)
 export const getMe = () => adminFetch('/api/career/me');
 
+// Manage who in the Content team may publish articles (Content lead / admin only).
+export const getArticleAccess = () => adminFetch('/api/career/article-access/');
+export const setArticleAccess = (payload) => adminFetch('/api/career/article-access/', 'POST', payload);
+
 // Advisory oversight + weekly team-lead updates
 export const getAdvisoryTaskOversight = () => adminFetch('/api/career/advisory/task-oversight/');
 export const getAdvisoryDailyUpdates = () => adminFetch('/api/career/advisory/daily-updates/');

@@ -34,6 +34,8 @@ class UserProfile(models.Model):
     class Meta:
         permissions = [
             ('can_delegate_permissions', 'Can delegate own permissions to team members'),
+            ('can_edit_articles', 'Can write and save article/report drafts'),
+            ('can_publish_articles', 'Can publish and edit articles/reports'),
         ]
 
 

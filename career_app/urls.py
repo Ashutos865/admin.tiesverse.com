@@ -18,7 +18,7 @@ from .views import (
     OnboardingVerifyView, OnboardingDocView, ManualAddMemberView,
     OnboardingPublicInfoView, OnboardingPublicUploadView,
     CertificateIssueView, SendCertificateEmailView, DocumentAuditLogListView,
-    MeView, DirectorySearchView,
+    MeView, DirectorySearchView, ArticleAccessManagementView,
     AttendanceListView, AttendanceCheckInView, AttendanceCheckOutView,
     AttendanceApproveView, AttendanceDetailView,
     LeaveListView, LeaveDetailView, LeaveReviewView,
@@ -59,6 +59,7 @@ urlpatterns = [
     path('', include(router.urls)),
     # Current member identity + scope
     path('me/', MeView.as_view(), name='career-me'),
+    path('article-access/', ArticleAccessManagementView.as_view(), name='article-access-manage'),
     # Master directory — unified people search
     path('directory/', DirectorySearchView.as_view(), name='career-directory'),
     path('candidates/', CandidateListView.as_view(), name='career-candidates'),
