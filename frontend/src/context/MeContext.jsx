@@ -37,6 +37,8 @@ export const MeProvider = ({ children }) => {
     member: me?.member || null,
     // Articles/Reports (WordPress) access tier: 'full' | 'draft' | 'none'.
     articleAccess: me?.article_access || 'none',
+    // Can this user manage others' article publishing access?
+    canManageArticles: Boolean(me?.can_manage_articles),
   };
 
   return <MeContext.Provider value={value}>{children}</MeContext.Provider>;

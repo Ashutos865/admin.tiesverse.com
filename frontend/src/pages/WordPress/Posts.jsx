@@ -19,8 +19,8 @@ const STATUS_STYLE = { publish: ['#dcfce7', '#166534'], draft: ['#fef3c7', '#924
 
 // This module handles both Posts and Pages (WordPress treats them almost identically).
 export default function Posts({ type = 'posts', label = 'Posts' }) {
-  const { articleAccess } = useMe();
-  const canManageAccess = articleAccess === 'full' && type === 'posts';   // lead/admin only, Posts page
+  const { articleAccess, canManageArticles } = useMe();
+  const canManageAccess = canManageArticles && type === 'posts';   // lead/admin/granter, Posts page
   const [items, setItems] = useState([]);
   const [cats, setCats] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -128,26 +128,44 @@ export default function Posts({ type = 'posts', label = 'Posts' }) {
   );
 }
 
+// A single labelled on/off switch used in the manage-access modal.
+function AccessToggle({ label, on, busy, onClick }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 'none', width: 88 }}>
+      <span style={{ fontSize: 10.5, color: on ? '#166534' : 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.02em' }}>{label}</span>
+      <button onClick={onClick} disabled={busy}
+        title={on ? `Turn off ${label.toLowerCase()}` : `Turn on ${label.toLowerCase()}`}
+        style={{ width: 44, height: 24, borderRadius: 999, border: 'none', cursor: busy ? 'wait' : 'pointer', position: 'relative', background: on ? 'var(--primary)' : 'var(--outline-variant)', transition: 'background .15s', opacity: busy ? 0.6 : 1 }}>
+        <span style={{ position: 'absolute', top: 2, left: on ? 22 : 2, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,.3)' }} />
+      </button>
+    </div>
+  );
+}
+
 // Content lead / admin: grant or revoke PUBLISH rights for Content-team writers,
-// straight from the Articles page. Writers are draft-only until granted here.
+// and (superuser only) the power to grant access to others — straight from the
+// Articles page. Writers are draft-only until granted here.
 function ManageAccessModal({ onClose, showToast }) {
   const [rows, setRows] = useState(null);
+  const [canEditGrant, setCanEditGrant] = useState(false);
   const [saving, setSaving] = useState('');
   const [q, setQ] = useState('');
 
   useEffect(() => {
     getArticleAccess()
-      .then((r) => setRows(r?.members || []))
+      .then((r) => { setRows(r?.members || []); setCanEditGrant(Boolean(r?.can_edit_grant)); })
       .catch((e) => { showToast(e?.message || 'Could not load access list.', true); setRows([]); });
   }, []); // eslint-disable-line
 
-  const toggle = async (row) => {
-    const next = !row.can_publish;
-    setSaving(row.user_id);
+  // Flip one permission (`can_publish` or `can_grant`) for a member.
+  const toggle = async (row, key) => {
+    const next = !row[key];
+    setSaving(row.user_id + key);
     try {
-      await setArticleAccess({ user_id: row.user_id, member_id: row.member_id, can_publish: next });
-      setRows((list) => list.map((r) => (r.user_id === row.user_id ? { ...r, can_publish: next } : r)));
-      showToast(next ? `${row.name} can now publish.` : `Publishing revoked for ${row.name}.`);
+      await setArticleAccess({ user_id: row.user_id, member_id: row.member_id, [key]: next });
+      setRows((list) => list.map((r) => (r.user_id === row.user_id ? { ...r, [key]: next } : r)));
+      const what = key === 'can_grant' ? 'grant access to others' : 'publish';
+      showToast(next ? `${row.name} can now ${what}.` : `Removed “${what}” from ${row.name}.`);
     } catch (e) {
       showToast(e?.message || 'Update failed.', true);
     }
@@ -163,7 +181,7 @@ function ManageAccessModal({ onClose, showToast }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--outline-variant)' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: 16, color: 'var(--text-main)' }}>Manage publishing access</h3>
-            <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--text-muted)' }}>Content writers can save drafts. Turn on publishing for people you trust to publish directly.</p>
+            <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--text-muted)' }}>Content writers can save drafts. Turn on <b>Publish</b> for people you trust to publish directly{canEditGrant ? ', and ' : '.'}{canEditGrant ? <><b>Grant access</b> to let someone manage access for others.</> : ''}</p>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
         </div>
@@ -186,12 +204,10 @@ function ManageAccessModal({ onClose, showToast }) {
                     <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text-main)' }}>{r.name}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.email}</div>
                   </div>
-                  <span style={{ fontSize: 12, color: r.can_publish ? '#166534' : 'var(--text-muted)', fontWeight: 600 }}>{r.can_publish ? 'Can publish' : 'Draft only'}</span>
-                  <button onClick={() => toggle(r)} disabled={saving === r.user_id}
-                    title={r.can_publish ? 'Revoke publishing' : 'Allow publishing'}
-                    style={{ width: 44, height: 24, borderRadius: 999, border: 'none', cursor: 'pointer', position: 'relative', background: r.can_publish ? 'var(--primary)' : 'var(--outline-variant)', flex: 'none', transition: 'background .15s' }}>
-                    <span style={{ position: 'absolute', top: 2, left: r.can_publish ? 22 : 2, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,.3)' }} />
-                  </button>
+                  <AccessToggle label="Publish" on={r.can_publish} busy={saving === r.user_id + 'can_publish'} onClick={() => toggle(r, 'can_publish')} />
+                  {canEditGrant && (
+                    <AccessToggle label="Grant access" on={r.can_grant} busy={saving === r.user_id + 'can_grant'} onClick={() => toggle(r, 'can_grant')} />
+                  )}
                 </div>
               ))}
             </div>

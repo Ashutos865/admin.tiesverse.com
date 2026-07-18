@@ -928,6 +928,12 @@ class MeView(APIView):
         scope, member = access.get_access_scope(request.user)
         # Article/report (WordPress) access tier: 'full' | 'draft' | 'none'.
         article_tier, _ = access.get_article_access(request.user)
+        # Can this user manage others' article access (open the Manage-access panel)?
+        can_manage_articles = bool(
+            request.user.is_superuser
+            or access._leads_content(member)
+            or request.user.has_perm('accounts_app.can_delegate_permissions')
+        )
         return Response({
             'user': {
                 'username': request.user.username,
@@ -942,6 +948,7 @@ class MeView(APIView):
             'is_developer': _is_developer(request.user),
             'is_member': member is not None,
             'article_access': article_tier,       # 'full' | 'draft' | 'none'
+            'can_manage_articles': can_manage_articles,
             'member': OnboardingSubmissionSerializer(member).data if member else None,
             'led_departments': sorted(access.led_department_names(member)) if member else [],
         })
@@ -960,14 +967,20 @@ class ArticleAccessManagementView(APIView):
 
     def _guard(self, request):
         tier, _ = access.get_article_access(request.user)
-        # Only a full-access user who is a lead/superuser manages grants.
+        # Who may OPEN this panel and grant publish rights: a superuser, the
+        # Content lead, or anyone a superuser has given the "can grant access"
+        # power (can_delegate_permissions).
         member = access.get_member_for_user(request.user)
-        allowed = request.user.is_superuser or access._leads_content(member)
+        allowed = (
+            request.user.is_superuser
+            or access._leads_content(member)
+            or request.user.has_perm('accounts_app.can_delegate_permissions')
+        )
         return allowed, tier
 
-    def _publish_perm(self):
+    def _perm(self, codename):
         from django.contrib.auth.models import Permission
-        return Permission.objects.filter(codename='can_publish_articles').first()
+        return Permission.objects.filter(codename=codename).first()
 
     def get(self, request):
         allowed, _ = self._guard(request)
@@ -976,11 +989,13 @@ class ArticleAccessManagementView(APIView):
         from django.contrib.auth import get_user_model
         from career_app.models import MemberAccount
         User = get_user_model()
-        perm = self._publish_perm()
-        # user ids that hold the publish permission (direct grant)
-        holders = set()
-        if perm:
-            holders = set(User.objects.filter(user_permissions=perm).values_list('id', flat=True))
+        pub_perm = self._perm('can_publish_articles')
+        grant_perm = self._perm('can_delegate_permissions')
+        # user ids that hold each permission (direct grant)
+        publishers = set(User.objects.filter(user_permissions=pub_perm).values_list('id', flat=True)) if pub_perm else set()
+        granters = set(User.objects.filter(user_permissions=grant_perm).values_list('id', flat=True)) if grant_perm else set()
+        # Only a superuser may hand out the "can grant access" power (it's stronger).
+        can_edit_grant = bool(request.user.is_superuser)
         rows = []
         for acct in MemberAccount.objects.select_related('submission').all():
             m = acct.submission
@@ -993,10 +1008,11 @@ class ArticleAccessManagementView(APIView):
                 'user_id': acct.user_id,
                 'name': m.candidate_name,
                 'email': m.candidate_email,
-                'can_publish': acct.user_id in holders,
+                'can_publish': acct.user_id in publishers,
+                'can_grant': acct.user_id in granters,
             })
         rows.sort(key=lambda r: (not r['can_publish'], r['name'].lower()))
-        return Response({'members': rows})
+        return Response({'members': rows, 'can_edit_grant': can_edit_grant})
 
     def post(self, request):
         allowed, _ = self._guard(request)
@@ -1005,7 +1021,6 @@ class ArticleAccessManagementView(APIView):
         from django.contrib.auth import get_user_model
         from career_app.models import MemberAccount
         User = get_user_model()
-        can_publish = bool(request.data.get('can_publish'))
         user_id = request.data.get('user_id')
         member_id = request.data.get('member_id')
         if not user_id and member_id:
@@ -1016,14 +1031,24 @@ class ArticleAccessManagementView(APIView):
         u = User.objects.filter(pk=user_id).first()
         if not u:
             return Response({'detail': 'User not found.'}, status=404)
-        perm = self._publish_perm()
-        if not perm:
-            return Response({'detail': 'Publish permission is not installed. Run migrations.'}, status=503)
-        if can_publish:
-            u.user_permissions.add(perm)
-        else:
-            u.user_permissions.remove(perm)
-        return Response({'ok': True, 'user_id': user_id, 'can_publish': can_publish})
+
+        # Toggle publish rights (any lead/admin may do this).
+        if 'can_publish' in request.data:
+            perm = self._perm('can_publish_articles')
+            if not perm:
+                return Response({'detail': 'Publish permission is not installed. Run migrations.'}, status=503)
+            (u.user_permissions.add if bool(request.data.get('can_publish')) else u.user_permissions.remove)(perm)
+
+        # Toggle the "can grant access to others" power — SUPERUSER ONLY, since it
+        # lets that person hand out access themselves.
+        if 'can_grant' in request.data:
+            if not request.user.is_superuser:
+                return Response({'detail': 'Only an admin can change who may grant access.'}, status=403)
+            perm = self._perm('can_delegate_permissions')
+            if perm:
+                (u.user_permissions.add if bool(request.data.get('can_grant')) else u.user_permissions.remove)(perm)
+
+        return Response({'ok': True, 'user_id': user_id})
 
 
 # ── Master Directory (unified people search) ──────────────────────────────────
