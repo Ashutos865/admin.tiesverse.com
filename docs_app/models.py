@@ -20,11 +20,18 @@ class DocSpace(models.Model):
 
 # ── DocPage (a page; parent lets pages nest into a tree) ──────────────────────
 class DocPage(models.Model):
+    VISIBILITY_CHOICES = [
+        ('public', 'Public'),
+        ('encrypted', 'Encrypted (Internal)'),
+    ]
+
     space = models.ForeignKey(DocSpace, on_delete=models.CASCADE, related_name='pages')
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children')
     slug = models.SlugField(max_length=80)
     title = models.CharField(max_length=200)
     body = models.TextField(blank=True)                  # markdown
+    visibility = models.CharField(max_length=20, choices=VISIBILITY_CHOICES, default='public')
+    allowed_teams = models.JSONField(default=list, blank=True, help_text='Team IDs that can access this encrypted doc')
     order = models.PositiveIntegerField(default=0)
     is_published = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)

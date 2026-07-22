@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search, Plus, Edit2, Trash2, BookOpen, Bold, Italic, List, ListOrdered,
   ListChecks, Quote, Code, Link2, Heading1, Heading2, CornerDownRight,
+  Globe, Lock, Users,
 } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionContext';
-import { getDocsTree, getDocPage, createDocPage, updateDocPage, deleteDocPage, searchDocs } from '../../apiClient';
+import { getDocsTree, getDocPage, createDocPage, updateDocPage, deleteDocPage, searchDocs, getHRDepartments } from '../../apiClient';
 import '../Learn/Learn.css';
 import './Docs.css';
 
@@ -115,7 +116,7 @@ function htmlToMarkdown(html) {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-const EMPTY_PAGE = { title: '', body: '', space: '', parent: null, slug: '' };
+const EMPTY_PAGE = { title: '', body: '', space: '', parent: null, slug: '', visibility: 'public', allowed_teams: [] };
 
 export default function TiesDocs() {
   const { hasPermission, isSuperuser } = usePermissions();
@@ -129,15 +130,20 @@ export default function TiesDocs() {
   const [editing, setEditing] = useState(null);      // page object being edited or a fresh page for new
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
+  const [departments, setDepartments] = useState([]);
   const taRef = useRef(null);
 
   const show = (m) => { setToast(m); window.setTimeout(() => setToast(''), 2600); };
+  const toggleTeam = (teamId) => setEditing((e) => {
+    const teams = e.allowed_teams || [];
+    return { ...e, allowed_teams: teams.includes(teamId) ? teams.filter((t) => t !== teamId) : [...teams, teamId] };
+  });
   const loadTree = () => getDocsTree().then((t) => {
     const arr = Array.isArray(t) ? t : [];
     setTree(arr);
     if (!activeId) { const first = arr.find((s) => s.pages.length)?.pages[0]; if (first) setActiveId(first.id); }
   });
-  useEffect(() => { loadTree(); }, []);
+  useEffect(() => { loadTree(); getHRDepartments().then((d) => setDepartments(Array.isArray(d) ? d : [])); }, []);
   useEffect(() => { if (activeId) getDocPage(activeId).then((p) => setPage(p && !p.error ? p : null)); }, [activeId]);
 
   const runSearch = (q) => { setQuery(q); if (!q.trim()) { setResults(null); return; } searchDocs(q).then((r) => setResults(Array.isArray(r) ? r : [])); };
@@ -146,7 +152,7 @@ export default function TiesDocs() {
   const setBody = (v) => setEditing((e) => ({ ...e, body: v }));
 
   const openNew = (parent = null, spaceId = null) => setEditing({ ...EMPTY_PAGE, space: spaceId || spaces[0]?.id || '', parent });
-  const openEdit = () => page && setEditing({ id: page.id, title: page.title, body: page.body, space: page.space, parent: page.parent, slug: page.slug });
+  const openEdit = () => page && setEditing({ id: page.id, title: page.title, body: page.body, space: page.space, parent: page.parent, slug: page.slug, visibility: page.visibility || 'public', allowed_teams: page.allowed_teams || [] });
 
   const save = async () => {
     if (!editing.title.trim()) { show('Title is required'); return; }
@@ -243,6 +249,7 @@ export default function TiesDocs() {
       <div key={p.id}>
         <button type="button" className={`docs-link ${p.id === activeId ? 'is-active' : ''}`} style={{ paddingLeft: 10 + depth * 16 }} onClick={() => setActiveId(p.id)}>
           {depth > 0 && <CornerDownRight size={12} style={{ opacity: 0.5, marginRight: 4, verticalAlign: '-2px' }} />}{p.title}
+          {p.visibility === 'encrypted' && <span className="docs-link-badge encrypted" title="Encrypted (Internal)"><Lock size={10} /></span>}
         </button>
         {renderNodes(pages, p.id, depth + 1)}
       </div>
@@ -292,10 +299,31 @@ export default function TiesDocs() {
                   <select value={editing.space} onChange={(e) => setEditing({ ...editing, space: Number(e.target.value) })} style={{ padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface-hover)', color: 'var(--text-main)' }}>
                     {spaces.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
+                  <select value={editing.visibility} onChange={(e) => setEditing({ ...editing, visibility: e.target.value, allowed_teams: e.target.value === 'public' ? [] : editing.allowed_teams })} style={{ padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface-hover)', color: 'var(--text-main)' }}>
+                    <option value="public">Public</option>
+                    <option value="encrypted">Encrypted (Internal)</option>
+                  </select>
                   <button type="button" className="learn-ghost-button" onClick={() => setEditing(null)}>Cancel</button>
                   <button type="button" className="learn-primary-button" disabled={saving} onClick={save}>{saving ? 'Saving' : 'Save page'}</button>
                 </div>
               </div>
+
+              {editing.visibility === 'encrypted' && (
+                <div className="docs-teams-selector">
+                  <div className="docs-teams-label"><Lock size={14} /> Visible to teams:</div>
+                  <div className="docs-teams-grid">
+                    {departments.map((dept) => {
+                      const selected = (editing.allowed_teams || []).includes(dept.id);
+                      return (
+                        <button type="button" key={dept.id} className={`docs-team-chip ${selected ? 'is-selected' : ''}`} onClick={() => toggleTeam(dept.id)}>
+                          {selected && <Users size={12} />} {dept.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {!departments.length && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No teams found. Create teams in HR Portal first.</span>}
+                </div>
+              )}
 
               <div className="docs-toolbar">
                 {TOOLS.map((tool, i) => {
@@ -316,7 +344,11 @@ export default function TiesDocs() {
             </div>
           ) : page ? (
             <>
-              <div className="docs-breadcrumb">TIES Docs <span>/</span> <b>{spaces.find((s) => s.id === page.space)?.name || 'Space'}</b> <span>/</span> {page.title}</div>
+              <div className="docs-breadcrumb">
+                TIES Docs <span>/</span> <b>{spaces.find((s) => s.id === page.space)?.name || 'Space'}</b> <span>/</span> {page.title}
+                {page.visibility === 'encrypted' && <span className="docs-visibility-badge encrypted"><Lock size={11} /> Encrypted</span>}
+                {page.visibility === 'public' && <span className="docs-visibility-badge public"><Globe size={11} /> Public</span>}
+              </div>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                 <h1 className="docs-article" style={{ flex: 1 }}>{page.title}</h1>
                 {canEdit && (
@@ -327,7 +359,14 @@ export default function TiesDocs() {
                   </div>
                 )}
               </div>
-              <div className="docs-meta">{page.updated_by_name ? `Last updated by ${page.updated_by_name}` : 'Reference document'}</div>
+              <div className="docs-meta">
+                {page.updated_by_name ? `Last updated by ${page.updated_by_name}` : 'Reference document'}
+                {page.visibility === 'encrypted' && page.allowed_team_names && page.allowed_team_names.length > 0 && (
+                  <span className="docs-team-tags">
+                    <Users size={12} /> {page.allowed_team_names.join(', ')}
+                  </span>
+                )}
+              </div>
               <article className="docs-body" dangerouslySetInnerHTML={{ __html: mdToHtml(page.body) }} />
             </>
           ) : (
