@@ -2,6 +2,25 @@ from rest_framework import serializers
 from .models import DocSpace, DocPage
 
 
+def _normalize_team_ids(value):
+    if value in (None, ''):
+        return []
+    if not isinstance(value, list):
+        raise serializers.ValidationError('allowed_teams must be a list of team ids.')
+
+    seen = set()
+    out = []
+    for raw in value:
+        try:
+            team_id = int(raw)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError('allowed_teams must contain only team ids.')
+        if team_id not in seen:
+            seen.add(team_id)
+            out.append(team_id)
+    return out
+
+
 class DocPageSerializer(serializers.ModelSerializer):
     updated_by_name = serializers.SerializerMethodField()
     allowed_team_names = serializers.SerializerMethodField()
@@ -26,6 +45,9 @@ class DocPageSerializer(serializers.ModelSerializer):
             HRDepartment.objects.filter(id__in=obj.allowed_teams)
             .values_list('name', flat=True)
         )
+
+    def validate_allowed_teams(self, value):
+        return _normalize_team_ids(value)
 
 
 class DocPageTreeSerializer(serializers.ModelSerializer):
