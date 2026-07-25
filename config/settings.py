@@ -74,6 +74,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "https://tiesverse.com",
     "https://www.tiesverse.com",
+    "https://docs.tiesverse.com",
 ] + _cors_extra
 
 # Allow the landing site to POST to the public registration endpoint
