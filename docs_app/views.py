@@ -7,6 +7,7 @@ from .serializers import DocSpaceSerializer, DocPageSerializer, DocPageTreeSeria
 
 
 ENCRYPTED_VISIBILITY = 'encrypted'
+PROTECTED_VISIBILITY = 'protected'
 
 
 def _team_keys_for_user(user):
@@ -55,9 +56,14 @@ def _allowed_team_keys(page):
     }
 
 
-def _page_visible_to_team_keys(page, team_keys):
-    if (page.visibility or 'public') != ENCRYPTED_VISIBILITY:
+def _page_visible_to_team_keys(page, team_keys, is_authenticated=True):
+    vis = page.visibility or 'public'
+    if vis == 'public':
         return True
+    if vis == PROTECTED_VISIBILITY:
+        # Any signed-in employee may read; anonymous visitors may not.
+        return bool(is_authenticated)
+    # Encrypted: unrestricted readers (team_keys None) or a team match.
     if team_keys is None:
         return True
     return bool(_allowed_team_keys(page) & team_keys)
@@ -76,8 +82,9 @@ class _PageVis:
 
 def _scope_pages_for_user(qs, user):
     team_keys = _team_keys_for_user(user)
+    is_auth = bool(user and getattr(user, 'is_authenticated', False))
     if team_keys is None:
-        return qs
+        return qs   # superuser / org-wide: everything (already authenticated)
 
     # Pull only the three columns we need via values() — avoids the
     # "cannot be both deferred and traversed" FieldError that .only() causes on
@@ -85,7 +92,8 @@ def _scope_pages_for_user(qs, user):
     visible_ids = [
         row['id']
         for row in qs.values('id', 'visibility', 'allowed_teams')
-        if _page_visible_to_team_keys(_PageVis(row['visibility'], row['allowed_teams']), team_keys)
+        if _page_visible_to_team_keys(
+            _PageVis(row['visibility'], row['allowed_teams']), team_keys, is_auth)
     ]
     return qs.filter(id__in=visible_ids) if visible_ids else qs.none()
 
@@ -139,6 +147,7 @@ class DocPageViewSet(viewsets.ModelViewSet):
             'visibility',
             getattr(serializer.instance, 'visibility', 'public'),
         )
+        # Only encrypted pages carry team restrictions; public/protected clear them.
         if visibility != ENCRYPTED_VISIBILITY:
             serializer.save(updated_by=self.request.user, allowed_teams=[])
             return

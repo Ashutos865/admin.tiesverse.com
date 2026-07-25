@@ -22,7 +22,8 @@ class DocSpace(models.Model):
 class DocPage(models.Model):
     VISIBILITY_CHOICES = [
         ('public', 'Public'),
-        ('encrypted', 'Encrypted (Internal)'),
+        ('protected', 'Protected (any signed-in employee)'),
+        ('encrypted', 'Encrypted (specific teams)'),
     ]
 
     space = models.ForeignKey(DocSpace, on_delete=models.CASCADE, related_name='pages')

@@ -249,7 +249,7 @@ export default function TiesDocs() {
       <div key={p.id}>
         <button type="button" className={`docs-link ${p.id === activeId ? 'is-active' : ''}`} style={{ paddingLeft: 10 + depth * 16 }} onClick={() => setActiveId(p.id)}>
           {depth > 0 && <CornerDownRight size={12} style={{ opacity: 0.5, marginRight: 4, verticalAlign: '-2px' }} />}{p.title}
-          {p.visibility === 'encrypted' && <span className="docs-link-badge encrypted" title="Encrypted (Internal)"><Lock size={10} /></span>}
+          {(p.visibility === 'encrypted' || p.visibility === 'protected') && <span className="docs-link-badge encrypted" title={p.visibility === 'protected' ? 'Protected (sign-in required)' : 'Encrypted (specific teams)'}><Lock size={10} /></span>}
         </button>
         {renderNodes(pages, p.id, depth + 1)}
       </div>
@@ -300,8 +300,9 @@ export default function TiesDocs() {
                     {spaces.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                   <select value={editing.visibility} onChange={(e) => setEditing({ ...editing, visibility: e.target.value, allowed_teams: e.target.value === 'public' ? [] : editing.allowed_teams })} style={{ padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface-hover)', color: 'var(--text-main)' }}>
-                    <option value="public">Public</option>
-                    <option value="encrypted">Encrypted (Internal)</option>
+                    <option value="public">Public — anyone, no login</option>
+                    <option value="protected">Protected — any signed-in employee</option>
+                    <option value="encrypted">Encrypted — specific teams</option>
                   </select>
                   <button type="button" className="learn-ghost-button" onClick={() => setEditing(null)}>Cancel</button>
                   <button type="button" className="learn-primary-button" disabled={saving} onClick={save}>{saving ? 'Saving' : 'Save page'}</button>
@@ -347,6 +348,7 @@ export default function TiesDocs() {
               <div className="docs-breadcrumb">
                 TIES Docs <span>/</span> <b>{spaces.find((s) => s.id === page.space)?.name || 'Space'}</b> <span>/</span> {page.title}
                 {page.visibility === 'encrypted' && <span className="docs-visibility-badge encrypted"><Lock size={11} /> Encrypted</span>}
+                {page.visibility === 'protected' && <span className="docs-visibility-badge encrypted"><Lock size={11} /> Protected</span>}
                 {page.visibility === 'public' && <span className="docs-visibility-badge public"><Globe size={11} /> Public</span>}
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
