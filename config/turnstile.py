@@ -14,6 +14,25 @@ from django.conf import settings
 
 _SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
 
+# Origins whose logins skip the Turnstile check (they have no widget). The docs
+# site uses the same accounts; the password stays the real factor. Extendable
+# via the TURNSTILE_EXEMPT_ORIGINS env/setting (comma-separated).
+_DEFAULT_EXEMPT = ('https://docs.tiesverse.com',)
+
+
+def origin_exempt_from_turnstile(request):
+    """True if this request's Origin is on the Turnstile exemption list."""
+    origin = (request.META.get('HTTP_ORIGIN', '') or '').strip().rstrip('/').lower()
+    if not origin:
+        return False
+    exempt = set(_DEFAULT_EXEMPT)
+    extra = getattr(settings, 'TURNSTILE_EXEMPT_ORIGINS', '') or ''
+    for o in extra.split(','):
+        o = o.strip().rstrip('/').lower()
+        if o:
+            exempt.add(o)
+    return origin in exempt
+
 
 def verify_turnstile(request, token):
     secret = getattr(settings, 'TURNSTILE_SECRET_KEY', '')

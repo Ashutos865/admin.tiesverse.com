@@ -196,10 +196,14 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     throttle_scope = 'login'
 
     def post(self, request, *args, **kwargs):
-        from config.turnstile import verify_turnstile
-        if not verify_turnstile(request, request.data.get('cf_turnstile_token') or ''):
-            return response.Response(
-                {'detail': 'Human verification failed. Please try again.'}, status=403)
+        from config.turnstile import verify_turnstile, origin_exempt_from_turnstile
+        # The docs site (docs.tiesverse.com) logs in with the same accounts but has
+        # no Turnstile widget; exempt its origin. Password remains the real factor,
+        # and the admin panel still enforces Turnstile.
+        if not origin_exempt_from_turnstile(request):
+            if not verify_turnstile(request, request.data.get('cf_turnstile_token') or ''):
+                return response.Response(
+                    {'detail': 'Human verification failed. Please try again.'}, status=403)
         return super().post(request, *args, **kwargs)
 
 
