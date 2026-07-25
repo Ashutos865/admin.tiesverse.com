@@ -63,15 +63,29 @@ def _page_visible_to_team_keys(page, team_keys):
     return bool(_allowed_team_keys(page) & team_keys)
 
 
+class _PageVis:
+    """Lightweight holder so _page_visible_to_team_keys can read visibility/
+    allowed_teams without loading full model instances (which would clash with
+    the queryset's select_related('space') when using .only())."""
+    __slots__ = ('visibility', 'allowed_teams')
+
+    def __init__(self, visibility, allowed_teams):
+        self.visibility = visibility
+        self.allowed_teams = allowed_teams
+
+
 def _scope_pages_for_user(qs, user):
     team_keys = _team_keys_for_user(user)
     if team_keys is None:
         return qs
 
+    # Pull only the three columns we need via values() — avoids the
+    # "cannot be both deferred and traversed" FieldError that .only() causes on
+    # a select_related('space') queryset.
     visible_ids = [
-        page.id
-        for page in qs.only('id', 'visibility', 'allowed_teams')
-        if _page_visible_to_team_keys(page, team_keys)
+        row['id']
+        for row in qs.values('id', 'visibility', 'allowed_teams')
+        if _page_visible_to_team_keys(_PageVis(row['visibility'], row['allowed_teams']), team_keys)
     ]
     return qs.filter(id__in=visible_ids) if visible_ids else qs.none()
 
