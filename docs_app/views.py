@@ -15,12 +15,16 @@ def _team_keys_for_user(user):
     Doc pages store HRDepartment ids in allowed_teams. Member records store
     assigned department names, so we resolve names -> ids here and also keep the
     names as a defensive fallback for any hand-edited JSON rows.
+
+    An anonymous (not-logged-in) user gets an empty set → only public pages.
     """
     from career_app import access
     from career_app.models import HRDepartment
 
     if getattr(user, 'is_superuser', False):
         return None
+    if not (user and getattr(user, 'is_authenticated', False)):
+        return set()   # anonymous: no team keys → only public pages are visible
 
     scope, member = access.get_access_scope(user)
     if scope == 'all':
@@ -73,14 +77,16 @@ def _scope_pages_for_user(qs, user):
 
 
 class DocPermission(permissions.BasePermission):
-    """Everyone authenticated can read. Writing needs the docs_app change perms
-    (or superuser). Uses the standard Django model permissions the app generates."""
+    """Reading is open to EVERYONE (even anonymous) — but the queryset scoping
+    only ever returns public pages to anonymous/unentitled users, so encrypted
+    pages stay protected. Writing needs the docs_app change perms (or superuser)."""
 
     def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True   # anonymous reads allowed; _scope_pages_for_user filters to public
+        # Writes require an authenticated editor.
         if not (request.user and request.user.is_authenticated):
             return False
-        if request.method in permissions.SAFE_METHODS:
-            return True
         return request.user.is_superuser or request.user.has_perm('docs_app.change_docpage')
 
 
