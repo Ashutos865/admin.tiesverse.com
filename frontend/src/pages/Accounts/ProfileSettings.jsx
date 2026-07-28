@@ -18,7 +18,8 @@ const ProfileSettings = () => {
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [sessionTimeout, setSessionTimeout] = useState(10);
   const [theme, setTheme] = useState('dark');
-  const [accentColor, setAccentColor] = useState('#FE7A00');
+  // Accent colour is locked to the brand orange — no user colour picking.
+  const accentColor = '#FE7A00';
   const [avatarUrl, setAvatarUrl] = useState('');
   const [cropFile, setCropFile] = useState(null);       // raw file awaiting crop
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -37,16 +38,6 @@ const ProfileSettings = () => {
   const [pwdMsg, setPwdMsg] = useState('');
   const [maskedEmail, setMaskedEmail] = useState('');
 
-  // Preset color swatches
-  const colorPresets = [
-    { name: 'Indigo', value: '#4F46E5' },
-    { name: 'Orange', value: '#FE7A00' },
-    { name: 'Violet', value: '#8B5CF6' },
-    { name: 'Blue', value: '#3B82F6' },
-    { name: 'Green', value: '#10B981' },
-    { name: 'Red', value: '#EF4444' }
-  ];
-
   // Fetch initial profile values
   useEffect(() => {
     const fetchSettings = async () => {
@@ -64,7 +55,6 @@ const ProfileSettings = () => {
           setTwoFactorEnabled(res.profile.two_factor_enabled ?? false);
           setSessionTimeout(res.profile.session_timeout ?? 10);
           setTheme(res.profile.theme || 'dark');
-          setAccentColor(res.profile.accent_color || '#FE7A00');
           setAvatarUrl(res.profile.avatar_url || '');
         }
       }
@@ -196,8 +186,7 @@ const ProfileSettings = () => {
         setTwoFactorEnabled(profile.two_factor_enabled ?? false);
         setSessionTimeout(profile.session_timeout ?? 10);
         setTheme(profile.theme || 'dark');
-        setAccentColor(profile.accent_color || '#FE7A00');
-        
+
         setToast({ message: 'Settings reset to last saved state.', type: 'info' });
         setTimeout(() => setToast({ message: '', type: '' }), 3000);
       }
@@ -333,79 +322,6 @@ const ProfileSettings = () => {
         {/* RIGHT COLUMN: SITE SETTINGS, PREFERENCES, SECURITY */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           
-          {/* VISUAL APPEARANCE */}
-          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>
-              <Sparkles size={20} style={{ color: 'var(--primary)' }} />
-              <h2 style={{ fontSize: '1.2rem', fontWeight: '700' }}>Site Appearance</h2>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div>
-                <label style={labelStyle}>Dashboard Theme</label>
-                <select 
-                  value={theme} 
-                  onChange={(e) => setTheme(e.target.value)} 
-                  style={inputStyle}
-                >
-                  <option value="dark">Premium Dark</option>
-                  <option value="light">Classic Light</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={labelStyle}>Accent Focus Color</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                  {colorPresets.map(preset => (
-                    <button
-                      key={preset.value}
-                      type="button"
-                      onClick={() => setAccentColor(preset.value)}
-                      style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '50%',
-                        backgroundColor: preset.value,
-                        border: accentColor.toLowerCase() === preset.value.toLowerCase() ? '3px solid var(--text-main)' : '1px solid var(--border)',
-                        cursor: 'pointer',
-                        transition: 'var(--transition)',
-                        boxShadow: accentColor.toLowerCase() === preset.value.toLowerCase() ? '0 0 8px rgba(255,255,255,0.4)' : 'none'
-                      }}
-                      title={preset.name}
-                    />
-                  ))}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <input 
-                    type="color" 
-                    value={accentColor} 
-                    onChange={(e) => setAccentColor(e.target.value)} 
-                    style={{
-                      border: 'none',
-                      outline: 'none',
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      padding: 0,
-                      backgroundColor: 'transparent'
-                    }}
-                  />
-                  <input
-                    type="text"
-                    value={accentColor.toUpperCase()}
-                    onChange={(e) => {
-                      if (e.target.value.startsWith('#') && e.target.value.length <= 7) {
-                        setAccentColor(e.target.value);
-                      }
-                    }}
-                    style={{ ...inputStyle, width: '120px', textAlign: 'center', fontFamily: 'monospace' }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* NOTIFICATIONS & ALERTS */}
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>

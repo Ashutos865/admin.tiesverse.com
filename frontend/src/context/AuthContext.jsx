@@ -46,17 +46,12 @@ export const AuthProvider = ({ children }) => {
 
   const applyThemeAndColor = (profileData) => {
     if (!profileData) return;
-    const root = document.documentElement;
     if (profileData.theme === 'light' || profileData.theme === 'dark') {
       setTheme(profileData.theme);
       localStorage.setItem('theme', profileData.theme);
     }
-
-    if (profileData.accent_color) {
-      root.style.setProperty('--primary', profileData.accent_color);
-      const hoverColor = darkenColor(profileData.accent_color, 10);
-      root.style.setProperty('--primary-hover', hoverColor);
-    }
+    // Accent colour is fixed to the brand orange defined in CSS (--primary).
+    // Custom per-user accent colours are no longer applied.
   };
 
   const fetchUserProfile = async (token) => {
