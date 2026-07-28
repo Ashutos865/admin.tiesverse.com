@@ -1073,14 +1073,21 @@ tr:hover td {
 
   .portal-topbar {
     padding: 0 14px;
+    gap: 10px;
   }
 
   .portal-topbar-left {
-    gap: 10px;
+    gap: 8px;
+    min-width: 0;
+    flex: 1 1 auto;   /* take remaining space, let the title truncate */
   }
 
   .portal-topbar-title {
     font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   .admin-page {
@@ -1423,7 +1430,13 @@ tr:hover td {
 
 @media (max-width: 460px) {
   .portal-topbar-actions > button.hide-narrow,
+  .hide-narrow,
   .portal-user-avatar {
+    display: none;
+  }
+  /* The greeting is the biggest space-eater on a phone and the most
+     expendable — hide it so the icon buttons never overlap. */
+  .portal-topbar-title {
     display: none;
   }
 }

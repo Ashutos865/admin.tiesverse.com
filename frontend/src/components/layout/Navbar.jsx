@@ -42,6 +42,7 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
           onClick={() => navigate(-1)}
           aria-label="Go back"
           title="Back to the previous page"
+          className="topbar-nav-btn"
           style={navBtn}
         >
           <ArrowLeft size={19} />
@@ -51,6 +52,7 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
           onClick={() => navigate(HOME_PATH)}
           aria-label="Go to dashboard"
           title="Home — main dashboard"
+          className="topbar-nav-btn hide-narrow"
           style={navBtn}
         >
           <Home size={19} />
