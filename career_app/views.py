@@ -2104,12 +2104,22 @@ class SendOfferLetterView(APIView):
             print(f"[OFFER SEND] to={email} path={_path} attach={_sz/1024:.1f}KB", flush=True)
         except Exception:  # noqa: BLE001
             pass
-        ok = send_email(
+        res = send_email(
             email, subject, body_html,
             from_email=resolve_from(tpl), attachments=attachments, enabled=True,
+            detailed=True,
         )
+        ok = res.get('ok')
         if not ok:
-            return Response({'status': 'error', 'message': 'SES send failed.'}, status=502)
+            # Surface the real SES reason (e.g. unverified sender) as a clean 400 —
+            # NOT a 502 (which Cloudflare replaces with its own error page).
+            reason = (res.get('error') or 'The email could not be sent.')
+            msg = 'The email could not be sent.'
+            if 'not verified' in reason.lower() or 'MessageRejected' in reason:
+                msg = ('The sender address is not verified in AWS SES, so the email '
+                       'was rejected. Verify the sender domain/address in SES, or pick '
+                       'an email template whose sender is already verified.')
+            return Response({'status': 'error', 'message': msg, 'detail': reason[:300]}, status=400)
         # Record the offer letter so it verifies (name, position, ID, QR target).
         if cert_id:
             # Find/attach the member this offer belongs to, so it shows in the HR
