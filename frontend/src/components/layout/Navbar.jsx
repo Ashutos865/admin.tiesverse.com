@@ -1,9 +1,6 @@
 import { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, HelpCircle, Home, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
-
-// The main dashboard "home" — where `/` redirects (see App.jsx).
-const HOME_PATH = '/tiesverse/dashboard';
+import { ArrowLeft, HelpCircle, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
 import { AuthContext } from '../../context/AuthContext';
 import { ThemeContext } from '../../context/ThemeContext';
 import NotificationsBell from './NotificationsBell.jsx';
@@ -46,16 +43,6 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
           style={navBtn}
         >
           <ArrowLeft size={19} />
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate(HOME_PATH)}
-          aria-label="Go to dashboard"
-          title="Home — main dashboard"
-          className="topbar-nav-btn hide-narrow"
-          style={navBtn}
-        >
-          <Home size={19} />
         </button>
         <span className="portal-topbar-title">{greeting}, {firstName}</span>
       </div>
