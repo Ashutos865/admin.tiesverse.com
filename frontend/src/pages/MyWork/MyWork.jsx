@@ -9,7 +9,7 @@ import {
 } from '../../apiClient';
 import { useMe } from '../../context/MeContext';
 import WorkSessionsPanel from './WorkSessionsPanel.jsx';
-import LeaderboardWidget from './LeaderboardWidget.jsx';
+// import LeaderboardWidget from './LeaderboardWidget.jsx'; // hidden from users (kept for later)
 
 const TABS = [
     { key: 'attendance', label: 'Attendance', path: '/me/attendance' },
@@ -92,8 +92,9 @@ export default function MyWork({ tab = 'attendance' }) {
                 <>
                     <WorkSessionsPanel memberId={memberId} showToast={showToast} />
                     <div style={{ height: 20 }} />
-                    <LeaderboardWidget />
-                    <div style={{ height: 20 }} />
+                    {/* "Hours this week" leaderboard hidden from users (kept for later). */}
+                    {/* <LeaderboardWidget /> */}
+                    {/* <div style={{ height: 20 }} /> */}
                     <AttendancePanel memberId={memberId} showToast={showToast} />
                 </>
             )}
