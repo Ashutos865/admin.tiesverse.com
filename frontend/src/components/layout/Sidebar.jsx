@@ -1,4 +1,5 @@
-import { NavLink, Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { NavLink, Link } from 'react-router-dom';
 import {
   Award,
   BriefcaseBusiness,
@@ -256,7 +257,12 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
   const { isMember, isLead, isAdvisory, isDeveloper, scope, articleAccess } = useMe();
   // Content writers/leads (or superusers) may see Articles & Reports.
   const hasArticleAccess = isSuperuser || articleAccess === 'full' || articleAccess === 'draft';
-  const navigate = useNavigate();
+
+  // Which portal folder is expanded. Follows the current page by default, but the
+  // user can freely open/collapse any folder by clicking its header.
+  const [expandedKey, setExpandedKey] = useState(activePortal);
+  // When navigation changes the active portal, open that folder.
+  useEffect(() => { setExpandedKey(activePortal); }, [activePortal]);
 
   const isPortalVisible = (portal) => {
     if (portal.everyone) return true;   // open to every authenticated member (e.g. Learn Portal)
@@ -279,10 +285,6 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
     return (link.perms || []).length === 0 || isSuperuser || hasAnyPermission(link.perms);
   };
 
-  const handlePortalClick = (portal) => {
-    navigate(portal.firstPath);
-    onClose();
-  };
 
   return (
     <>
@@ -329,26 +331,27 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
           </div>
           {portals.filter(isPortalVisible).map((portal) => {
             const PortalIcon = portal.icon;
-            const isActive = activePortal === portal.key;
+            const isOnPortal = activePortal === portal.key;   // current page belongs here
+            const isExpanded = expandedKey === portal.key;    // folder open state (user-controlled)
             const visibleLinks = portal.links.filter(isLinkVisible);
 
             return (
               <div key={portal.key} className="portal-nav-section">
                 <button
                   type="button"
-                  className={`portal-nav-header ${isActive ? 'is-active' : ''}`}
-                  onClick={() => handlePortalClick(portal)}
-                  aria-expanded={isActive}
+                  className={`portal-nav-header ${isOnPortal ? 'is-active' : ''}`}
+                  onClick={() => setExpandedKey((k) => (k === portal.key ? null : portal.key))}
+                  aria-expanded={isExpanded}
                 >
                   <PortalIcon size={17} strokeWidth={1.9} />
                   <span>{portal.label}</span>
                   <ChevronDown
                     size={13}
-                    className={`portal-nav-chevron ${isActive ? 'is-open' : ''}`}
+                    className={`portal-nav-chevron ${isExpanded ? 'is-open' : ''}`}
                   />
                 </button>
 
-                {isActive && (
+                {isExpanded && (
                   <div className="portal-nav-links">
                     {visibleLinks.map((link) => {
                       const LinkIcon = link.icon;

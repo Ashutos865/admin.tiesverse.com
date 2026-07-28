@@ -204,18 +204,25 @@
 .career-search svg {
   position: absolute;
   left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex: none;
+  pointer-events: none;
   color: var(--text-muted);
 }
 
 .career-search input {
   width: 100%;
   height: 40px;
-  padding: 0 13px 0 38px;
+  /* Left padding clears the icon; use max() so it never collapses under zoom
+     or a scaled-up font (keeps the icon from overlapping the placeholder). */
+  padding: 0 13px 0 max(38px, 2.6em);
   border: 1px solid var(--outline-variant);
   border-radius: 9px;
   background: var(--surface-container-lowest);
   color: var(--text-main);
   outline: none;
+  text-overflow: ellipsis;
 }
 
 .career-search input:focus {
