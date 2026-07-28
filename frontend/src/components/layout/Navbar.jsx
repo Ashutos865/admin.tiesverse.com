@@ -1,6 +1,9 @@
 import { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HelpCircle, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
+import { ArrowLeft, HelpCircle, Home, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
+
+// The main dashboard "home" — where `/` redirects (see App.jsx).
+const HOME_PATH = '/tiesverse/dashboard';
 import { AuthContext } from '../../context/AuthContext';
 import { ThemeContext } from '../../context/ThemeContext';
 import NotificationsBell from './NotificationsBell.jsx';
@@ -33,6 +36,24 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
           aria-label="Open navigation"
         >
           <Menu size={22} />
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          aria-label="Go back"
+          title="Back to the previous page"
+          style={navBtn}
+        >
+          <ArrowLeft size={19} />
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate(HOME_PATH)}
+          aria-label="Go to dashboard"
+          title="Home — main dashboard"
+          style={navBtn}
+        >
+          <Home size={19} />
         </button>
         <span className="portal-topbar-title">{greeting}, {firstName}</span>
       </div>
@@ -88,6 +109,12 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
   );
 };
 
+const navBtn = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: 36, height: 36, borderRadius: 10, cursor: 'pointer',
+  border: '1px solid var(--outline-variant)', background: 'transparent',
+  color: 'var(--text-muted)', flex: 'none',
+};
 const paletteBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 8, width: 'auto',
   height: 36, boxSizing: 'border-box', padding: '0 12px', borderRadius: 10, cursor: 'pointer',

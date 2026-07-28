@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, Link, useNavigate } from 'react-router-dom';
 import {
   Award,
   BriefcaseBusiness,
@@ -16,6 +16,7 @@ import {
   Globe,
   History,
   Image,
+  Home,
   LayoutDashboard,
   LayoutGrid,
   ListTree,
@@ -40,6 +41,9 @@ import {
 import { usePermissions } from '../../context/PermissionContext';
 import { useMe } from '../../context/MeContext';
 import Wordmark from '../Wordmark';
+
+// The main dashboard "home" — where `/` redirects (see App.jsx).
+export const HOME_PATH = '/tiesverse/dashboard';
 
 export const portals = [
   {
@@ -292,9 +296,14 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
       )}
       <aside className={`portal-sidebar ${isOpen ? 'is-open' : ''}`}>
         <div className="portal-sidebar-brand">
-          <div>
+          <Link
+            to={HOME_PATH}
+            onClick={onClose}
+            aria-label="Go to dashboard (home)"
+            style={{ display: 'inline-flex', textDecoration: 'none', cursor: 'pointer' }}
+          >
             <Wordmark size={24} />
-          </div>
+          </Link>
           <button
             type="button"
             className="portal-sidebar-close"
@@ -306,6 +315,18 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
         </div>
 
         <nav className="portal-sidebar-nav custom-scrollbar" aria-label="Main navigation">
+          {/* Persistent Home — always one click back to the main dashboard. */}
+          <div className="portal-nav-section">
+            <NavLink
+              to={HOME_PATH}
+              onClick={onClose}
+              className={({ isActive }) => `portal-nav-header ${isActive ? 'is-active' : ''}`}
+              style={{ textDecoration: 'none' }}
+            >
+              <Home size={17} strokeWidth={1.9} />
+              <span>Home</span>
+            </NavLink>
+          </div>
           {portals.filter(isPortalVisible).map((portal) => {
             const PortalIcon = portal.icon;
             const isActive = activePortal === portal.key;
