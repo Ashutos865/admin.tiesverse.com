@@ -519,7 +519,10 @@ class InitiateOnboardingView(APIView):
         if not candidate_email:
             return Response({'error': 'candidate_email is required'}, status=400)
 
-        existing = OnboardingSubmission.objects.filter(candidate_id=candidate_id).first()
+        # One email = one member account. If a member with this email already
+        # exists, return it (don't create a duplicate).
+        existing = (OnboardingSubmission.objects.filter(candidate_id=candidate_id).first()
+                    or OnboardingSubmission.objects.filter(candidate_email__iexact=candidate_email).first())
         if existing:
             website_url = getattr(dj_settings, 'WEBSITE_URL', 'https://tiesverse.com')
             upload_link = f"{website_url}/onboarding/{existing.token}"
@@ -2735,6 +2738,10 @@ class ApproveSignupView(APIView):
             return Response({'error': 'Not found.'}, status=404)
         if signup.status == SelfSignup.STATUS_APPROVED:
             return Response({'error': 'Already approved.'}, status=400)
+        # One email = one member account. Don't create a second member for an
+        # email that already has one.
+        if OnboardingSubmission.objects.filter(candidate_email__iexact=signup.email).exists():
+            return Response({'error': f'A member with the email {signup.email} already exists.'}, status=409)
         portal_role = (request.data.get('portal_role') or 'intern').strip()
         departments = request.data.get('assigned_departments') or []
         if isinstance(departments, str):
