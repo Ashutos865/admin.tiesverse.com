@@ -1010,6 +1010,8 @@ class MeView(APIView):
         scope, member = access.get_access_scope(request.user)
         # Article/report (WordPress) access tier: 'full' | 'draft' | 'none'.
         article_tier, _ = access.get_article_access(request.user)
+        # Nimble Monitor portal access tier: 'full' | 'none'.
+        nimble_tier, _ = access.get_nimble_access(request.user)
         # Can this user manage others' article access (open the Manage-access panel)?
         can_manage_articles = bool(
             request.user.is_superuser
@@ -1030,6 +1032,7 @@ class MeView(APIView):
             'is_developer': _is_developer(request.user),
             'is_member': member is not None,
             'article_access': article_tier,       # 'full' | 'draft' | 'none'
+            'nimble_access': nimble_tier,          # 'full' | 'none'
             'can_manage_articles': can_manage_articles,
             'member': OnboardingSubmissionSerializer(member).data if member else None,
             'led_departments': sorted(access.led_department_names(member)) if member else [],

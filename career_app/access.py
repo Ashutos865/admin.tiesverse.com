@@ -134,6 +134,53 @@ def get_article_access(user):
     return ('none', member)
 
 
+NIMBLE_DEPARTMENT = 'nimble'   # matched case-insensitively against assigned_departments
+
+
+def _in_nimble_department(member):
+    """True if this member belongs to the Nimble department (case-insensitive)."""
+    if not member:
+        return False
+    return any(str(d).strip().lower() == NIMBLE_DEPARTMENT
+               for d in (member.assigned_departments or []))
+
+
+def _leads_nimble(member):
+    """True if this member leads the Nimble department."""
+    return any(str(d).strip().lower() == NIMBLE_DEPARTMENT
+               for d in led_department_names(member))
+
+
+def get_nimble_access(user):
+    """Classify a user's access to the Nimble Monitor portal.
+
+    Returns (tier, member) where tier is:
+      'full' -> superuser, org-wide staff (HR/admin/advisory), the Nimble lead,
+                or a Nimble-department member: full read + write on the monitor.
+      'none' -> everyone else.
+
+    Interim policy (roles TBD): any Nimble member gets full access. Tighten to
+    finer in-tool roles later without touching the gate's callers.
+    """
+    if getattr(user, 'is_superuser', False):
+        return ('full', None)
+
+    member = get_member_for_user(user)
+    if member is None:
+        # Back-office staff with no member profile: no Nimble access unless superuser.
+        return ('none', None)
+
+    # Org-wide roles/groups (HR/admin/advisory) can see everything.
+    if (member.portal_role or '') in ORG_WIDE_ROLES or user.groups.filter(
+        name__in=ORG_WIDE_GROUPS
+    ).exists():
+        return ('full', member)
+
+    if _leads_nimble(member) or _in_nimble_department(member):
+        return ('full', member)
+    return ('none', member)
+
+
 def get_access_scope(user):
     """Return (scope, member) — scope in {'all', 'team', 'self', 'none'}."""
     if getattr(user, 'is_superuser', False):

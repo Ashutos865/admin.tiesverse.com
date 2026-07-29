@@ -674,3 +674,18 @@ export const updateDocPage  = (id, d) => adminFetch(`/api/docs/pages/${id}`, 'PA
 export const deleteDocPage  = (id)    => adminFetch(`/api/docs/pages/${id}`, 'DELETE');
 export const createDocSpace = (data)  => adminFetch('/api/docs/spaces', 'POST', data);
 export const searchDocs     = (q)     => adminFetch(`/api/docs/pages?search=${encodeURIComponent(q)}`).catch(() => []);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NIMBLE MONITOR (nimble_app) — YouTube competitor tracker for the Nimble team
+// ─────────────────────────────────────────────────────────────────────────────
+export const getMonitorState      = ()        => adminFetch('/api/nimble/state');
+export const addMonitorChannel    = (data)     => adminFetch('/api/nimble/channels', 'POST', data);
+export const toggleMonitorChannel = (id, active) => adminFetch(`/api/nimble/channels/${id}`, 'PATCH', { active });
+export const deleteMonitorChannel = (id)        => adminFetch(`/api/nimble/channels/${id}`, 'DELETE');
+export const patchMonitorAlert    = (id, d)     => adminFetch(`/api/nimble/alerts/${id}`, 'PATCH', d);
+export const addMonitorOwnPost    = (data)      => adminFetch('/api/nimble/own-posts', 'POST', data);
+export const deleteMonitorOwnPost = (id)        => adminFetch(`/api/nimble/own-posts/${id}`, 'DELETE');
+export const pollMonitorNow       = ()          => adminFetch('/api/nimble/poll-now', 'POST');
+export const getMonitorWeeklyReport = ()        => adminFetch('/api/nimble/weekly-report');
+export const sendMonitorWeeklyReport = ()       => adminFetch('/api/nimble/weekly-report/send', 'POST');
+export const monitorCsvUrl        = ()          => `${API_URL}/api/nimble/export/csv/`;

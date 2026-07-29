@@ -27,6 +27,7 @@ import {
   Megaphone,
   MessageSquare,
   MonitorSmartphone,
+  Radar,
   PackageOpen,
   Server,
   Shield,
@@ -216,6 +217,16 @@ export const portals = [
     ],
   },
   {
+    key: 'nimble',
+    label: 'Nimble Monitor',
+    icon: Radar,
+    firstPath: '/nimble/monitor',
+    nimbleAccess: true,   // Nimble-department members + leads + org-wide staff + superusers
+    links: [
+      { name: 'Competitor Monitor', path: '/nimble/monitor', icon: Radar, nimbleAccess: true },
+    ],
+  },
+  {
     key: 'certificates',
     label: 'Certificates & Email',
     icon: Award,
@@ -256,9 +267,11 @@ export const portals = [
 
 const Sidebar = ({ activePortal, isOpen, onClose }) => {
   const { hasAnyPermission, isSuperuser } = usePermissions();
-  const { isMember, isLead, isAdvisory, isDeveloper, scope, articleAccess } = useMe();
+  const { isMember, isLead, isAdvisory, isDeveloper, scope, articleAccess, nimbleAccess } = useMe();
   // Content writers/leads (or superusers) may see Articles & Reports.
   const hasArticleAccess = isSuperuser || articleAccess === 'full' || articleAccess === 'draft';
+  // Nimble-department members (or superusers/org-wide staff) may see Nimble Monitor.
+  const hasNimbleAccess = isSuperuser || nimbleAccess === 'full';
 
   // Which portal folder is expanded. Follows the current page by default, but the
   // user can freely open/collapse any folder by clicking its header.
@@ -271,6 +284,7 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
     if (portal.developerOnly) return isDeveloper;
     if (portal.memberOnly) return isMember;
     if (portal.contentAccess) return hasArticleAccess;
+    if (portal.nimbleAccess) return hasNimbleAccess;
     if (portal.advisoryOnly) return isSuperuser || isAdvisory;
     if (portal.advisoryOrLead) return isSuperuser || isAdvisory || isLead;
     if (portal.perms === null) return isSuperuser;
@@ -280,6 +294,7 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
   const isLinkVisible = (link) => {
     if (link.developerOnly) return isDeveloper;
     if (link.contentAccess) return hasArticleAccess;
+    if (link.nimbleAccess) return hasNimbleAccess;
     if (link.superuserOnly) return isSuperuser;
     if (link.advisoryOnly) return isSuperuser || isAdvisory;
     if (link.advisoryOrLead) return isSuperuser || isAdvisory || isLead;

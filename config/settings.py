@@ -99,6 +99,7 @@ INSTALLED_APPS = [
     'accounts_app',
     'learn_app',
     'docs_app',
+    'nimble_app',
 ]
 
 REST_FRAMEWORK = {
