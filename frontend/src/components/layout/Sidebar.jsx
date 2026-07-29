@@ -218,12 +218,12 @@ export const portals = [
   },
   {
     key: 'nimble',
-    label: 'Nimble Monitor',
+    label: 'Watchdog',
     icon: Radar,
     firstPath: '/nimble/monitor',
     nimbleAccess: true,   // Nimble-department members + leads + org-wide staff + superusers
     links: [
-      { name: 'Competitor Monitor', path: '/nimble/monitor', icon: Radar, nimbleAccess: true },
+      { name: 'Watchdog', path: '/nimble/monitor', icon: Radar, nimbleAccess: true },
     ],
   },
   {

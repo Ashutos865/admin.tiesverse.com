@@ -105,7 +105,7 @@ export default function NimbleMonitor() {
     } catch { flash('error', 'Export failed.'); }
   };
 
-  if (loading) return <div style={wrap}><div style={{ color: 'var(--text-muted)' }}>Loading Nimble Monitor…</div></div>;
+  if (loading) return <div style={wrap}><div style={{ color: 'var(--text-muted)' }}>Loading Watchdog…</div></div>;
 
   const channels = state?.channels || [];
   const alerts = state?.alerts || [];
@@ -123,7 +123,7 @@ export default function NimbleMonitor() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Radar size={24} color="var(--primary)" />
           <div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-main)' }}>Nimble Monitor</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-main)' }}>Watchdog</div>
             <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>Competitor YouTube tracker & response board</div>
           </div>
         </div>
