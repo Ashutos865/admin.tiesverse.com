@@ -20,7 +20,7 @@ from .views import (
     CertificateIssueView, SendCertificateEmailView, DocumentAuditLogListView,
     MeView, DirectorySearchView, ArticleAccessManagementView,
     MemberIdentityClassView, MemberAccountStatusView, MemberIdentityHistoryView,
-    CrewReportingView,
+    MemberCrewIdView, CrewReportingView,
     AttendanceListView, AttendanceCheckInView, AttendanceCheckOutView,
     AttendanceApproveView, AttendanceDetailView,
     LeaveListView, LeaveDetailView, LeaveReviewView,
@@ -66,6 +66,7 @@ urlpatterns = [
     path('members/<int:pk>/identity-class/', MemberIdentityClassView.as_view(), name='member-identity-class'),
     path('members/<int:pk>/account-status/', MemberAccountStatusView.as_view(), name='member-account-status'),
     path('members/<int:pk>/identity-history/', MemberIdentityHistoryView.as_view(), name='member-identity-history'),
+    path('members/<int:pk>/crew-id/', MemberCrewIdView.as_view(), name='member-crew-id'),
     path('crew-reporting/', CrewReportingView.as_view(), name='crew-reporting'),
     # Master directory — unified people search
     path('directory/', DirectorySearchView.as_view(), name='career-directory'),

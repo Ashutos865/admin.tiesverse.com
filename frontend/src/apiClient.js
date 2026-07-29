@@ -395,6 +395,9 @@ export const setMemberIdentityClass = (id, cls) => adminFetch(`/api/career/membe
 export const setMemberAccountStatus = (id, status, reason = '') => adminFetch(`/api/career/members/${id}/account-status/`, 'POST', { status, reason });
 export const getMemberIdentityHistory = (id) => adminFetch(`/api/career/members/${id}/identity-history/`);
 export const getCrewReporting = () => adminFetch('/api/career/crew-reporting/');
+// Superadmin-only manual Crew ID edit/assign with automatic swap.
+export const previewMemberCrewId = (id, crewId) => adminFetch(`/api/career/members/${id}/crew-id/?crew_id=${encodeURIComponent(crewId)}`);
+export const setMemberCrewId = (id, crewId) => adminFetch(`/api/career/members/${id}/crew-id/`, 'POST', { crew_id: crewId });
 
 // Advisory oversight + weekly team-lead updates
 export const getAdvisoryTaskOversight = () => adminFetch('/api/career/advisory/task-oversight/');

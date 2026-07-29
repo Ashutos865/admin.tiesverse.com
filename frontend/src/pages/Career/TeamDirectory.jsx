@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { getOnboardingList, getHRDepartments, verifyOnboarding, addTeamMember, issueCertificate, sendCertificateEmail, getEmailTemplates, fetchDocBlobUrl, viewDoc, getWorkSessions, getMemberIdentityHistory } from '../../apiClient';
+import { getOnboardingList, getHRDepartments, verifyOnboarding, addTeamMember, issueCertificate, sendCertificateEmail, getEmailTemplates, fetchDocBlobUrl, viewDoc, getWorkSessions, getMemberIdentityHistory, previewMemberCrewId, setMemberCrewId } from '../../apiClient';
 import GenerateCertModal from './GenerateCertModal';
 import { previewTemplate } from '../../lib/emailPreview';
 import { usePermissions } from '../../context/PermissionContext';
@@ -237,8 +237,81 @@ const CLASS_LABEL = Object.fromEntries(IDENTITY_CLASSES);
 // with the full change history. `canEdit` gates the controls (HR/admin only).
 // Read-only identity panel: shows the Crew ID, current class + status, legacy id,
 // and the change history. Class is edited in Edit Member; status via Offboarding.
-function IdentityPanel({ member }) {
+function CrewIdEditor({ member, onUpdated, onClose }) {
+    const [open, setOpen] = useState(false);
+    const [value, setValue] = useState(member.crew_id || '');
+    const [preview, setPreview] = useState(null);   // {kind, message} | {error}
+    const [checking, setChecking] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [done, setDone] = useState(null);
+
+    // Debounced preview whenever the typed value changes.
+    useEffect(() => {
+        if (!open) return;
+        const v = (value || '').trim().toUpperCase();
+        if (!v || v === (member.crew_id || '').toUpperCase()) { setPreview(null); return; }
+        setChecking(true);
+        const t = setTimeout(() => {
+            previewMemberCrewId(member.id, v)
+                .then((r) => setPreview(r))
+                .catch(() => setPreview({ error: 'Could not check.' }))
+                .finally(() => setChecking(false));
+        }, 350);
+        return () => { clearTimeout(t); setChecking(false); };
+    }, [value, open, member.id, member.crew_id]);
+
+    const apply = async () => {
+        const v = (value || '').trim().toUpperCase();
+        if (!v) return;
+        setSaving(true);
+        const res = await setMemberCrewId(member.id, v);
+        setSaving(false);
+        if (res && res.error) { setPreview({ error: res.error }); return; }
+        setDone(res?.result?.message || 'Crew ID updated.');
+        // refresh the directory + close the modal shortly so the new IDs show
+        setTimeout(() => { onUpdated && onUpdated(); onClose && onClose(); }, 1100);
+    };
+
+    const kindColor = { assign: '#067a50', swap: '#b45309', swap_fresh: '#b45309', noop: 'var(--text-muted)' };
+
+    if (!open) {
+        return (
+            <button type="button" onClick={() => { setOpen(true); setValue(member.crew_id || ''); setPreview(null); setDone(null); }}
+                style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--primary)', background: 'none', border: '1px solid color-mix(in srgb, var(--primary) 30%, transparent)', padding: '3px 9px', borderRadius: 6, cursor: 'pointer' }}>
+                Edit Crew ID
+            </button>
+        );
+    }
+
+    return (
+        <div style={{ width: '100%', border: '1px dashed color-mix(in srgb, var(--primary) 40%, transparent)', borderRadius: 8, padding: 12, marginTop: 8, background: 'color-mix(in srgb, var(--primary) 4%, transparent)' }}>
+            <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--primary)', marginBottom: 8 }}>Superadmin · edit / swap Crew ID</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input value={value} onChange={(e) => setValue(e.target.value.toUpperCase())} placeholder="CRW-A-0007" disabled={saving || !!done}
+                    style={{ flex: 1, fontFamily: 'ui-monospace, monospace', fontSize: 13, padding: '8px 10px', borderRadius: 7, border: '1px solid var(--outline-variant)', background: 'var(--surface-container-lowest)', color: 'var(--text-main)' }} />
+                <button type="button" onClick={apply} disabled={saving || !!done || !preview || preview.error || preview.kind === 'noop'}
+                    style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', background: 'var(--primary)', border: 'none', padding: '8px 14px', borderRadius: 7, cursor: 'pointer', opacity: (saving || !!done || !preview || preview.error || preview.kind === 'noop') ? 0.5 : 1 }}>
+                    {saving ? 'Saving…' : 'Apply'}
+                </button>
+                <button type="button" onClick={() => { setOpen(false); setValue(member.crew_id || ''); setPreview(null); }} disabled={saving}
+                    style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-muted)', background: 'none', border: '1px solid var(--outline-variant)', padding: '8px 12px', borderRadius: 7, cursor: 'pointer' }}>
+                    Cancel
+                </button>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 12, minHeight: 18 }}>
+                {done ? <span style={{ color: '#067a50', fontWeight: 700 }}>✓ {done}</span>
+                    : checking ? <span style={{ color: 'var(--text-muted)' }}>Checking…</span>
+                    : preview?.error ? <span style={{ color: '#b91c1c', fontWeight: 600 }}>{preview.error}</span>
+                    : preview ? <span style={{ color: kindColor[preview.kind] || 'var(--text-main)', fontWeight: 600 }}>{preview.kind === 'swap' || preview.kind === 'swap_fresh' ? '⇄ ' : ''}{preview.message}</span>
+                    : <span style={{ color: 'var(--text-muted)' }}>Type a Crew ID. If it's taken, the two members will swap.</span>}
+            </div>
+        </div>
+    );
+}
+
+function IdentityPanel({ member, onUpdated, onClose }) {
     const [history, setHistory] = useState(null);
+    const { isSuperuser } = usePermissions();
     const cls = member.identity_class || '';
     const status = member.account_status || 'PENDING';
 
@@ -254,7 +327,7 @@ function IdentityPanel({ member }) {
 
     return (
         <div style={{ border: '1px solid var(--outline-variant)', borderRadius: 12, padding: 16, marginBottom: 16, background: 'var(--surface-container-lowest)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                 <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text-main)' }}>Identity</h3>
                 {member.crew_id && (
                     <button type="button" title="Copy Crew ID" onClick={() => { try { navigator.clipboard.writeText(member.crew_id); } catch { /* */ } }}
@@ -263,6 +336,7 @@ function IdentityPanel({ member }) {
                     </button>
                 )}
                 {!member.crew_id && <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>No Crew ID yet</span>}
+                {isSuperuser && <div style={{ marginLeft: 'auto' }}><CrewIdEditor member={member} onUpdated={onUpdated} onClose={onClose} /></div>}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
@@ -467,7 +541,7 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
 
                     {/* Crew ID identity — class, status + history. HR/admin can edit. */}
                     <div style={{ paddingTop: 16 }}>
-                        <IdentityPanel member={member} />
+                        <IdentityPanel member={member} onUpdated={onUpdated} onClose={onClose} />
                     </div>
 
                     {/* Working Hours — compact per-day total (date + time only). Full

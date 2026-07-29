@@ -1091,6 +1091,51 @@ class MemberAccountStatusView(APIView):
         return Response(OnboardingSubmissionSerializer(member).data)
 
 
+class MemberCrewIdView(APIView):
+    """Superadmin-only manual Crew ID edit/assign with automatic swap.
+
+    GET  ?crew_id=CRW-A-0007  → preview what would happen (assign/swap/fresh).
+    POST {crew_id}            → apply it (assign, or swap with the current holder,
+                                or give the displaced member a fresh ID).
+
+    Crew IDs are normally permanent; this is the one deliberate override, so it is
+    locked to true superusers only (NOT the broader HR change permission)."""
+    permission_classes = [IsAuthenticated]
+
+    def _denied(self, request):
+        if getattr(request.user, 'is_superuser', False):
+            return None
+        return Response({'error': 'Only a superadmin can edit Crew IDs.'}, status=403)
+
+    def get(self, request, pk):
+        denied = self._denied(request)
+        if denied:
+            return denied
+        member = OnboardingSubmission.objects.filter(pk=pk).first()
+        if not member:
+            return Response({'error': 'Member not found.'}, status=404)
+        from .crew_identity import preview_crew_id_change
+        try:
+            return Response(preview_crew_id_change(member, request.query_params.get('crew_id')))
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=400)
+
+    def post(self, request, pk):
+        denied = self._denied(request)
+        if denied:
+            return denied
+        member = OnboardingSubmission.objects.filter(pk=pk).first()
+        if not member:
+            return Response({'error': 'Member not found.'}, status=404)
+        from .crew_identity import set_crew_id
+        try:
+            result = set_crew_id(member, request.data.get('crew_id'), actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=400)
+        member.refresh_from_db()
+        return Response({'result': result, 'member': OnboardingSubmissionSerializer(member).data})
+
+
 class MemberIdentityHistoryView(APIView):
     """GET — the Crew ID / class / status audit timeline for a member."""
     permission_classes = [IsAuthenticated]
