@@ -70,7 +70,12 @@ export default function MasterDirectory() {
                             <div key={id} style={{ borderTop: '1px solid var(--outline-variant)' }}>
                                 <button onClick={() => setExpanded(open ? null : id)} style={{ width: '100%', display: 'grid', gridTemplateColumns: '1.6fr 1fr 90px 90px 90px 32px', gap: 10, padding: '12px 16px', background: open ? 'var(--surface-container-low)' : 'transparent', border: 'none', cursor: 'pointer', alignItems: 'center', textAlign: 'left' }}>
                                     <div style={{ minWidth: 0 }}>
-                                        <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name || '—'}</div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                                            <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name || '—'}</span>
+                                            {p.member?.crew_id && (
+                                                <span title="Crew ID" style={{ fontSize: 10, fontWeight: 700, fontFamily: 'ui-monospace, monospace', color: 'var(--primary)', background: 'color-mix(in srgb, var(--primary) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--primary) 18%, transparent)', padding: '1px 5px', borderRadius: 4, whiteSpace: 'nowrap', flexShrink: 0 }}>{p.member.crew_id}</span>
+                                            )}
+                                        </div>
                                         <div style={{ fontSize: 11.5, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.email || '—'}</div>
                                     </div>
                                     <div>

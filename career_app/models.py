@@ -79,6 +79,47 @@ PORTAL_ROLE_CHOICES = [
 ]
 
 
+# ── Crew ID Standard: identity class + account status ──────────────────────────
+# The 11 identity classes from the Ties HQ Crew ID Standard. Stored SEPARATELY
+# from the Crew ID (the ID never encodes class); a person's class can change
+# while their Crew ID stays permanent.
+IDENTITY_CLASS_CHOICES = [
+    ('EMP', 'Employee'),
+    ('INT', 'Intern'),
+    ('TRN', 'Trainee'),
+    ('CON', 'Contractor'),
+    ('FRL', 'Freelancer'),
+    ('CNS', 'Consultant'),
+    ('CLI', 'Client'),
+    ('PRT', 'Partner'),
+    ('INS', 'Instructor'),
+    ('GST', 'Guest'),
+    ('ALM', 'Alumni'),
+]
+
+# The 7 account statuses from the standard. This is the identity-standard view of
+# a person's lifecycle; the existing lowercase `status` field stays operational.
+ACCOUNT_STATUS_CHOICES = [
+    ('PENDING', 'Pending'),        # created but activation incomplete
+    ('ACTIVE', 'Active'),          # currently authorized
+    ('SUSPENDED', 'Suspended'),    # temporarily blocked; identity retained
+    ('EXPIRED', 'Expired'),        # temporary engagement/invite expired
+    ('OFFBOARDED', 'Offboarded'),  # active relationship ended
+    ('ARCHIVED', 'Archived'),      # retained for history/audit/legal
+    ('CANCELLED', 'Cancelled'),    # cancelled pre-activation; number reserved, not reused
+]
+
+# Default identity class derived from the existing employment_type at mint time.
+# HR can override afterwards; this is only the starting value.
+EMPLOYMENT_TYPE_TO_CLASS = {
+    'Intern': 'INT',
+    'Full-Time': 'EMP',
+    'Part-Time': 'EMP',
+    'Freelance': 'FRL',
+    'Volunteer': 'GST',
+}
+
+
 class OnboardingSubmission(models.Model):
     STATUS_PENDING = 'pending'
     STATUS_SUBMITTED = 'submitted'
@@ -121,6 +162,17 @@ class OnboardingSubmission(models.Model):
     # Populated when a certificate is generated from a template that has an
     # auto-generation (generator_enabled) variable.
     certificate_ids = models.JSONField(default=dict, blank=True)
+    # ──────────────────────────────────────────────────────────────────────────
+
+    # ── Crew ID Standard (permanent internal identity) ────────────────────────
+    # CRW-<Series>-<NNNN>. System-generated, unique, permanent (survives class
+    # change / offboarding / rejoin). null until minted so existing rows are
+    # valid pre-backfill (SQLite treats multiple NULLs as distinct under UNIQUE).
+    crew_id = models.CharField(max_length=12, unique=True, null=True, blank=True, db_index=True)
+    identity_class = models.CharField(max_length=3, choices=IDENTITY_CLASS_CHOICES, blank=True)
+    account_status = models.CharField(max_length=12, choices=ACCOUNT_STATUS_CHOICES, default='PENDING')
+    legacy_id = models.CharField(max_length=100, blank=True)  # old id at migration; never replaces crew_id
+    deactivation_reason = models.TextField(blank=True)
     # ──────────────────────────────────────────────────────────────────────────
 
     # Secure one-time token for upload link
@@ -189,6 +241,47 @@ class MemberAccount(models.Model):
         return f"Account: {self.submission.candidate_name}"
 
 
+# ── Crew ID series counter (atomic sequential number reservation) ──────────────
+
+class CrewSeries(models.Model):
+    """One row per Crew ID series (A, B, …, AA, …). `current_number` is the last
+    number reserved in this series; the next Crew ID reserves current_number + 1.
+    Exactly one series is active at a time. The reservation is done inside a
+    write transaction so SQLite's file-level write lock makes it atomic (no
+    duplicate numbers even under concurrent provisioning). See career_app.crew_id.
+    """
+    MAX_PER_SERIES = 9999      # 0001–9999 (0000 is never issued)
+    PREPARE_THRESHOLD = 9000   # pre-create the next series at 90% capacity
+
+    series_code = models.CharField(max_length=2, unique=True)   # 'A' … 'ZZ'
+    current_number = models.PositiveIntegerField(default=0)     # last reserved (0 = none yet)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'crew_series'
+        verbose_name_plural = 'Crew series'
+
+    def __str__(self):
+        return f"Series {self.series_code} @ {self.current_number}/{self.MAX_PER_SERIES}"
+
+    @staticmethod
+    def next_series_code(code):
+        """Successor of a series code: A→B, Z→AA, AZ→BA, ZZ→AAA (unbounded)."""
+        code = (code or '').upper()
+        if not code:
+            return 'A'
+        chars = list(code)
+        i = len(chars) - 1
+        while i >= 0:
+            if chars[i] != 'Z':
+                chars[i] = chr(ord(chars[i]) + 1)
+                return ''.join(chars)
+            chars[i] = 'A'
+            i -= 1
+        return 'A' + ''.join(chars)   # rolled over every position → prepend 'A'
+
+
 # ── Document / certificate audit log ──────────────────────────────────────────
 
 class DocumentAuditLog(models.Model):
@@ -196,17 +289,26 @@ class DocumentAuditLog(models.Model):
     DOC_INTERNSHIP_CERT = 'internship_cert'
     DOC_LOR = 'lor'
     DOC_NOC = 'noc'
+    # Crew ID Standard audit events (identity, not documents).
+    DOC_CREW_ID = 'crew_id'
+    DOC_IDENTITY_CLASS = 'identity_class'
+    DOC_ACCOUNT_STATUS = 'account_status'
     DOC_CHOICES = [
         (DOC_OFFER_LETTER, 'Offer Letter'),
         (DOC_INTERNSHIP_CERT, 'Internship Certificate'),
         (DOC_LOR, 'Letter of Recommendation'),
         (DOC_NOC, 'No Objection Certificate'),
+        (DOC_CREW_ID, 'Crew ID'),
+        (DOC_IDENTITY_CLASS, 'Identity Class'),
+        (DOC_ACCOUNT_STATUS, 'Account Status'),
     ]
     ACTION_ISSUED = 'issued'
     ACTION_REVOKED = 'revoked'
+    ACTION_CHANGED = 'changed'
     ACTION_CHOICES = [
         (ACTION_ISSUED, 'Issued'),
         (ACTION_REVOKED, 'Revoked'),
+        (ACTION_CHANGED, 'Changed'),
     ]
 
     submission = models.ForeignKey(

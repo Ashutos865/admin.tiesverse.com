@@ -178,6 +178,26 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
+        # Crew ID Standard: allow signing in with a Crew ID (CRW-A-0247) OR a work
+        # email/username. If the submitted identifier looks like a Crew ID, silently
+        # resolve it to the member's real username BEFORE authentication. On any
+        # failure we fall through unchanged so the generic "no active account" error
+        # is identical — never revealing whether a given Crew ID exists.
+        uf = self.username_field  # usually 'username'
+        submitted = (attrs.get(uf) or '').strip()
+        try:
+            from career_app.crew_id import CREW_ID_RE
+            if submitted and CREW_ID_RE.match(submitted.upper()):
+                from career_app.models import OnboardingSubmission, MemberAccount
+                sub = (OnboardingSubmission.objects
+                       .filter(crew_id__iexact=submitted).only('id').first())
+                if sub:
+                    acct = MemberAccount.objects.filter(submission=sub).select_related('user').first()
+                    if acct and acct.user_id:
+                        attrs[uf] = acct.user.username   # swap in the real username
+        except Exception:  # noqa: BLE001 — never let resolution break login; fall through
+            pass
+
         # Authenticates + runs the stock is_active check, then enforces offboarding:
         # if this member's last working day has arrived, revoke access and block login.
         data = super().validate(attrs)

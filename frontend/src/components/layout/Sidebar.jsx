@@ -13,6 +13,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileText,
+  Fingerprint,
   File,
   Globe,
   History,
@@ -154,6 +155,7 @@ export const portals = [
     links: [
       { name: 'Master Directory', path: '/hr/directory',   icon: Database,          scopeAll: true },
       { name: 'Team Directory',  path: '/hr/team',        icon: Users,             perms: ['view_onboardingsubmission'] },
+      { name: 'Crew Identity',   path: '/hr/crew-identity', icon: Fingerprint,     perms: ['change_onboardingsubmission'] },
       { name: 'HR Departments',  path: '/hr/departments', icon: Building2,         perms: ['add_hrdepartment', 'change_hrdepartment', 'delete_hrdepartment'] },
       { name: 'Certificates',    path: '/hr/certificates', icon: Award,            perms: ['view_onboardingsubmission'] },
       { name: 'Attendance',      path: '/hr/attendance',  icon: CalendarDays,      perms: ['view_attendancerecord', 'add_attendancerecord', 'change_attendancerecord'] },

@@ -51,6 +51,7 @@ const HRDepartments = lazy(() => import('./pages/Career/HRDepartments.jsx'));
 const CertificatesMatrix = lazy(() => import('./pages/Career/CertificatesMatrix.jsx'));
 const TeamDirectory = lazy(() => import('./pages/Career/TeamDirectory.jsx'));
 const MasterDirectory = lazy(() => import('./pages/Career/MasterDirectory.jsx'));
+const CrewIdentity = lazy(() => import('./pages/Career/CrewIdentity.jsx'));
 const AttendancePage = lazy(() => import('./pages/Career/AttendancePage.jsx'));
 const LeavePage = lazy(() => import('./pages/Career/LeavePage.jsx'));
 const OffboardingPage = lazy(() => import('./pages/Career/OffboardingPage.jsx'));
@@ -199,6 +200,7 @@ function App() {
               {/* HR Portal Routes */}
               <Route path="/hr/directory" element={<MasterDirectory />} />
               <Route path="/hr/team" element={<TeamDirectory />} />
+              <Route path="/hr/crew-identity" element={<CrewIdentity />} />
               <Route path="/hr/departments" element={<HRDepartments />} />
               <Route path="/hr/certificates" element={<CertificatesMatrix />} />
               <Route path="/hr/attendance" element={<AttendancePage />} />

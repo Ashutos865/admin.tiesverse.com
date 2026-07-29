@@ -19,6 +19,8 @@ from .views import (
     OnboardingPublicInfoView, OnboardingPublicUploadView,
     CertificateIssueView, SendCertificateEmailView, DocumentAuditLogListView,
     MeView, DirectorySearchView, ArticleAccessManagementView,
+    MemberIdentityClassView, MemberAccountStatusView, MemberIdentityHistoryView,
+    CrewReportingView,
     AttendanceListView, AttendanceCheckInView, AttendanceCheckOutView,
     AttendanceApproveView, AttendanceDetailView,
     LeaveListView, LeaveDetailView, LeaveReviewView,
@@ -60,6 +62,11 @@ urlpatterns = [
     # Current member identity + scope
     path('me/', MeView.as_view(), name='career-me'),
     path('article-access/', ArticleAccessManagementView.as_view(), name='article-access-manage'),
+    # Crew ID identity management
+    path('members/<int:pk>/identity-class/', MemberIdentityClassView.as_view(), name='member-identity-class'),
+    path('members/<int:pk>/account-status/', MemberAccountStatusView.as_view(), name='member-account-status'),
+    path('members/<int:pk>/identity-history/', MemberIdentityHistoryView.as_view(), name='member-identity-history'),
+    path('crew-reporting/', CrewReportingView.as_view(), name='crew-reporting'),
     # Master directory — unified people search
     path('directory/', DirectorySearchView.as_view(), name='career-directory'),
     path('candidates/', CandidateListView.as_view(), name='career-candidates'),

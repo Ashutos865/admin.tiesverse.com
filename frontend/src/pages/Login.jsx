@@ -58,13 +58,13 @@ const Login = () => {
 
           <form className="login-form" onSubmit={handleSubmit}>
             <label className="login-field">
-              <span>Username</span>
+              <span>Crew ID or work email</span>
               <div className="login-input">
                 <User size={18} aria-hidden="true" />
                 <input
                   type="text"
                   autoComplete="username"
-                  placeholder="e-mail address"
+                  placeholder="CRW-A-0001 or your work email"
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
                   required

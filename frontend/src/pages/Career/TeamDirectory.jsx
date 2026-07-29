@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { getOnboardingList, getHRDepartments, verifyOnboarding, addTeamMember, issueCertificate, sendCertificateEmail, getEmailTemplates, fetchDocBlobUrl, viewDoc, getWorkSessions } from '../../apiClient';
+import { getOnboardingList, getHRDepartments, verifyOnboarding, addTeamMember, issueCertificate, sendCertificateEmail, getEmailTemplates, fetchDocBlobUrl, viewDoc, getWorkSessions, getMemberIdentityHistory } from '../../apiClient';
 import GenerateCertModal from './GenerateCertModal';
 import { previewTemplate } from '../../lib/emailPreview';
 import { usePermissions } from '../../context/PermissionContext';
@@ -177,8 +177,15 @@ function MemberRow({ member, onClick, isLast }) {
                         </span>
                     )}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {member.role_offered || '—'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 1, overflow: 'hidden' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {member.role_offered || '—'}
+                    </span>
+                    {member.crew_id && (
+                        <span title="Crew ID" style={{ fontSize: '0.625rem', fontWeight: 700, fontFamily: 'ui-monospace, monospace', color: 'var(--primary)', background: 'color-mix(in srgb, var(--primary) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--primary) 18%, transparent)', padding: '1px 6px', borderRadius: 4, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                            {member.crew_id}
+                        </span>
+                    )}
                 </div>
             </div>
 
@@ -213,6 +220,87 @@ function MemberRow({ member, onClick, isLast }) {
 }
 
 // ── Profile Modal ──────────────────────────────────────────────────────────────
+
+// ── Crew ID identity: classes, statuses, and a colour for each status ──────────
+const IDENTITY_CLASSES = [
+    ['EMP', 'Employee'], ['INT', 'Intern'], ['TRN', 'Trainee'], ['CON', 'Contractor'],
+    ['FRL', 'Freelancer'], ['CNS', 'Consultant'], ['CLI', 'Client'], ['PRT', 'Partner'],
+    ['INS', 'Instructor'], ['GST', 'Guest'], ['ALM', 'Alumni'],
+];
+const STATUS_COLOR = {
+    ACTIVE: '#067a50', PENDING: '#b45309', SUSPENDED: '#b91c1c', EXPIRED: '#92400e',
+    OFFBOARDED: '#6b7280', ARCHIVED: '#6b7280', CANCELLED: '#6b7280',
+};
+const CLASS_LABEL = Object.fromEntries(IDENTITY_CLASSES);
+
+// HR-only panel to view/change a member's Crew ID identity class + account status,
+// with the full change history. `canEdit` gates the controls (HR/admin only).
+// Read-only identity panel: shows the Crew ID, current class + status, legacy id,
+// and the change history. Class is edited in Edit Member; status via Offboarding.
+function IdentityPanel({ member }) {
+    const [history, setHistory] = useState(null);
+    const cls = member.identity_class || '';
+    const status = member.account_status || 'PENDING';
+
+    useEffect(() => {
+        let alive = true;
+        getMemberIdentityHistory(member.id)
+            .then((r) => { if (alive) setHistory(r?.history || []); })
+            .catch(() => { if (alive) setHistory([]); });
+        return () => { alive = false; };
+    }, [member.id]);
+
+    const labelStyle = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--text-muted)', marginBottom: 4, display: 'block' };
+
+    return (
+        <div style={{ border: '1px solid var(--outline-variant)', borderRadius: 12, padding: 16, marginBottom: 16, background: 'var(--surface-container-lowest)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text-main)' }}>Identity</h3>
+                {member.crew_id && (
+                    <button type="button" title="Copy Crew ID" onClick={() => { try { navigator.clipboard.writeText(member.crew_id); } catch { /* */ } }}
+                        style={{ fontSize: 12, fontWeight: 700, fontFamily: 'ui-monospace, monospace', color: 'var(--primary)', background: 'color-mix(in srgb, var(--primary) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--primary) 20%, transparent)', padding: '2px 8px', borderRadius: 5, cursor: 'pointer' }}>
+                        {member.crew_id}
+                    </button>
+                )}
+                {!member.crew_id && <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>No Crew ID yet</span>}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                <div>
+                    <label style={labelStyle}>Identity class</label>
+                    <div style={{ fontSize: 13, color: 'var(--text-main)', fontWeight: 600 }}>{cls ? `${cls} — ${CLASS_LABEL[cls] || ''}` : '—'}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>Change via Edit Member</div>
+                </div>
+                <div>
+                    <label style={labelStyle}>Account status</label>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: STATUS_COLOR[status] || 'var(--text-main)' }}>{status}</span>
+                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>Managed via Offboarding</div>
+                </div>
+            </div>
+
+            {member.legacy_id && <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 10 }}>Legacy ID: <code>{member.legacy_id}</code></div>}
+
+            {/* History timeline */}
+            <div>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--text-muted)', marginBottom: 6 }}>History</div>
+                {history === null ? (
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading…</div>
+                ) : history.length === 0 ? (
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No identity changes recorded.</div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 160, overflowY: 'auto' }}>
+                        {history.map((h, i) => (
+                            <div key={i} style={{ fontSize: 12, color: 'var(--text-main)', borderLeft: '2px solid var(--outline-variant)', paddingLeft: 9 }}>
+                                <div>{h.note}</div>
+                                <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{h.by} · {new Date(h.at).toLocaleString()}</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
 
 function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
     const meta = parseMeta(member.hr_notes);
@@ -376,6 +464,11 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
 
                 {/* ── Body sections ── */}
                 <div style={{ padding: '0 28px 28px', display: 'flex', flexDirection: 'column', gap: 0 }}>
+
+                    {/* Crew ID identity — class, status + history. HR/admin can edit. */}
+                    <div style={{ paddingTop: 16 }}>
+                        <IdentityPanel member={member} />
+                    </div>
 
                     {/* Working Hours — compact per-day total (date + time only). Full
                         work detail + download lives behind "View full history". */}
@@ -677,6 +770,7 @@ function EditModal({ member, departments, onClose, onSaved, allowSuperuser }) {
         role_offered:   member.role_offered   || '',
         portal_role:    member.portal_role    || 'member',
         member_type:    meta.type             || '',
+        identity_class: member.identity_class || '',
         notes:          meta.notes            || '',
         joining_date:   meta.joining_date     || (member.verified_at ? member.verified_at.slice(0, 10) : ''),
         assigned_departments: member.assigned_departments || [],
@@ -692,6 +786,7 @@ function EditModal({ member, departments, onClose, onSaved, allowSuperuser }) {
             candidate_name:       form.candidate_name,
             role_offered:         form.role_offered,
             portal_role:          form.portal_role,
+            identity_class:       form.identity_class,
             assigned_departments: form.assigned_departments,
             hr_notes:             serializeMeta(newMeta),
         });
@@ -722,6 +817,13 @@ function EditModal({ member, departments, onClose, onSaved, allowSuperuser }) {
                             <select style={{ ...F, cursor: 'pointer' }} value={form.member_type} onChange={e => setForm(f => ({ ...f, member_type: e.target.value }))}>
                                 <option value="">Select type…</option>
                                 {MEMBER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <Lbl>Identity Class</Lbl>
+                            <select style={{ ...F, cursor: 'pointer' }} value={form.identity_class} onChange={e => setForm(f => ({ ...f, identity_class: e.target.value }))}>
+                                <option value="">—</option>
+                                {IDENTITY_CLASSES.map(([c, l]) => <option key={c} value={c}>{c} — {l}</option>)}
                             </select>
                         </div>
                         <div><Lbl>Joining Date</Lbl><input type="date" style={F} value={form.joining_date} onChange={e => setForm(f => ({ ...f, joining_date: e.target.value }))} /></div>

@@ -52,7 +52,12 @@ class OnboardingSubmissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = OnboardingSubmission
         fields = '__all__'
-        read_only_fields = ['token', 'created_at', 'submitted_at', 'verified_at']
+        # Crew ID / identity fields are system-managed (minted + changed only via
+        # dedicated flows) — never client-settable through this `__all__` serializer.
+        read_only_fields = [
+            'token', 'created_at', 'submitted_at', 'verified_at',
+            'crew_id', 'legacy_id', 'account_status', 'identity_class',
+        ]
 
     def get_docs_complete(self, obj):
         return obj.has_aadhaar and obj.has_college_id and obj.has_photo

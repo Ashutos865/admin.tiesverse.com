@@ -390,6 +390,12 @@ export const getMe = () => adminFetch('/api/career/me');
 export const getArticleAccess = () => adminFetch('/api/career/article-access/');
 export const setArticleAccess = (payload) => adminFetch('/api/career/article-access/', 'POST', payload);
 
+// Crew ID identity management (HR/admin)
+export const setMemberIdentityClass = (id, cls) => adminFetch(`/api/career/members/${id}/identity-class/`, 'POST', { class: cls });
+export const setMemberAccountStatus = (id, status, reason = '') => adminFetch(`/api/career/members/${id}/account-status/`, 'POST', { status, reason });
+export const getMemberIdentityHistory = (id) => adminFetch(`/api/career/members/${id}/identity-history/`);
+export const getCrewReporting = () => adminFetch('/api/career/crew-reporting/');
+
 // Advisory oversight + weekly team-lead updates
 export const getAdvisoryTaskOversight = () => adminFetch('/api/career/advisory/task-oversight/');
 export const getAdvisoryDailyUpdates = () => adminFetch('/api/career/advisory/daily-updates/');

@@ -54,6 +54,42 @@ def _perm_denied(request, perm):
     return Response({'error': 'You do not have permission to perform this action.'}, status=403)
 
 
+def _find_possible_duplicates(email, name, exclude_pk=None):
+    """Crew ID Standard pre-issuance duplicate check. Returns a list of existing
+    members that may be the same person, so HR can recover their Crew ID rather
+    than mint a new one. Matches on exact email (any case), close name match, and
+    flags alumni (identity_class='ALM') for rejoin recovery."""
+    matches = {}
+
+    def _add(sub, why):
+        if not sub or sub.pk == exclude_pk:
+            return
+        m = matches.setdefault(sub.pk, {
+            'id': sub.pk, 'name': sub.candidate_name, 'email': sub.candidate_email,
+            'crew_id': sub.crew_id, 'identity_class': sub.identity_class,
+            'account_status': sub.account_status, 'reasons': [],
+        })
+        if why not in m['reasons']:
+            m['reasons'].append(why)
+
+    email = (email or '').strip()
+    name = (name or '').strip()
+    if email:
+        for sub in OnboardingSubmission.objects.filter(candidate_email__iexact=email):
+            _add(sub, 'same email')
+    if name:
+        # normalized case-insensitive name equality (cheap, SQLite-safe)
+        norm = ' '.join(name.lower().split())
+        for sub in OnboardingSubmission.objects.filter(candidate_name__icontains=name.split()[0] if name.split() else name)[:50]:
+            if ' '.join((sub.candidate_name or '').lower().split()) == norm:
+                _add(sub, 'same name')
+    out = list(matches.values())
+    for m in out:
+        if m.get('identity_class') == 'ALM':
+            m['reasons'].append('alumni — recover Crew ID')
+    return out
+
+
 def _onboarding_denied(request, pk):
     """Row-scope guard for reading ONE OnboardingSubmission (its id == the member
     id). Org-wide roles see all; a lead sees their team; a member sees only their
@@ -279,6 +315,26 @@ def _provision_member_account(sub, created_by_user):
     user.save()
 
     MemberAccount.objects.create(submission=sub, user=user, created_by=created_by_user)
+
+    # ── Crew ID Standard: mint a permanent Crew ID (once) ─────────────────────
+    # Idempotent — a member already carrying a Crew ID (e.g. a rejoin) keeps it,
+    # so a retried provision never burns a second number.
+    if not sub.crew_id:
+        try:
+            from .crew_id import generate_crew_id
+            from .models import EMPLOYMENT_TYPE_TO_CLASS
+            sub.crew_id = generate_crew_id()
+            sub.account_status = 'ACTIVE'
+            if not sub.identity_class:
+                sub.identity_class = EMPLOYMENT_TYPE_TO_CLASS.get(sub.employment_type or '', 'EMP')
+            sub.save(update_fields=['crew_id', 'account_status', 'identity_class'])
+            DocumentAuditLog.objects.create(
+                submission=sub, doc_type='crew_id', action='issued',
+                performed_by_name=_actor_name(created_by_user), performed_by_user=created_by_user,
+                note=f"Crew ID {sub.crew_id} issued (class {sub.identity_class}).",
+            )
+        except Exception as exc:  # noqa: BLE001 — never block provisioning on this
+            print(f"[CREW ID] mint error for submission {sub.id}: {exc}")
 
     group_name = GROUP_NAME_MAP.get(sub.portal_role or 'intern', 'Members')
     group, _ = Group.objects.get_or_create(name=group_name)
@@ -569,6 +625,18 @@ class OnboardingVerifyView(APIView):
 
         sub.save()
 
+        # Crew ID Standard: identity class is managed here (the Edit Member flow),
+        # not in a separate panel. Setting it writes an audit row; the Crew ID
+        # itself is never touched. Guarded so a pre-migration DB can't 500.
+        if 'identity_class' in request.data and request.data.get('identity_class'):
+            try:
+                from .crew_identity import set_identity_class
+                set_identity_class(sub, request.data['identity_class'], actor=request.user)
+            except ValueError:
+                return Response({'error': 'Invalid identity class.'}, status=400)
+            except Exception as exc:  # noqa: BLE001 — never block the edit on this
+                print(f"[CREW ID] identity_class set skipped for {sub.id}: {exc}")
+
         # Keep HR Departments in sync with whatever this member is assigned to.
         _ensure_hr_departments(sub.assigned_departments)
 
@@ -602,6 +670,17 @@ class ManualAddMemberView(APIView):
             return Response({'error': 'candidate_name and candidate_email are required.'}, status=400)
         if OnboardingSubmission.objects.filter(candidate_email=email).exists():
             return Response({'error': 'A record with this email already exists.'}, status=400)
+        # Crew ID Standard: flag possible duplicates for review before minting a new
+        # identity, so a returning person recovers their Crew ID. HR can proceed by
+        # re-submitting with force=true (a genuinely new person).
+        if not request.data.get('force'):
+            dups = _find_possible_duplicates(email, name)
+            if dups:
+                return Response({
+                    'possible_duplicates': dups,
+                    'message': 'Possible existing member(s) found. Review before creating a new identity, '
+                               'or resubmit with force=true if this is a genuinely new person.',
+                }, status=409)
 
         token = secrets.token_urlsafe(32)
         sub = OnboardingSubmission.objects.create(
@@ -951,6 +1030,140 @@ class MeView(APIView):
             'can_manage_articles': can_manage_articles,
             'member': OnboardingSubmissionSerializer(member).data if member else None,
             'led_departments': sorted(access.led_department_names(member)) if member else [],
+        })
+
+
+# ── Crew ID identity management (HR/admin) ────────────────────────────────────
+
+def _crew_admin_denied(request):
+    """Only HR-capable users may change a member's identity class/status.
+    Superuser or the `change_onboardingsubmission` permission (HR) passes."""
+    u = request.user
+    if getattr(u, 'is_superuser', False) or u.has_perm('career_app.change_onboardingsubmission'):
+        return None
+    return Response({'error': 'Only HR/admin can change identity class or status.'}, status=403)
+
+
+class MemberIdentityClassView(APIView):
+    """POST {class} — change a member's identity class (Crew ID unchanged)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        denied = _crew_admin_denied(request)
+        if denied:
+            return denied
+        member = OnboardingSubmission.objects.filter(pk=pk).first()
+        if not member:
+            return Response({'error': 'Member not found.'}, status=404)
+        from .crew_identity import set_identity_class
+        try:
+            set_identity_class(member, request.data.get('class'), actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=400)
+        member.refresh_from_db()
+        return Response(OnboardingSubmissionSerializer(member).data)
+
+
+class MemberAccountStatusView(APIView):
+    """POST {status, reason?} — change a member's account status (+ enforce login)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        denied = _crew_admin_denied(request)
+        if denied:
+            return denied
+        member = OnboardingSubmission.objects.filter(pk=pk).first()
+        if not member:
+            return Response({'error': 'Member not found.'}, status=404)
+        from .crew_identity import set_account_status
+        try:
+            set_account_status(member, request.data.get('status'),
+                               actor=request.user, reason=request.data.get('reason', ''))
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=400)
+        member.refresh_from_db()
+        return Response(OnboardingSubmissionSerializer(member).data)
+
+
+class MemberIdentityHistoryView(APIView):
+    """GET — the Crew ID / class / status audit timeline for a member."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        member = OnboardingSubmission.objects.filter(pk=pk).first()
+        if not member:
+            return Response({'error': 'Member not found.'}, status=404)
+        rows = (member.doc_audit_logs
+                .filter(doc_type__in=[
+                    DocumentAuditLog.DOC_CREW_ID,
+                    DocumentAuditLog.DOC_IDENTITY_CLASS,
+                    DocumentAuditLog.DOC_ACCOUNT_STATUS,
+                ])
+                .order_by('-performed_at')[:100])
+        return Response({'history': [{
+            'type': r.doc_type,
+            'action': r.action,
+            'by': r.performed_by_name,
+            'at': r.performed_at,
+            'note': r.note,
+        } for r in rows]})
+
+
+class CrewReportingView(APIView):
+    """Crew ID reporting dashboard — cheap ORM aggregates over members + the
+    active series capacity. HR/admin only."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        denied = _crew_admin_denied(request)
+        if denied:
+            return denied
+        from django.db.models import Count
+        from .models import CrewSeries
+
+        qs = OnboardingSubmission.objects.all()
+        by_status = {r['account_status'] or 'UNSET': r['n']
+                     for r in qs.values('account_status').annotate(n=Count('id'))}
+        by_class = {r['identity_class'] or 'UNSET': r['n']
+                    for r in qs.values('identity_class').annotate(n=Count('id'))}
+
+        # by department (assigned_departments is a JSON name list — count in Python)
+        by_dept = {}
+        for m in qs.only('assigned_departments').iterator():
+            for d in (m.assigned_departments or []):
+                by_dept[d] = by_dept.get(d, 0) + 1
+
+        privileged = qs.filter(portal_role__in=['admin', 'superuser', 'hr', 'advisory']).count()
+        with_crew_id = qs.exclude(crew_id__isnull=True).count()
+        total = qs.count()
+
+        series = CrewSeries.objects.filter(is_active=True).order_by('created_at', 'id').first()
+        capacity = None
+        if series:
+            capacity = {
+                'series_code': series.series_code,
+                'current_number': series.current_number,
+                'max': CrewSeries.MAX_PER_SERIES,
+                'percent': round(series.current_number / CrewSeries.MAX_PER_SERIES * 100, 1),
+                'at_threshold': series.current_number >= CrewSeries.PREPARE_THRESHOLD,
+            }
+
+        return Response({
+            'total_members': total,
+            'with_crew_id': with_crew_id,
+            'without_crew_id': total - with_crew_id,
+            'active': by_status.get('ACTIVE', 0),
+            'pending': by_status.get('PENDING', 0),
+            'suspended': by_status.get('SUSPENDED', 0),
+            'expired': by_status.get('EXPIRED', 0),
+            'offboarded': by_status.get('OFFBOARDED', 0),
+            'archived': by_status.get('ARCHIVED', 0),
+            'cancelled': by_status.get('CANCELLED', 0),
+            'privileged': privileged,
+            'by_status': by_status,
+            'by_class': by_class,
+            'by_department': by_dept,
+            'series_capacity': capacity,
         })
 
 

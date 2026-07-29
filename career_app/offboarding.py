@@ -22,6 +22,15 @@ def revoke_member_access(off, actor_name='system'):
     if member.status != OnboardingSubmission.STATUS_OFFBOARDED:
         member.status = OnboardingSubmission.STATUS_OFFBOARDED
         member.save(update_fields=['status'])
+    # Crew ID Standard: mirror the lifecycle onto account_status (Crew ID itself
+    # is never touched, so a later rejoin recovers the same ID). Guarded so a
+    # pre-migration DB (no account_status column yet) can't 500 the offboarding.
+    try:
+        if member.account_status != 'OFFBOARDED':
+            member.account_status = 'OFFBOARDED'
+            member.save(update_fields=['account_status'])
+    except Exception:  # noqa: BLE001 — never block offboarding on the new field
+        pass
     if acct is not None and acct.is_active:
         acct.is_active = False
         acct.save(update_fields=['is_active'])
@@ -44,6 +53,13 @@ def reactivate_member(member, actor_name='system'):
         acct.save(update_fields=['is_active'])
     member.status = OnboardingSubmission.STATUS_VERIFIED
     member.save(update_fields=['status'])
+    # Rejoin recovers the SAME Crew ID (never cleared); just re-activate status.
+    # Guarded so a pre-migration DB can't 500 the reactivation.
+    try:
+        member.account_status = 'ACTIVE'
+        member.save(update_fields=['account_status'])
+    except Exception:  # noqa: BLE001 — never block reactivation on the new field
+        pass
     OffboardingRequest.objects.filter(
         member=member,
         status__in=[OffboardingRequest.STATUS_COMPLETED, OffboardingRequest.STATUS_APPROVED],

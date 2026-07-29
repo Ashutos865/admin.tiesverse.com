@@ -173,6 +173,9 @@ DATABASES = {
     'turso_db': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'turso_db.sqlite3',
+        # Wait for a write lock rather than erroring instantly — the Crew ID
+        # counter reservation and concurrent member provisioning both write here.
+        'OPTIONS': {'timeout': 30},
     }
 }
 
