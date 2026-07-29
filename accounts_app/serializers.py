@@ -189,12 +189,19 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             from career_app.crew_id import CREW_ID_RE
             if submitted and CREW_ID_RE.match(submitted.upper()):
                 from career_app.models import OnboardingSubmission, MemberAccount
+                from django.contrib.auth import get_user_model
                 sub = (OnboardingSubmission.objects
                        .filter(crew_id__iexact=submitted).only('id').first())
                 if sub:
-                    acct = MemberAccount.objects.filter(submission=sub).select_related('user').first()
+                    acct = MemberAccount.objects.filter(submission=sub).only('user').first()
                     if acct and acct.user_id:
-                        attrs[uf] = acct.user.username   # swap in the real username
+                        # MemberAccount lives on turso_db but auth.User on the default
+                        # DB — resolve the user with a SEPARATE query (NOT the cross-DB
+                        # relation / select_related, which raises "no such table").
+                        User = get_user_model()
+                        u = User.objects.filter(pk=acct.user_id).only('username').first()
+                        if u:
+                            attrs[uf] = u.username   # swap in the real username
         except Exception:  # noqa: BLE001 — never let resolution break login; fall through
             pass
 
