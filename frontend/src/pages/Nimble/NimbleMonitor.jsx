@@ -141,6 +141,8 @@ export default function NimbleMonitor() {
   const compAlerts = alerts.filter((a) => a.channel_kind !== 'OWN');
   const openAlerts = compAlerts.filter((a) => a.status === 'OPEN');
   const workingAlerts = compAlerts.filter((a) => a.status === 'WORKING');
+  // Posts detected on OUR OWN tracked accounts — shown in their own section below.
+  const ownDetected = alerts.filter((a) => a.channel_kind === 'OWN');
 
   return (
     <div style={wrap}>
@@ -220,6 +222,17 @@ export default function NimbleMonitor() {
         Status: <b style={{ color: 'var(--text-main)' }}>{report.performance || '—'}</b> · target action rate {report.targetActionRate ?? 50}%
       </div>
 
+      {/* No competitor accounts tracked → the board is empty for a reason. Say so,
+          instead of showing two blank columns that look broken. */}
+      {channels.length > 0 && channels.every((c) => c.kind === 'OWN') && (
+        <div style={{ margin: '0 0 16px', padding: '11px 14px', borderRadius: 8, fontSize: 12.5,
+          background: 'rgba(180,83,9,.1)', border: '1px solid rgba(180,83,9,.25)', color: 'var(--text-main)' }}>
+          <b>No competitor {platform.tracked_noun} yet.</b> Every {platform.label} account you track is marked
+          “Our own”, so the board below is empty — own posts appear in <b>Our recent posts</b>.
+          Add an account with type <b>Competitor</b> to start seeing their activity here.
+        </div>
+      )}
+
       {/* alert board */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
         <AlertColumn title="They have posted" icon={<AlertTriangle size={15} color="#b45309" />} alerts={openAlerts}
@@ -227,6 +240,36 @@ export default function NimbleMonitor() {
         <AlertColumn title="We're posting" icon={<CheckCircle2 size={15} color="#067a50" />} alerts={workingAlerts}
           action={(a) => <button style={{ ...btn, padding: '5px 10px', fontSize: 12 }} onClick={() => onMoveAlert(a, 'OPEN')}><ArrowLeft size={13} /> Back</button>} />
       </div>
+
+      {/* Posts detected on OUR OWN tracked accounts. These are deliberately kept off
+          the competitor board (nothing to respond to), but they must still be visible
+          — otherwise a working OWN channel looks like the monitor is doing nothing. */}
+      {ownDetected.length > 0 && (
+        <div style={{ ...card, marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <CheckCircle2 size={15} color="#067a50" />
+            <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)' }}>
+              Our recent posts ({ownDetected.length})
+            </div>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              auto-detected from our own tracked {platform.tracked_noun}
+            </span>
+          </div>
+          {ownDetected.slice(0, 8).map((a) => (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--surface-container-low)' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{a.channel_name} · {fmtDate(a.published_at)}</div>
+              </div>
+              {a.url && (
+                <a href={a.url} target="_blank" rel="noreferrer" style={{ ...btn, padding: '4px 8px', fontSize: 11.5, textDecoration: 'none' }}>
+                  Open <ExternalLink size={12} />
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* channels + add form */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 16, alignItems: 'start' }}>
@@ -321,7 +364,7 @@ export default function NimbleMonitor() {
                   <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 12.5, color: 'var(--text-main)' }}>
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
                     <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDate(p.published_at)}</span>
-                    <button style={{ ...btn, padding: 4, color: '#b91c1c' }} onClick={() => deleteMonitorOwnPost(p.id).then(load)}><Trash2 size={13} /></button>
+                    <button style={{ ...btn, padding: 4, color: '#b91c1c' }} onClick={() => deleteMonitorOwnPost(p.id).then(() => load(activeSource))}><Trash2 size={13} /></button>
                   </div>
                 ))}
               </div>
