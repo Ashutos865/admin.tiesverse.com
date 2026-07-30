@@ -679,16 +679,18 @@ export const createDocSpace = (data)  => adminFetch('/api/docs/spaces', 'POST', 
 export const searchDocs     = (q)     => adminFetch(`/api/docs/pages?search=${encodeURIComponent(q)}`).catch(() => []);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NIMBLE MONITOR (nimble_app) — YouTube competitor tracker for the Nimble team
+// WATCHDOG / NIMBLE MONITOR (nimble_app) — competitor tracker for the Nimble team.
+// Platforms come from /platforms (YouTube + X; Instagram off until it stops 429ing).
 // ─────────────────────────────────────────────────────────────────────────────
-export const getMonitorState      = ()        => adminFetch('/api/nimble/state');
+export const getMonitorPlatforms  = ()        => adminFetch('/api/nimble/platforms');
+export const getMonitorState      = (source)  => adminFetch(`/api/nimble/state${source ? `?source=${encodeURIComponent(source)}` : ''}`);
 export const addMonitorChannel    = (data)     => adminFetch('/api/nimble/channels', 'POST', data);
 export const toggleMonitorChannel = (id, active) => adminFetch(`/api/nimble/channels/${id}`, 'PATCH', { active });
 export const deleteMonitorChannel = (id)        => adminFetch(`/api/nimble/channels/${id}`, 'DELETE');
 export const patchMonitorAlert    = (id, d)     => adminFetch(`/api/nimble/alerts/${id}`, 'PATCH', d);
 export const addMonitorOwnPost    = (data)      => adminFetch('/api/nimble/own-posts', 'POST', data);
 export const deleteMonitorOwnPost = (id)        => adminFetch(`/api/nimble/own-posts/${id}`, 'DELETE');
-export const pollMonitorNow       = ()          => adminFetch('/api/nimble/poll-now', 'POST');
+export const pollMonitorNow       = (source)    => adminFetch('/api/nimble/poll-now', 'POST', source ? { source } : {});
 export const getMonitorWeeklyReport = ()        => adminFetch('/api/nimble/weekly-report');
 export const sendMonitorWeeklyReport = ()       => adminFetch('/api/nimble/weekly-report/send', 'POST');
 export const monitorCsvUrl        = ()          => `${API_URL}/api/nimble/export/csv/`;

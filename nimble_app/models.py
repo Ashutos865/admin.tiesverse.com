@@ -6,15 +6,17 @@ from django.db import models
 # tool ("Nimble Monitor"), which stored everything in a flat data.json. Here the
 # data lives in turso_db as proper models so it is queryable and persists history.
 #
-# This phase ships YOUTUBE ONLY (official channel RSS — the only reliable free
-# source). The `source` field is kept so Instagram/X can be added later without a
-# migration, but no fetchers exist for them yet.
+# Platforms are defined centrally in `platforms.PLATFORM_REGISTRY`; which ones the
+# poller acts on is controlled by settings.NIMBLE_ENABLED_SOURCES (default
+# youtube + x). YouTube uses official RSS; X scrapes the public profile (verified
+# working, but see x_source.py caveats); Instagram is built but disabled because
+# the platform currently answers HTTP 429.
 
 
 SOURCE_CHOICES = [
     ('youtube', 'YouTube'),
-    ('instagram', 'Instagram'),   # reserved — not fetched yet
-    ('x', 'X'),                    # reserved — not fetched yet
+    ('instagram', 'Instagram'),
+    ('x', 'X'),
 ]
 
 KIND_CHOICES = [
@@ -41,7 +43,15 @@ class MonitorChannel(models.Model):
     last_checked = models.DateTimeField(null=True, blank=True)
     last_error = models.CharField(max_length=400, blank=True)
     last_error_at = models.DateTimeField(null=True, blank=True)
+    # Health tracking — X/Instagram are scraping-based and can break silently when
+    # the platform changes its markup, so count consecutive bad checks and surface
+    # a warning once we cross UNHEALTHY_AFTER (see services.poll_channels/health).
+    consecutive_failures = models.PositiveSmallIntegerField(default=0)
+    last_success_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # A channel is flagged in the UI once it has failed this many checks in a row.
+    UNHEALTHY_AFTER = 3
 
     class Meta:
         db_table = 'monitor_channels'
@@ -50,6 +60,10 @@ class MonitorChannel(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.source})'
+
+    @property
+    def is_unhealthy(self):
+        return self.consecutive_failures >= self.UNHEALTHY_AFTER
 
 
 class MonitorAlert(models.Model):

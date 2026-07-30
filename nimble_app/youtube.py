@@ -113,12 +113,16 @@ def send_alert_email(alert, channel):
     mail_from = os.environ.get('WATCHDOG_MAIL_FROM', c['user'])
     dashboard = f"{c['public_url']}/nimble/monitor" if c['public_url'] else ''
 
+    # Label the platform the post came from (YouTube / X / Instagram).
+    from .platforms import platform_label
+    label = platform_label(getattr(channel, 'source', 'youtube'))
+
     msg = EmailMessage()
-    msg['Subject'] = f"[YouTube] {channel.name} posted: {alert['title']}"
+    msg['Subject'] = f"[{label}] {channel.name} posted: {alert['title']}"
     msg['From'] = mail_from
     msg['To'] = c['to']
     lines = [
-        f'{channel.name} posted on YouTube.',
+        f'{channel.name} posted on {label}.',
         '',
         alert['title'],
         f"Published: {alert.get('published_at') or ''}",

@@ -38,10 +38,14 @@ class MonitorChannelViewSet(viewsets.ModelViewSet):
     permission_classes = [NimblePermission]
 
     def get_queryset(self):
+        from . import platforms
         qs = MonitorChannel.objects.all()
         kind = self.request.query_params.get('kind')
         if kind in {'COMPETITOR', 'OWN'}:
             qs = qs.filter(kind=kind)
+        source = platforms.normalize_source(self.request.query_params.get('source'))
+        if source:
+            qs = qs.filter(source=source)
         return qs
 
 
@@ -74,34 +78,59 @@ class MonitorOwnPostViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'delete', 'head', 'options']
 
 
-class MonitorStateView(APIView):
-    """One call that returns the whole workspace for the dashboard: channels,
-    alerts, own-posts, and the 7-day report — mirrors the tool's /api/state."""
+class MonitorPlatformsView(APIView):
+    """The platforms the UI should offer (label, handle help, experimental flag).
+    Mirrors the upstream tool's /api/platforms so the React page stops hardcoding
+    "YouTube". Only ENABLED sources are returned, so Instagram stays hidden until
+    NIMBLE_ENABLED_SOURCES includes it."""
     permission_classes = [NimblePermission]
 
     def get(self, request):
+        from . import platforms
+        return Response(platforms.public_platforms())
+
+
+class MonitorStateView(APIView):
+    """One call that returns the whole workspace for the dashboard: channels,
+    alerts, own-posts, and the 7-day report — mirrors the tool's /api/state.
+    Optional ?source=youtube|x filters to one platform workspace."""
+    permission_classes = [NimblePermission]
+
+    def get(self, request):
+        from . import platforms
+        source = platforms.normalize_source(request.query_params.get('source'))
+
         channels = MonitorChannel.objects.all()
         alerts = MonitorAlert.objects.select_related('channel')
         own = MonitorOwnPost.objects.all()
+        if source:
+            channels = channels.filter(source=source)
+            alerts = alerts.filter(channel__source=source)
+            own = own.filter(source=source)
         return Response({
             'channels': MonitorChannelSerializer(channels, many=True).data,
             'alerts': MonitorAlertSerializer(alerts, many=True).data,
             'ownPosts': MonitorOwnPostSerializer(own, many=True).data,
             'report': services.weekly_report(),
             'heatmap': services.own_post_heatmap(7),
+            'platforms': platforms.public_platforms(),
+            'health': services.health(),
         })
 
 
 class MonitorPollNowView(APIView):
-    """"Check now" — run the same poll the cron runs, on demand."""
+    """"Check now" — run the same poll the cron runs, on demand. Optional
+    ?source=x to check just one platform."""
     permission_classes = [NimblePermission]
 
     def post(self, request):
-        return Response(services.poll_channels())
+        source = request.query_params.get('source') or (request.data or {}).get('source')
+        return Response(services.poll_channels(only_source=source))
 
     # allow GET too for convenience / manual trigger
     def get(self, request):
-        return Response(services.poll_channels())
+        return Response(services.poll_channels(
+            only_source=request.query_params.get('source')))
 
 
 class MonitorWeeklyReportView(APIView):

@@ -299,6 +299,14 @@ ONBOARDING_EMAIL_ENABLED = os.environ.get('ONBOARDING_EMAIL_ENABLED', 'False').l
 CERT_EMAIL_ENABLED = os.environ.get('CERT_EMAIL_ENABLED', 'False').lower() == 'true'
 PASSWORD_RESET_EMAIL_ENABLED = os.environ.get('PASSWORD_RESET_EMAIL_ENABLED', 'False').lower() == 'true'
 
+# ── Watchdog / Nimble Monitor ───────────────────────────────────────────────
+# Which platforms the poller and UI act on (comma separated). YouTube uses
+# official RSS; X scrapes the public profile (verified working, but scraping, so
+# it is health-tracked). Instagram is built but OFF because the public endpoint
+# currently answers HTTP 429 for everyone — add 'instagram' here to switch it on
+# without a code change. Set to just 'youtube' to instantly revert.
+NIMBLE_ENABLED_SOURCES = os.environ.get('NIMBLE_ENABLED_SOURCES', 'youtube,x')
+
 RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '')
 RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '')
 RAZORPAY_WEBHOOK_SECRET = os.environ.get('RAZORPAY_WEBHOOK_SECRET', '')

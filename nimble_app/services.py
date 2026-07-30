@@ -1,7 +1,8 @@
 """Shared Nimble Monitor operations: polling, weekly report, CSV export.
 
 Used by BOTH the cron command (`poll_nimble_monitor`) and the API "Check now"
-endpoint so the behaviour is identical. YouTube-only in this phase.
+endpoint so the behaviour is identical. Multi-platform: which sources are polled
+comes from `platforms.enabled_sources()` (settings.NIMBLE_ENABLED_SOURCES).
 """
 from __future__ import annotations
 
@@ -12,38 +13,71 @@ from datetime import datetime, timedelta, timezone
 from django.utils import timezone as dj_tz
 
 from .models import MonitorChannel, MonitorAlert, MonitorOwnPost
-from . import youtube
+from . import youtube, platforms
+from .instagram_source import fetch_instagram_posts
+from .x_source import fetch_x_posts
 
 
-def poll_channels(only_active=True):
-    """Fetch new posts for every (active) YouTube channel and insert MonitorAlert
-    rows. Deduped by (channel, item_id). Sends an alert email for genuinely new
-    COMPETITOR posts published after we started tracking that channel. Idempotent:
-    re-running inserts nothing new. Returns a summary dict."""
-    result = {'checked': 0, 'new_alerts': 0, 'notifications_sent': 0, 'errors': []}
+# source -> callable(handle) -> list of normalised post dicts
+FETCHERS = {
+    'youtube': youtube.fetch_youtube_entries,
+    'x': fetch_x_posts,
+    'instagram': fetch_instagram_posts,
+}
+
+
+def poll_channels(only_active=True, only_source=None):
+    """Fetch new posts for every (active) channel on an enabled platform and insert
+    MonitorAlert rows. Deduped by (channel, item_id). Sends an alert email for
+    genuinely new COMPETITOR posts published after we started tracking that channel.
+    Idempotent: re-running inserts nothing new. Returns a summary dict.
+
+    Also maintains per-channel health (`consecutive_failures`/`last_success_at`) so
+    a scraping source that silently stops returning posts gets flagged instead of
+    quietly reporting "no new activity" forever."""
+    result = {'checked': 0, 'new_alerts': 0, 'notifications_sent': 0,
+              'errors': [], 'skipped_disabled': 0}
     now = dj_tz.now()
+    enabled = platforms.enabled_sources()
+    only_source = platforms.normalize_source(only_source) if only_source else None
 
     channels = MonitorChannel.objects.all()
     for channel in channels:
-        if channel.source != 'youtube':
-            continue   # IG/X not supported yet
+        source = platforms.normalize_source(channel.source) or 'youtube'
+        if only_source and source != only_source:
+            continue
+        if source not in enabled or source not in FETCHERS:
+            result['skipped_disabled'] += 1
+            continue
         channel.last_checked = now
         if only_active and not channel.active:
             channel.save(update_fields=['last_checked'])
             continue
         result['checked'] += 1
+        label = platforms.platform_label(source)
         try:
-            entries = youtube.fetch_youtube_entries(channel.source_handle)
+            entries = FETCHERS[source](channel.source_handle)
         except Exception as exc:  # noqa: BLE001
-            channel.last_error = youtube.friendly_fetch_error(exc)[:400]
+            channel.last_error = platforms.friendly_fetch_error(source, exc)[:400]
             channel.last_error_at = now
-            channel.save(update_fields=['last_checked', 'last_error', 'last_error_at'])
-            result['errors'].append({'channel': channel.name, 'message': channel.last_error})
+            channel.consecutive_failures = (channel.consecutive_failures or 0) + 1
+            channel.save(update_fields=['last_checked', 'last_error', 'last_error_at',
+                                        'consecutive_failures'])
+            result['errors'].append({'channel': channel.name, 'source': source,
+                                     'message': channel.last_error})
             continue
 
+        # A scraper that returns an empty list is "working" as far as HTTP is
+        # concerned but may in fact be broken — count it, without raising an error.
+        if entries:
+            channel.consecutive_failures = 0
+            channel.last_success_at = now
+        else:
+            channel.consecutive_failures = (channel.consecutive_failures or 0) + 1
         channel.last_error = ''
         channel.last_error_at = None
-        channel.save(update_fields=['last_checked', 'last_error', 'last_error_at'])
+        channel.save(update_fields=['last_checked', 'last_error', 'last_error_at',
+                                    'consecutive_failures', 'last_success_at'])
 
         existing = set(
             MonitorAlert.objects.filter(channel=channel).values_list('item_id', flat=True)
@@ -58,13 +92,15 @@ def poll_channels(only_active=True):
             alert = MonitorAlert.objects.create(
                 channel=channel,
                 item_id=item_id,
-                youtube_video_id=entry.get('youtube_video_id', item_id),
+                # Only meaningful for YouTube; blank for X/Instagram.
+                youtube_video_id=(entry.get('youtube_video_id', item_id)
+                                  if source == 'youtube' else ''),
                 title=(entry.get('title') or 'New competitor post')[:400],
                 url=entry.get('url', ''),
                 published_at=published_at,
                 thumbnail_url=entry.get('thumbnail_url', ''),
                 status='OPEN',
-                note='Auto-detected from YouTube.',
+                note=f'Auto-detected from {label}.',
                 unread=True,
             )
             existing.add(item_id)
@@ -90,6 +126,30 @@ def poll_channels(only_active=True):
                     })
     result['ok'] = not result['errors']
     return result
+
+
+def health():
+    """Channels that have failed (errored OR returned nothing) several checks in a
+    row. X/Instagram are scraping-based, so this is how a silent breakage — the
+    fetch "succeeds" but yields no posts — becomes visible instead of looking like
+    a quiet week. Returned to the UI for a warning banner and logged by the cron."""
+    unhealthy = (MonitorChannel.objects
+                 .filter(active=True,
+                         consecutive_failures__gte=MonitorChannel.UNHEALTHY_AFTER)
+                 .order_by('-consecutive_failures', 'name'))
+    return {
+        'unhealthy_after': MonitorChannel.UNHEALTHY_AFTER,
+        'channels': [{
+            'id': c.id,
+            'name': c.name,
+            'source': c.source,
+            'platform': platforms.platform_label(c.source),
+            'consecutive_failures': c.consecutive_failures,
+            'last_error': c.last_error,
+            'last_checked': c.last_checked,
+            'last_success_at': c.last_success_at,
+        } for c in unhealthy],
+    }
 
 
 def weekly_report():

@@ -6,7 +6,7 @@ import {
 import {
   getMonitorState, addMonitorChannel, toggleMonitorChannel, deleteMonitorChannel,
   patchMonitorAlert, addMonitorOwnPost, deleteMonitorOwnPost, pollMonitorNow,
-  monitorCsvUrl, getApiToken,
+  monitorCsvUrl, getApiToken, getMonitorPlatforms,
 } from '../../apiClient';
 
 const wrap = { padding: '28px 32px', maxWidth: 1180 };
@@ -39,57 +39,83 @@ export default function NimbleMonitor() {
   const [form, setForm] = useState({ name: '', source_handle: '', kind: 'COMPETITOR', priority: 3 });
   const [ownTitle, setOwnTitle] = useState('');
   const [busy, setBusy] = useState(false);
+  // Platform workspaces (YouTube / X …) come from the backend registry so the UI
+  // never hardcodes a platform. `active` is the tab currently being viewed.
+  const [platformList, setPlatformList] = useState([]);
+  const [activeSource, setActiveSource] = useState(null);
 
   const flash = (type, text) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 4000); };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (source) => {
     setLoading(true);
-    const data = await getMonitorState();
-    if (data && !data.error) setState(data);
-    else flash('error', data?.error || 'Failed to load monitor.');
+    const data = await getMonitorState(source);
+    if (data && !data.error) {
+      setState(data);
+      if (data.platforms?.length) setPlatformList(data.platforms);
+    } else flash('error', data?.error || 'Failed to load monitor.');
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Fetch the enabled platforms once, then load that workspace.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const list = await getMonitorPlatforms();
+      if (!alive) return;
+      const arr = Array.isArray(list) ? list : [];
+      setPlatformList(arr);
+      setActiveSource(arr[0]?.source || 'youtube');
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => { if (activeSource) load(activeSource); }, [activeSource, load]);
+
+  const platform = platformList.find((p) => p.source === activeSource) || {
+    source: activeSource || 'youtube', label: 'YouTube', tracked_noun: 'channels',
+    handle_label: 'channel ID', handle_help: '', experimental: false,
+  };
 
   const onAddChannel = async (e) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.source_handle.trim()) { flash('error', 'Name and YouTube channel ID are required.'); return; }
+    if (!form.name.trim() || !form.source_handle.trim()) {
+      flash('error', `Name and ${platform.handle_label} are required.`); return;
+    }
     setBusy(true);
-    const res = await addMonitorChannel({ ...form, source: 'youtube', priority: Number(form.priority) });
+    const res = await addMonitorChannel({ ...form, source: platform.source, priority: Number(form.priority) });
     setBusy(false);
     if (res && !res.error && !res.detail) {
       setForm({ name: '', source_handle: '', kind: 'COMPETITOR', priority: 3 });
-      flash('ok', 'Channel added.');
-      load();
+      flash('ok', `${platform.label} account added.`);
+      load(activeSource);
     } else {
-      flash('error', res?.source_handle || res?.error || res?.detail || 'Could not add channel.');
+      flash('error', res?.source_handle || res?.error || res?.detail || 'Could not add account.');
     }
   };
 
-  const onToggle = async (ch) => { await toggleMonitorChannel(ch.id, !ch.active); load(); };
+  const onToggle = async (ch) => { await toggleMonitorChannel(ch.id, !ch.active); load(activeSource); };
   const onDeleteChannel = async (ch) => {
     if (!window.confirm(`Remove "${ch.name}" and its alerts?`)) return;
-    await deleteMonitorChannel(ch.id); flash('ok', 'Channel removed.'); load();
+    await deleteMonitorChannel(ch.id); flash('ok', 'Removed.'); load(activeSource);
   };
 
-  const onMoveAlert = async (alert, status) => { await patchMonitorAlert(alert.id, { status, unread: false }); load(); };
+  const onMoveAlert = async (alert, status) => { await patchMonitorAlert(alert.id, { status, unread: false }); load(activeSource); };
 
   const onCheckNow = async () => {
     setPolling(true);
-    const res = await pollMonitorNow();
+    const res = await pollMonitorNow(activeSource);
     setPolling(false);
     if (res && !res.error) {
-      flash('ok', `Checked ${res.checked} channel(s): ${res.new_alerts} new alert(s).`);
-      load();
+      flash('ok', `Checked ${res.checked} ${platform.tracked_noun}: ${res.new_alerts} new alert(s).`);
+      load(activeSource);
     } else flash('error', res?.error || 'Check failed.');
   };
 
   const onAddOwn = async (e) => {
     e.preventDefault();
     if (!ownTitle.trim()) return;
-    const res = await addMonitorOwnPost({ title: ownTitle.trim(), source: 'youtube' });
-    if (res && !res.error) { setOwnTitle(''); flash('ok', 'Own post logged.'); load(); }
+    const res = await addMonitorOwnPost({ title: ownTitle.trim(), source: platform.source });
+    if (res && !res.error) { setOwnTitle(''); flash('ok', 'Own post logged.'); load(activeSource); }
     else flash('error', res?.error || 'Could not log own post.');
   };
 
@@ -124,7 +150,7 @@ export default function NimbleMonitor() {
           <Radar size={24} color="var(--primary)" />
           <div>
             <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-main)' }}>Watchdog</div>
-            <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>Competitor YouTube tracker & response board</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>Competitor tracker &amp; response board</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -135,10 +161,51 @@ export default function NimbleMonitor() {
         </div>
       </div>
 
+      {/* platform workspaces — each platform keeps its own accounts + alerts */}
+      {platformList.length > 1 && (
+        <div style={{ display: 'flex', gap: 6, margin: '14px 0 4px', flexWrap: 'wrap' }}>
+          {platformList.map((p) => {
+            const on = p.source === activeSource;
+            return (
+              <button key={p.source} onClick={() => setActiveSource(p.source)}
+                style={{ ...btn, padding: '7px 14px',
+                  background: on ? 'var(--primary)' : 'var(--surface-container-low)',
+                  color: on ? '#fff' : 'var(--text-main)',
+                  border: on ? 'none' : '1px solid var(--outline-variant)' }}>
+                {p.label}
+                {p.experimental && (
+                  <span title="Scraping-based — may break if the platform changes"
+                    style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.04em', opacity: .85,
+                      border: '1px solid currentColor', borderRadius: 4, padding: '0 4px', marginLeft: 2 }}>BETA</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {msg && (
         <div style={{ margin: '10px 0', padding: '9px 13px', borderRadius: 8, fontSize: 13, fontWeight: 600,
           background: msg.type === 'ok' ? 'rgba(6,122,80,.12)' : 'rgba(185,28,28,.12)',
           color: msg.type === 'ok' ? '#067a50' : '#b91c1c' }}>{msg.text}</div>
+      )}
+
+      {/* health warning — a scraping source that keeps failing/returning nothing */}
+      {(state?.health?.channels?.length > 0) && (
+        <div style={{ margin: '12px 0', padding: '11px 14px', borderRadius: 8,
+          background: 'rgba(185,28,28,.1)', border: '1px solid rgba(185,28,28,.3)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 800, color: '#b91c1c' }}>
+            <AlertTriangle size={15} /> Monitoring may be broken
+          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--text-main)', marginTop: 5 }}>
+            {state.health.channels.map((c) => (
+              <div key={c.id}>
+                <b>[{c.platform}] {c.name}</b> — failed {c.consecutive_failures} checks in a row
+                {c.last_error ? `: ${c.last_error}` : ' (returned no posts)'}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* report stats */}
@@ -164,16 +231,26 @@ export default function NimbleMonitor() {
       {/* channels + add form */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 16, alignItems: 'start' }}>
         <div style={card}>
-          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 12, color: 'var(--text-main)' }}>Tracked channels ({channels.length})</div>
+          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 12, color: 'var(--text-main)', textTransform: 'capitalize' }}>
+            Tracked {platform.tracked_noun} ({channels.length})
+          </div>
           {channels.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>No channels yet — add a YouTube channel ID (UC…) on the right.</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+              No {platform.tracked_noun} yet — add a {platform.label} {platform.handle_label} on the right.
+            </div>
           ) : channels.map((ch) => (
             <div key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--surface-container-low)' }}>
-              <Play size={16} color="#ff0000" fill="#ff0000" />
+              {ch.source === 'youtube'
+                ? <Play size={16} color="#ff0000" fill="#ff0000" />
+                : <Radar size={16} color="var(--primary)" />}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {ch.name}
                   <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 5, background: ch.kind === 'OWN' ? 'rgba(6,122,80,.14)' : 'var(--surface-container-low)', color: ch.kind === 'OWN' ? '#067a50' : 'var(--text-muted)' }}>{ch.kind}</span>
+                  {ch.is_unhealthy && (
+                    <span title={`Failed ${ch.consecutive_failures} checks in a row`}
+                      style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 5, background: 'rgba(185,28,28,.14)', color: '#b91c1c' }}>⚠ FAILING</span>
+                  )}
                 </div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {ch.source_handle}{ch.last_error ? ` · ⚠ ${ch.last_error}` : ch.last_checked ? ` · checked ${fmtDate(ch.last_checked)}` : ' · not checked yet'}
@@ -189,14 +266,19 @@ export default function NimbleMonitor() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <form style={card} onSubmit={onAddChannel}>
-            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 12, color: 'var(--text-main)' }}>Add a YouTube channel</div>
+            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 12, color: 'var(--text-main)' }}>
+              Add {platform.source === 'youtube' ? 'a' : 'an'} {platform.label} {platform.source === 'youtube' ? 'channel' : 'account'}
+            </div>
             <div style={{ marginBottom: 10 }}>
               <span style={label}>Display name</span>
               <input style={input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Competitor News" />
             </div>
             <div style={{ marginBottom: 10 }}>
-              <span style={label}>YouTube channel ID (UC…)</span>
-              <input style={input} value={form.source_handle} onChange={(e) => setForm({ ...form, source_handle: e.target.value })} placeholder="UCxxxxxxxxxxxxxxxxxxxxxx or channel URL" />
+              <span style={{ ...label, textTransform: 'none', letterSpacing: 0, fontSize: 11.5 }}>
+                {platform.label} {platform.handle_label}
+              </span>
+              <input style={input} value={form.source_handle} onChange={(e) => setForm({ ...form, source_handle: e.target.value })}
+                placeholder={platform.source === 'youtube' ? 'UCxxxxxxxxxxxxxxxxxxxxxx or channel URL' : `@handle or ${platform.url_hint || ''}handle`} />
             </div>
             <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
               <div style={{ flex: 1 }}>
@@ -214,11 +296,17 @@ export default function NimbleMonitor() {
               </div>
             </div>
             <button type="submit" style={{ ...btnPrimary, width: '100%', justifyContent: 'center' }} disabled={busy}>
-              <Plus size={15} /> {busy ? 'Adding…' : 'Add channel'}
+              <Plus size={15} /> {busy ? 'Adding…' : `Add ${platform.source === 'youtube' ? 'channel' : 'account'}`}
             </button>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
-              Tip: find the UC… ID via a channel's “Share → Copy channel ID”, or paste the channel URL.
+              {platform.handle_help || 'Paste the profile URL or the handle.'}
             </div>
+            {platform.experimental && (
+              <div style={{ fontSize: 11, color: '#b45309', marginTop: 6 }}>
+                {platform.label} checks read the public profile page, so they can stop working if
+                {' '}{platform.label} changes their site. Watchdog flags accounts that keep failing.
+              </div>
+            )}
           </form>
 
           <div style={card}>

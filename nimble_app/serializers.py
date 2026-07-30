@@ -1,25 +1,33 @@
 from rest_framework import serializers
 
 from .models import MonitorChannel, MonitorAlert, MonitorOwnPost
-from . import youtube
+from . import platforms
 
 
 class MonitorChannelSerializer(serializers.ModelSerializer):
     alert_count = serializers.IntegerField(source='alerts.count', read_only=True)
+    platform_label = serializers.SerializerMethodField()
+    is_unhealthy = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = MonitorChannel
-        fields = ['id', 'name', 'source', 'source_handle', 'youtube_id', 'priority',
-                  'kind', 'active', 'last_checked', 'last_error', 'last_error_at',
+        fields = ['id', 'name', 'source', 'platform_label', 'source_handle', 'youtube_id',
+                  'priority', 'kind', 'active', 'last_checked', 'last_error', 'last_error_at',
+                  'consecutive_failures', 'last_success_at', 'is_unhealthy',
                   'created_at', 'alert_count']
-        read_only_fields = ['youtube_id', 'last_checked', 'last_error', 'last_error_at',
-                            'created_at', 'alert_count']
+        read_only_fields = ['youtube_id', 'platform_label', 'last_checked', 'last_error',
+                            'last_error_at', 'consecutive_failures', 'last_success_at',
+                            'is_unhealthy', 'created_at', 'alert_count']
+
+    def get_platform_label(self, obj):
+        return platforms.platform_label(obj.source)
 
     def validate_source(self, value):
-        # YouTube-only in this phase.
-        if value and value != 'youtube':
-            raise serializers.ValidationError('Only YouTube channels are supported right now.')
-        return value or 'youtube'
+        source = platforms.normalize_source(value) or 'youtube'
+        if not platforms.is_enabled(source):
+            raise serializers.ValidationError(
+                f'{platforms.platform_label(source)} monitoring is not enabled.')
+        return source
 
     def validate_priority(self, value):
         if value not in range(1, 6):
@@ -27,15 +35,19 @@ class MonitorChannelSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        # Normalise the YouTube channel id (accepts UC… or a URL/handle containing it).
+        # Resolve the platform, then normalise the handle with that platform's rules
+        # (UC… id for YouTube; username/URL for X/Instagram).
+        source = attrs.get('source') or getattr(self.instance, 'source', None) or 'youtube'
+        source = platforms.normalize_source(source) or 'youtube'
         raw = attrs.get('source_handle', getattr(self.instance, 'source_handle', ''))
         try:
-            channel_id = youtube.normalize_youtube_channel_id(raw)
+            handle = platforms.normalize_handle(source, raw)
         except ValueError as exc:
             raise serializers.ValidationError({'source_handle': str(exc)})
-        attrs['source_handle'] = channel_id
-        attrs['youtube_id'] = channel_id
-        attrs['source'] = 'youtube'
+        attrs['source'] = source
+        attrs['source_handle'] = handle
+        # youtube_id is a YouTube-only convenience mirror.
+        attrs['youtube_id'] = handle if source == 'youtube' else ''
         return attrs
 
 
