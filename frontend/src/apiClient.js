@@ -399,6 +399,32 @@ export const getCrewReporting = () => adminFetch('/api/career/crew-reporting/');
 export const previewMemberCrewId = (id, crewId) => adminFetch(`/api/career/members/${id}/crew-id/?crew_id=${encodeURIComponent(crewId)}`);
 export const setMemberCrewId = (id, crewId) => adminFetch(`/api/career/members/${id}/crew-id/`, 'POST', { crew_id: crewId });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TIES MAIL (mail_app) — portal mailboxes on @mail.tiesverse.com.
+// Mailboxes are assigned by a superadmin; PERSONAL boxes belong to one member,
+// SHARED boxes (e.g. nimble@) can be granted to several people.
+// ─────────────────────────────────────────────────────────────────────────────
+export const getMyMailboxes   = ()            => adminFetch('/api/mail/me');
+export const listMailMessages = (mailbox, folder = 'inbox', search = '') =>
+    adminFetch(`/api/mail/messages?mailbox=${mailbox}&folder=${folder}${search ? `&search=${encodeURIComponent(search)}` : ''}`);
+export const getMailMessage   = (id)          => adminFetch(`/api/mail/messages/${id}`);
+export const deleteMailMessage = (id)         => adminFetch(`/api/mail/messages/${id}`, 'DELETE');
+export const restoreMailMessage = (id)        => adminFetch(`/api/mail/messages/${id}`, 'POST');
+export const sendMailMessage  = (data)        => adminFetch('/api/mail/send', 'POST', data);
+export const updateMailboxAvatar = (id, data) => adminFetch(`/api/mail/mailboxes/${id}/avatar`, 'PATCH', data);
+// superadmin only
+export const adminListMailboxes  = ()         => adminFetch('/api/mail/admin/mailboxes');
+export const adminCreateMailbox  = (data)     => adminFetch('/api/mail/admin/mailboxes', 'POST', data);
+export const adminUpdateMailbox  = (id, data) => adminFetch(`/api/mail/admin/mailboxes/${id}`, 'PATCH', data);
+export const adminArchiveMailbox = (id)       => adminFetch(`/api/mail/admin/mailboxes/${id}`, 'DELETE');
+export const adminSetMailboxPassword = (id, password) => adminFetch(`/api/mail/admin/mailboxes/${id}/password`, 'POST', { password });
+export const adminListMailboxGrants  = (id)   => adminFetch(`/api/mail/admin/mailboxes/${id}/grants`);
+export const adminGrantMailbox   = (id, user) => adminFetch(`/api/mail/admin/mailboxes/${id}/grants`, 'POST', { user });
+export const adminRevokeMailbox  = (id, user) => adminFetch(`/api/mail/admin/mailboxes/${id}/grants?user=${user}`, 'DELETE');
+export const adminMailAudit      = (mailbox)  => adminFetch(`/api/mail/admin/audit${mailbox ? `?mailbox=${mailbox}` : ''}`);
+// Portal accounts, used to pick who owns / may open a mailbox.
+export const listPortalUsers     = ()         => adminFetch('/api/accounts/users');
+
 // Advisory oversight + weekly team-lead updates
 export const getAdvisoryTaskOversight = () => adminFetch('/api/career/advisory/task-oversight/');
 export const getAdvisoryDailyUpdates = () => adminFetch('/api/career/advisory/daily-updates/');

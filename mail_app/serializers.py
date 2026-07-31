@@ -1,0 +1,108 @@
+from django.contrib.auth import get_user_model
+from rest_framework import serializers
+
+from .models import Mailbox, MailboxGrant, MailMessage, MailAuditLog
+
+
+def _user_label(user_id):
+    """auth.User lives in the `default` DB while these models live in turso_db, so
+    resolve with a separate query — never select_related across the boundary."""
+    if not user_id:
+        return ''
+    User = get_user_model()
+    u = User.objects.filter(pk=user_id).only('username', 'first_name', 'last_name').first()
+    if not u:
+        return ''
+    return (u.get_full_name() or u.username or '').strip()
+
+
+class MailboxSerializer(serializers.ModelSerializer):
+    has_access_password = serializers.BooleanField(read_only=True)
+    owner_name = serializers.SerializerMethodField()
+    grant_count = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Mailbox
+        fields = [
+            'id', 'kind', 'address', 'display_name', 'avatar_url',
+            'member', 'user', 'owner_name',
+            'is_active', 'is_archived', 'daily_send_limit',
+            'has_access_password', 'grant_count', 'unread_count',
+            'created_at', 'updated_at',
+        ]
+        # `user` IS writable: a superadmin picks which portal account owns the box.
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_address(self, value):
+        return (value or '').strip().lower()
+
+    def get_owner_name(self, obj):
+        if obj.member_id:
+            return getattr(obj.member, 'candidate_name', '') or ''
+        return _user_label(obj.user_id)
+
+    def get_grant_count(self, obj):
+        return obj.grants.count()
+
+    def get_unread_count(self, obj):
+        return obj.messages.filter(direction='IN', read_at__isnull=True,
+                                   is_deleted=False).count()
+
+
+class MailMessageSerializer(serializers.ModelSerializer):
+    is_read = serializers.BooleanField(read_only=True)
+    sent_by_name = serializers.SerializerMethodField()
+    mailbox_address = serializers.CharField(source='mailbox.address', read_only=True)
+
+    class Meta:
+        model = MailMessage
+        fields = [
+            'id', 'mailbox', 'mailbox_address', 'direction', 'peer', 'to', 'cc',
+            'subject', 'body_text', 'body_html', 'snippet',
+            'message_id', 'in_reply_to', 'thread_key',
+            'status', 'error', 'sent_by_name', 'is_read', 'read_at',
+            'is_deleted', 'spam_verdict', 'virus_verdict',
+            'published_at', 'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_sent_by_name(self, obj):
+        return _user_label(obj.sent_by_user_id)
+
+
+class MailMessageListSerializer(MailMessageSerializer):
+    """Lighter payload for list views — no full bodies."""
+
+    class Meta(MailMessageSerializer.Meta):
+        fields = [
+            f for f in MailMessageSerializer.Meta.fields
+            if f not in ('body_text', 'body_html')
+        ]
+        read_only_fields = fields
+
+
+class MailboxGrantSerializer(serializers.ModelSerializer):
+    user_name = serializers.SerializerMethodField()
+    granted_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MailboxGrant
+        fields = ['id', 'mailbox', 'user', 'user_name', 'granted_by_name', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def get_user_name(self, obj):
+        return _user_label(obj.user_id)
+
+    def get_granted_by_name(self, obj):
+        return _user_label(obj.granted_by_user_id)
+
+
+class MailAuditLogSerializer(serializers.ModelSerializer):
+    mailbox_address = serializers.CharField(source='mailbox.address', read_only=True)
+
+    class Meta:
+        model = MailAuditLog
+        fields = ['id', 'actor_name', 'action', 'mailbox', 'mailbox_address',
+                  'message', 'note', 'created_at']
+        read_only_fields = fields

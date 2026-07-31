@@ -75,6 +75,7 @@ urlpatterns = [
     path('api/learn/', include('learn_app.urls')),
     path('api/docs/', include('docs_app.urls')),
     path('api/nimble/', include('nimble_app.urls')),
+    path('api/mail/', include('mail_app.urls')),
     path('api/media/upload/', MediaUploadView.as_view(), name='media_upload'),
     path('api/media/upload-file/', DocumentUploadView.as_view(), name='media_upload_file'),
     path('api/media/images/', CloudinaryImageListView.as_view(), name='media_images'),

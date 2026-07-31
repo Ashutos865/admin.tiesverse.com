@@ -73,6 +73,10 @@ const ManageLearning = lazy(() => import('./pages/Learn/ManageLearning.jsx'));
 const TiesDocs = lazy(() => import('./pages/Docs/TiesDocs.jsx'));
 // Nimble Monitor
 const NimbleMonitor = lazy(() => import('./pages/Nimble/NimbleMonitor.jsx'));
+
+// TIES Mail
+const MailApp = lazy(() => import('./pages/Mail/MailApp.jsx'));
+const MailAdmin = lazy(() => import('./pages/Mail/MailAdmin.jsx'));
 const MyWork = lazy(() => import('./pages/MyWork/MyWork.jsx'));
 const AdvisoryPanel = lazy(() => import('./pages/Advisory/AdvisoryPanel.jsx'));
 const TechnicalDashboard = lazy(() => import('./pages/Technical/TechnicalDashboard.jsx'));
@@ -160,6 +164,8 @@ function App() {
               {/* TIES Docs Route */}
               <Route path="/docs" element={<TiesDocs />} />
               <Route path="/nimble/monitor" element={<NimbleMonitor />} />
+              <Route path="/mail" element={<MailApp />} />
+              <Route path="/mail/admin" element={<MailAdmin />} />
 
               {/* Accounts Routes */}
               <Route path="/accounts/users" element={<UserManagement />} />

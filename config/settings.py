@@ -100,6 +100,7 @@ INSTALLED_APPS = [
     'learn_app',
     'docs_app',
     'nimble_app',
+    'mail_app',
 ]
 
 REST_FRAMEWORK = {
@@ -275,6 +276,11 @@ AWS_SES_ACCESS_KEY_ID = os.environ.get('AWS_SES_ACCESS_KEY_ID', '')
 AWS_SES_SECRET_ACCESS_KEY = os.environ.get('AWS_SES_SECRET_ACCESS_KEY', '')
 AWS_SES_REGION = os.environ.get('AWS_SES_REGION', 'ap-south-1')
 SES_FROM_EMAIL = os.environ.get('SES_FROM_EMAIL', 'noreply@tiesverse.com')
+
+# TIES Mail (mail.tiesverse.com). Person-to-person portal mail is tagged with its
+# own SES configuration set so its reputation/metrics stay separate from
+# transactional mail (offer letters, certificates). Optional — blank = unset.
+SES_PORTAL_MAIL_CONFIG_SET = os.environ.get('SES_PORTAL_MAIL_CONFIG_SET', '')
 
 # Developer/infra dashboard — only these emails (plus superusers) can see /technical
 DEVELOPER_EMAILS = [

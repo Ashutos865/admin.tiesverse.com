@@ -3,7 +3,7 @@ class AppRouter:
     A router to control all database operations on models in the
     tiesverse_app, career_app, webinar_app, learn_app, docs_app, and nimble_app applications.
     """
-    route_app_labels = {'tiesverse_app', 'career_app', 'webinar_app', 'learn_app', 'docs_app', 'nimble_app'}
+    route_app_labels = {'tiesverse_app', 'career_app', 'webinar_app', 'learn_app', 'docs_app', 'nimble_app', 'mail_app'}
 
     def db_for_read(self, model, **hints):
         if model._meta.app_label in self.route_app_labels:

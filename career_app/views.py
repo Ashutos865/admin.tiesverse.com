@@ -1012,6 +1012,8 @@ class MeView(APIView):
         article_tier, _ = access.get_article_access(request.user)
         # Nimble Monitor portal access tier: 'full' | 'none'.
         nimble_tier, _ = access.get_nimble_access(request.user)
+        # TIES Mail: 'admin' | 'user' | 'none', plus the addresses they can open.
+        mail_tier, mailboxes = access.get_mail_access(request.user)
         # Can this user manage others' article access (open the Manage-access panel)?
         can_manage_articles = bool(
             request.user.is_superuser
@@ -1033,6 +1035,8 @@ class MeView(APIView):
             'is_member': member is not None,
             'article_access': article_tier,       # 'full' | 'draft' | 'none'
             'nimble_access': nimble_tier,          # 'full' | 'none'
+            'mail_access': mail_tier,              # 'admin' | 'user' | 'none'
+            'mail_addresses': [b.address for b in mailboxes],
             'can_manage_articles': can_manage_articles,
             'member': OnboardingSubmissionSerializer(member).data if member else None,
             'led_departments': sorted(access.led_department_names(member)) if member else [],

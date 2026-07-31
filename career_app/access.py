@@ -181,6 +181,31 @@ def get_nimble_access(user):
     return ('none', member)
 
 
+def get_mail_access(user):
+    """Classify a user's access to TIES Mail (mail.tiesverse.com).
+
+    Returns (tier, mailboxes) where tier is:
+      'admin' -> superuser: administers AND can oversee every mailbox (audited).
+      'user'  -> holds an active PERSONAL mailbox and/or grants to SHARED ones.
+      'none'  -> no mailbox; the Mail portal/button stays hidden.
+
+    Unlike the department gates, this is driven purely by mailbox assignment: a
+    superadmin hands someone a mailbox and they get access — no department, role
+    or permission needed. `is_superuser` is a ROLE check, so promoting a colleague
+    to superadmin immediately gives them mail administration.
+    """
+    if not (user and getattr(user, 'is_authenticated', False)):
+        return ('none', [])
+    try:
+        from mail_app.services import mailboxes_for_user
+        boxes = list(mailboxes_for_user(user))
+    except Exception:  # noqa: BLE001 — mail must never break /me for everyone else
+        boxes = []
+    if getattr(user, 'is_superuser', False):
+        return ('admin', boxes)
+    return ('user', boxes) if boxes else ('none', [])
+
+
 def get_access_scope(user):
     """Return (scope, member) — scope in {'all', 'team', 'self', 'none'}."""
     if getattr(user, 'is_superuser', False):

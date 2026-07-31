@@ -37,6 +37,8 @@ def render_email(
     info_rows: list[tuple[str, str]] | None = None,
     footer_note: str | None = None,
     preheader: str | None = None,
+    *,
+    repliable: bool = False,
 ):
     """Return (html, text) for a branded transactional email.
 
@@ -44,6 +46,8 @@ def render_email(
     - info_rows: list of (label, value) shown in a bordered key/value box
       (used for credentials, certificate IDs, etc.).
     - button_label / button_url: optional call-to-action button.
+    - repliable: automated mail says "please do not reply"; person-to-person mail
+      sent from a real portal mailbox must NOT, since replies are the point.
     """
     paragraphs = paragraphs or []
     body_html = ''.join(
@@ -93,6 +97,12 @@ def render_email(
             f'<div style="display:none;max-height:0;overflow:hidden;opacity:0;">{preheader}</div>'
         )
 
+    _footer_line = (
+        f'© {BRAND_NAME}'
+        if repliable
+        else f'© {BRAND_NAME}. This is an automated message — please do not reply.'
+    )
+
     html = f"""\
 <!doctype html>
 <html>
@@ -112,7 +122,7 @@ def render_email(
 {footer_html}
 </td></tr>
 <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #eef0f3;">
-<p style="margin:0;font-size:12px;color:#9ca3af;">© {BRAND_NAME}. This is an automated message — please do not reply.</p>
+<p style="margin:0;font-size:12px;color:#9ca3af;">{_footer_line}</p>
 </td></tr>
 </table>
 </td></tr>
@@ -168,6 +178,11 @@ def send_email(
     attachments: list[tuple[str, bytes, str]] | None = None,
     enabled: bool = True,
     detailed: bool = False,
+    *,
+    reply_to: str | None = None,
+    cc: list[str] | None = None,
+    headers: dict[str, str] | None = None,
+    configuration_set: str | None = None,
 ):
     """Send one email via AWS SES.
 
@@ -178,6 +193,16 @@ def send_email(
     Returns True if actually sent, False if stubbed (disabled or no creds) or if
     sending soft-failed. Never raises for a missing config — callers can email
     without guarding every call. attachments: list of (filename, bytes, subtype).
+
+    Keyword-only extras (added for TIES Mail; every pre-existing caller keeps its
+    exact behaviour because they all default to None):
+      reply_to          — sets the Reply-To header so replies reach a real mailbox.
+      cc                — extra recipients; they receive the mail AND appear in Cc.
+      headers           — arbitrary extra headers, e.g. a self-issued Message-ID
+                          (needed for reply threading — SES's returned MessageId is
+                          NOT the RFC 5322 Message-ID header).
+      configuration_set — SES configuration set, so person-to-person portal mail
+                          can be tracked/reputation-isolated from transactional mail.
     """
     from_addr = from_email or getattr(settings, 'SES_FROM_EMAIL', 'noreply@tiesverse.com')
     has_creds = bool(
@@ -203,6 +228,16 @@ def send_email(
         msg['Subject'] = subject
         msg['From'] = from_addr
         msg['To'] = to
+        cc_list = [a for a in (cc or []) if a]
+        if cc_list:
+            msg['Cc'] = ', '.join(cc_list)
+        if reply_to:
+            msg['Reply-To'] = reply_to
+        for key, value in (headers or {}).items():
+            if key.lower() in ('subject', 'from', 'to', 'cc'):
+                continue                       # never let extras clobber the envelope
+            del msg[key]                       # avoid duplicate headers on re-set
+            msg[key] = value
 
         alt = MIMEMultipart('alternative')
         alt.attach(MIMEText(text_body or _text_from_html(html_body), 'plain', 'utf-8'))
@@ -220,9 +255,14 @@ def send_email(
             aws_access_key_id=settings.AWS_SES_ACCESS_KEY_ID,
             aws_secret_access_key=settings.AWS_SES_SECRET_ACCESS_KEY,
         )
-        resp = client.send_raw_email(
-            Source=from_addr, Destinations=[to], RawMessage={'Data': msg.as_string()},
-        )
+        send_kwargs = {
+            'Source': from_addr,
+            'Destinations': [to] + cc_list,
+            'RawMessage': {'Data': msg.as_string()},
+        }
+        if configuration_set:
+            send_kwargs['ConfigurationSetName'] = configuration_set
+        resp = client.send_raw_email(**send_kwargs)
         return _ret(True, message_id=(resp or {}).get('MessageId', ''))
     except Exception as exc:  # noqa: BLE001 — email must never break the request
         print(f"[EMAIL ERROR] to={to!r} subject={subject!r}: {exc}")

@@ -39,6 +39,8 @@ export const MeProvider = ({ children }) => {
     articleAccess: me?.article_access || 'none',
     // Nimble Monitor portal access tier: 'full' | 'none'.
     nimbleAccess: me?.nimble_access || 'none',
+    mailAccess: me?.mail_access || 'none',        // 'admin' | 'user' | 'none'
+    mailAddresses: me?.mail_addresses || [],
     // Can this user manage others' article publishing access?
     canManageArticles: Boolean(me?.can_manage_articles),
   };

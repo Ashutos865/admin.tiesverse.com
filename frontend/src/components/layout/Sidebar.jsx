@@ -227,6 +227,17 @@ export const portals = [
     ],
   },
   {
+    key: 'mail',
+    label: 'TIES Mail',
+    icon: Mail,
+    firstPath: '/mail',
+    mailAccess: true,     // anyone a superadmin has given a mailbox (+ superadmins)
+    links: [
+      { name: 'Mailbox', path: '/mail', icon: Mail, mailAccess: true },
+      { name: 'Manage mailboxes', path: '/mail/admin', icon: Shield, superuserOnly: true },
+    ],
+  },
+  {
     key: 'certificates',
     label: 'Certificates & Email',
     icon: Award,
@@ -267,11 +278,12 @@ export const portals = [
 
 const Sidebar = ({ activePortal, isOpen, onClose }) => {
   const { hasAnyPermission, isSuperuser } = usePermissions();
-  const { isMember, isLead, isAdvisory, isDeveloper, scope, articleAccess, nimbleAccess } = useMe();
+  const { isMember, isLead, isAdvisory, isDeveloper, scope, articleAccess, nimbleAccess, mailAccess } = useMe();
   // Content writers/leads (or superusers) may see Articles & Reports.
   const hasArticleAccess = isSuperuser || articleAccess === 'full' || articleAccess === 'draft';
   // Nimble-department members (or superusers/org-wide staff) may see Nimble Monitor.
   const hasNimbleAccess = isSuperuser || nimbleAccess === 'full';
+  const hasMailAccess = isSuperuser || mailAccess === 'admin' || mailAccess === 'user';
 
   // Which portal folder is expanded. Follows the current page by default, but the
   // user can freely open/collapse any folder by clicking its header.
@@ -285,6 +297,7 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
     if (portal.memberOnly) return isMember;
     if (portal.contentAccess) return hasArticleAccess;
     if (portal.nimbleAccess) return hasNimbleAccess;
+    if (portal.mailAccess) return hasMailAccess;
     if (portal.advisoryOnly) return isSuperuser || isAdvisory;
     if (portal.advisoryOrLead) return isSuperuser || isAdvisory || isLead;
     if (portal.perms === null) return isSuperuser;
@@ -295,6 +308,7 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
     if (link.developerOnly) return isDeveloper;
     if (link.contentAccess) return hasArticleAccess;
     if (link.nimbleAccess) return hasNimbleAccess;
+    if (link.mailAccess) return hasMailAccess;
     if (link.superuserOnly) return isSuperuser;
     if (link.advisoryOnly) return isSuperuser || isAdvisory;
     if (link.advisoryOrLead) return isSuperuser || isAdvisory || isLead;
