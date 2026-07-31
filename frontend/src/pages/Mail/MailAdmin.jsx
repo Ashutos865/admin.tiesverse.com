@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Shield, Plus, X, KeyRound, Users, Archive, RefreshCw, Loader2, Mail,
-  History, Trash2,
+  History, Trash2, Search, Check,
 } from 'lucide-react';
 import {
   adminListMailboxes, adminCreateMailbox, adminUpdateMailbox, adminArchiveMailbox,
@@ -204,13 +204,8 @@ export default function MailAdmin() {
             {creating.kind === 'PERSONAL' && (
               <div style={{ marginBottom: 10 }}>
                 <label style={label}>Portal account (who can open it)</label>
-                <select style={input} value={creating.user || ''}
-                  onChange={(e) => setCreating({ ...creating, user: e.target.value })}>
-                  <option value="">— select a user —</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>{u.username}{u.email ? ` (${u.email})` : ''}</option>
-                  ))}
-                </select>
+                <UserPicker users={users} value={creating.user || ''}
+                  onChange={(v) => setCreating({ ...creating, user: v })} />
               </div>
             )}
             <div style={{ marginBottom: 14 }}>
@@ -258,6 +253,99 @@ export default function MailAdmin() {
       )}
 
       <style>{`.spin{animation:tm-spin 1s linear infinite}@keyframes tm-spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+}
+
+/* A type-to-filter user picker. A plain <select> is unusable with 60+ accounts,
+   so this filters as you type and shows the matches as a short list. */
+function UserPicker({ users, value, onChange, placeholder = 'Search by name or email…', exclude = [] }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
+
+  const selected = useMemo(
+    () => users.find((u) => String(u.id) === String(value)) || null,
+    [users, value],
+  );
+
+  const matches = useMemo(() => {
+    const skip = new Set(exclude.map(String));
+    const q = query.trim().toLowerCase();
+    return users
+      .filter((u) => !skip.has(String(u.id)))
+      .filter((u) => !q
+        || (u.username || '').toLowerCase().includes(q)
+        || (u.email || '').toLowerCase().includes(q)
+        || `${u.first_name || ''} ${u.last_name || ''}`.toLowerCase().includes(q))
+      .slice(0, 40);
+  }, [users, query, exclude]);
+
+  // Close when clicking outside.
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  const labelFor = (u) => {
+    const name = `${u.first_name || ''} ${u.last_name || ''}`.trim();
+    return name ? `${name} · ${u.email || u.username}` : (u.email || u.username);
+  };
+
+  return (
+    <div ref={boxRef} style={{ position: 'relative' }}>
+      <div style={{ position: 'relative' }}>
+        <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: 'var(--text-muted)' }} />
+        <input
+          style={{ ...input, paddingLeft: 32 }}
+          value={open ? query : (selected ? labelFor(selected) : '')}
+          placeholder={placeholder}
+          onFocus={() => { setOpen(true); setQuery(''); }}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        />
+        {selected && !open && (
+          <button type="button" title="Clear"
+            onClick={() => { onChange(''); setQuery(''); }}
+            style={{ position: 'absolute', right: 8, top: 8, background: 'none', border: 'none',
+                     color: 'var(--text-muted)', cursor: 'pointer', padding: 3 }}>
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, marginTop: 4,
+          maxHeight: 260, overflowY: 'auto', background: 'var(--surface-container-lowest)',
+          border: '1px solid var(--outline-variant)', borderRadius: 9,
+          boxShadow: '0 10px 30px rgba(0,0,0,.16)',
+        }}>
+          {matches.length === 0 ? (
+            <div style={{ padding: '12px 14px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+              No matching accounts.
+            </div>
+          ) : matches.map((u) => (
+            <button key={u.id} type="button"
+              onClick={() => { onChange(String(u.id)); setOpen(false); setQuery(''); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                padding: '9px 13px', border: 'none', cursor: 'pointer', fontSize: 13,
+                background: String(u.id) === String(value)
+                  ? 'color-mix(in srgb, var(--primary) 10%, transparent)' : 'transparent',
+                color: 'var(--text-main)',
+              }}>
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden',
+                             textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {labelFor(u)}
+              </span>
+              {String(u.id) === String(value) && <Check size={14} style={{ color: 'var(--primary)' }} />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -310,13 +398,12 @@ function GrantsModal({ box, users, onClose, flash }) {
         Everyone listed here can read this mailbox and send from it. Each send is
         recorded against the person who sent it.
       </div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-        <select style={input} value={pick} onChange={(e) => setPick(e.target.value)}>
-          <option value="">— add a person —</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>{u.username}{u.email ? ` (${u.email})` : ''}</option>
-          ))}
-        </select>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1 }}>
+          <UserPicker users={users} value={pick} onChange={setPick}
+            placeholder="Search someone to add…"
+            exclude={(rows || []).map((r) => r.user)} />
+        </div>
         <button style={btnPrimary} onClick={add} disabled={!pick}><Plus size={14} /></button>
       </div>
       {rows === null ? <div style={{ color: 'var(--text-muted)' }}>Loading…</div>

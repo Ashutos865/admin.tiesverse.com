@@ -111,7 +111,7 @@ def send_mail_message(mailbox, *, to, subject, body_text, cc=None, actor=None,
     The caller is responsible for permission checks; this enforces the mailbox's
     own limits (active, daily cap) and validates recipients.
     """
-    from config.email_utils import render_email, send_email
+    from config.email_utils import render_personal_email, send_email
 
     if not mailbox or not mailbox.usable:
         return None, 'This mailbox is not active.'
@@ -137,12 +137,12 @@ def send_mail_message(mailbox, *, to, subject, body_text, cc=None, actor=None,
         headers['In-Reply-To'] = in_reply_to
         headers['References'] = in_reply_to
 
-    paragraphs = [
-        line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-        for line in body_text.split('\n') if line.strip()
-    ] or ['&nbsp;']
-    html_body, text_body = render_email(
-        heading=subject, paragraphs=paragraphs, repliable=True,
+    # A message a person typed should look like a normal email, not a system
+    # notice — no banner, no card, just the text plus a small signature.
+    html_body, text_body = render_personal_email(
+        body_text,
+        sender_name=(mailbox.display_name or '').strip(),
+        sender_address=mailbox.address,
     )
 
     msg = MailMessage.objects.create(

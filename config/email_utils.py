@@ -15,8 +15,9 @@ import re
 from django.conf import settings
 
 BRAND_NAME = 'Tiesverse'
-BRAND_PRIMARY = '#4338ca'
-BRAND_PRIMARY_DARK = '#3730a3'
+# TIES orange — matches the website, admin portal and TIES Mail.
+BRAND_PRIMARY = '#fe7a00'
+BRAND_PRIMARY_DARK = '#d96900'
 
 
 def _text_from_html(html: str) -> str:
@@ -131,6 +132,61 @@ def render_email(
 </html>"""
 
     return html, _text_from_html(html)
+
+
+def render_personal_email(body_text: str, sender_name: str = '', sender_address: str = ''):
+    """Return (html, text) for a person-to-person message sent from a TIES Mail
+    mailbox.
+
+    Deliberately NOT the transactional template: a message someone typed should
+    read like a normal email, not a system notice. No header banner, no card, no
+    "do not reply" — just the text, then a small signature rule identifying the
+    sender and the organisation.
+    """
+    body_text = body_text or ''
+    paragraphs = ''.join(
+        '<p style="margin:0 0 14px;font-size:15px;line-height:1.65;color:#1f2937;">'
+        f'{_escape(line)}</p>'
+        for line in body_text.split('\n') if line.strip()
+    ) or '<p style="margin:0;">&nbsp;</p>'
+
+    who = _escape(sender_name.strip()) if sender_name else ''
+    addr = _escape(sender_address.strip()) if sender_address else ''
+    sig_bits = []
+    if who:
+        sig_bits.append(f'<span style="font-weight:600;color:#374151;">{who}</span>')
+    sig_bits.append(f'<span style="color:{BRAND_PRIMARY};font-weight:600;">{BRAND_NAME}</span>')
+    signature = (
+        '<div style="margin-top:26px;padding-top:14px;border-top:1px solid #e5e7eb;'
+        'font-size:12.5px;line-height:1.6;color:#9ca3af;">'
+        + ' · '.join(sig_bits)
+        + (f'<br><a href="mailto:{addr}" style="color:#9ca3af;text-decoration:none;">{addr}</a>'
+           if addr else '')
+        + '</div>'
+    )
+
+    html = f"""\
+<!doctype html>
+<html>
+<body style="margin:0;padding:0;background:#ffffff;">
+<div style="max-width:620px;margin:0 auto;padding:24px 20px;
+     font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+{paragraphs}
+{signature}
+</div>
+</body>
+</html>"""
+
+    text = body_text.rstrip()
+    if who or addr:
+        text += '\n\n--\n' + ' · '.join(filter(None, [sender_name.strip(), BRAND_NAME]))
+        if addr:
+            text += f'\n{sender_address.strip()}'
+    return html, text
+
+
+def _escape(s: str) -> str:
+    return (str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
 
 
 def list_ses_senders():
