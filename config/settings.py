@@ -75,6 +75,9 @@ CORS_ALLOWED_ORIGINS = [
     "https://tiesverse.com",
     "https://www.tiesverse.com",
     "https://docs.tiesverse.com",
+    "https://mail.tiesverse.com",     # TIES Mail webmail (standalone frontend)
+    "http://localhost:5176",          # …its dev server
+    "http://127.0.0.1:5176",
 ] + _cors_extra
 
 # Allow the landing site to POST to the public registration endpoint

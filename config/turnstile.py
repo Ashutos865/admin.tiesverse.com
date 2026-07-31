@@ -17,7 +17,10 @@ _SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
 # Origins whose logins skip the Turnstile check (they have no widget). The docs
 # site uses the same accounts; the password stays the real factor. Extendable
 # via the TURNSTILE_EXEMPT_ORIGINS env/setting (comma-separated).
-_DEFAULT_EXEMPT = ('https://docs.tiesverse.com',)
+_DEFAULT_EXEMPT = (
+    'https://docs.tiesverse.com',
+    'https://mail.tiesverse.com',     # TIES Mail webmail — same accounts, no widget
+)
 
 
 def origin_exempt_from_turnstile(request):

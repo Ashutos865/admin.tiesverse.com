@@ -1,15 +1,22 @@
 import { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, HelpCircle, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
+import { ArrowLeft, HelpCircle, LogOut, Mail, Menu, Moon, Search, Sun } from 'lucide-react';
 import { AuthContext } from '../../context/AuthContext';
 import { ThemeContext } from '../../context/ThemeContext';
+import { useMe } from '../../context/MeContext';
 import NotificationsBell from './NotificationsBell.jsx';
+
+// Standalone webmail. Overridable so a dev build can point at a local instance.
+const MAIL_SITE_URL = import.meta.env.VITE_MAIL_URL || 'https://mail.tiesverse.com';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '');
 
 const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
   const { user, profile, logoutUser } = useContext(AuthContext);
   const { theme, toggleTheme } = useContext(ThemeContext);
+  // Only people a superadmin has given a mailbox see the Mail shortcut.
+  const { mailAccess } = useMe();
+  const hasMail = mailAccess === 'admin' || mailAccess === 'user';
   const navigate = useNavigate();
 
   const displayName = profile?.display_name || user?.username || 'Admin';
@@ -61,6 +68,18 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
             <span className="palette-trigger-label" style={paletteBtnText}>Search</span>
             <kbd className="palette-trigger-label" style={paletteBtnKbd}>{isMac ? '⌘' : 'Ctrl'} K</kbd>
           </button>
+        )}
+        {hasMail && (
+          <a
+            href={MAIL_SITE_URL}
+            target="_blank"
+            rel="noreferrer"
+            style={navBtn}
+            title="Open TIES Mail"
+            aria-label="Open TIES Mail"
+          >
+            <Mail size={17} />
+          </a>
         )}
         <NotificationsBell />
         <button
