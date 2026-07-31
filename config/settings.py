@@ -281,6 +281,10 @@ SES_FROM_EMAIL = os.environ.get('SES_FROM_EMAIL', 'noreply@tiesverse.com')
 # own SES configuration set so its reputation/metrics stay separate from
 # transactional mail (offer letters, certificates). Optional — blank = unset.
 SES_PORTAL_MAIL_CONFIG_SET = os.environ.get('SES_PORTAL_MAIL_CONFIG_SET', '')
+# Inbound: SES writes received mail here; `ingest_portal_mail` drains it into the
+# portal and deletes each object (the bucket is a staging area, not storage).
+SES_INBOUND_BUCKET = os.environ.get('SES_INBOUND_BUCKET', 'tiesverse-portal-mail')
+SES_INBOUND_PREFIX = os.environ.get('SES_INBOUND_PREFIX', 'inbox/')
 
 # Developer/infra dashboard — only these emails (plus superusers) can see /technical
 DEVELOPER_EMAILS = [
