@@ -134,6 +134,37 @@ def get_article_access(user):
     return ('none', member)
 
 
+def get_content_calendar_access(user):
+    """Access to the Content Calendar (planning board), returning (tier, member).
+
+    Built on `get_article_access` so the Content department is defined in exactly
+    one place, with one deliberate difference: the article gate is about who may
+    PUBLISH to the live website, so it excludes org-wide staff. The calendar is
+    an internal planning tool, so HR/admin/advisory can see it like they see
+    every other department's work.
+
+      'full'   -> create/edit/delete anything, reassign, delete items
+      'member' -> Content-department member: create, and edit items they are on
+      'none'   -> no access
+    """
+    if getattr(user, 'is_superuser', False):
+        return ('full', None)
+
+    tier, member = get_article_access(user)
+    if tier == 'full':
+        return ('full', member)
+    if tier == 'draft':
+        return ('member', member)
+
+    # Org-wide staff (HR / admin / advisory) get read-write oversight.
+    if member is not None and (
+        (member.portal_role or '') in ORG_WIDE_ROLES
+        or (user and user.groups.filter(name__in=ORG_WIDE_GROUPS).exists())
+    ):
+        return ('full', member)
+    return ('none', member)
+
+
 NIMBLE_DEPARTMENT = 'nimble'   # matched case-insensitively against assigned_departments
 
 

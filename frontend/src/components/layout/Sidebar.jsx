@@ -238,6 +238,18 @@ export const portals = [
     ],
   },
   {
+    key: 'content-calendar',
+    label: 'Content Calendar',
+    icon: CalendarDays,
+    firstPath: '/content/calendar',
+    // NOTE: `calendarAccess`, not `contentAccess` — the latter already means
+    // "may write WordPress articles" on the Articles portal above.
+    calendarAccess: true,
+    links: [
+      { name: 'Calendar', path: '/content/calendar', icon: CalendarDays, calendarAccess: true },
+    ],
+  },
+  {
     key: 'certificates',
     label: 'Certificates & Email',
     icon: Award,
@@ -278,12 +290,13 @@ export const portals = [
 
 const Sidebar = ({ activePortal, isOpen, onClose }) => {
   const { hasAnyPermission, isSuperuser } = usePermissions();
-  const { isMember, isLead, isAdvisory, isDeveloper, scope, articleAccess, nimbleAccess, mailAccess } = useMe();
+  const { isMember, isLead, isAdvisory, isDeveloper, scope, articleAccess, nimbleAccess, mailAccess, contentAccess } = useMe();
   // Content writers/leads (or superusers) may see Articles & Reports.
   const hasArticleAccess = isSuperuser || articleAccess === 'full' || articleAccess === 'draft';
   // Nimble-department members (or superusers/org-wide staff) may see Nimble Monitor.
   const hasNimbleAccess = isSuperuser || nimbleAccess === 'full';
   const hasMailAccess = isSuperuser || mailAccess === 'admin' || mailAccess === 'user';
+  const hasCalendarAccess = isSuperuser || contentAccess === 'full' || contentAccess === 'member';
 
   // Which portal folder is expanded. Follows the current page by default, but the
   // user can freely open/collapse any folder by clicking its header.
@@ -298,6 +311,7 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
     if (portal.contentAccess) return hasArticleAccess;
     if (portal.nimbleAccess) return hasNimbleAccess;
     if (portal.mailAccess) return hasMailAccess;
+    if (portal.calendarAccess) return hasCalendarAccess;
     if (portal.advisoryOnly) return isSuperuser || isAdvisory;
     if (portal.advisoryOrLead) return isSuperuser || isAdvisory || isLead;
     if (portal.perms === null) return isSuperuser;
@@ -309,6 +323,7 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
     if (link.contentAccess) return hasArticleAccess;
     if (link.nimbleAccess) return hasNimbleAccess;
     if (link.mailAccess) return hasMailAccess;
+    if (link.calendarAccess) return hasCalendarAccess;
     if (link.superuserOnly) return isSuperuser;
     if (link.advisoryOnly) return isSuperuser || isAdvisory;
     if (link.advisoryOrLead) return isSuperuser || isAdvisory || isLead;

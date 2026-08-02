@@ -40,6 +40,7 @@ export const MeProvider = ({ children }) => {
     // Nimble Monitor portal access tier: 'full' | 'none'.
     nimbleAccess: me?.nimble_access || 'none',
     mailAccess: me?.mail_access || 'none',        // 'admin' | 'user' | 'none'
+    contentAccess: me?.content_access || 'none',  // 'full' | 'member' | 'none'
     mailAddresses: me?.mail_addresses || [],
     // Can this user manage others' article publishing access?
     canManageArticles: Boolean(me?.can_manage_articles),

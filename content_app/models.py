@@ -1,0 +1,160 @@
+"""Content Calendar — the Content department's planning workspace.
+
+A `ContentItem` is one planned piece of content: the row you see in the table,
+the card you drag on the Kanban board, and the chip you drag on the calendar.
+
+Two dates do different jobs and must not be conflated:
+  * `due_date`     — when the writer/designer owes the work
+  * `release_date` — when it goes out; this is what the calendar is keyed on
+
+Each item may own a real `career_app.Task`, so assigned work shows up in the
+person's normal task list instead of living in a second, invisible tracker.
+Models live on turso_db (see config/routers.py); the FK to auth.User therefore
+uses db_constraint=False, and is never select_related across the DB boundary.
+"""
+from django.conf import settings
+from django.db import models
+
+# Kanban columns, in board order. Deliberately richer than Task.STATUS_CHOICES —
+# content has production stages a generic task does not; services.py maps between
+# the two so the linked task still reads sensibly in the task tracker.
+STATUS_IDEA = 'idea'
+STATUS_SCRIPTING = 'scripting'
+STATUS_DESIGN = 'design'
+STATUS_EDITING = 'editing'
+STATUS_REVIEW = 'review'
+STATUS_SCHEDULED = 'scheduled'
+STATUS_PUBLISHED = 'published'
+STATUS_CHOICES = [
+    (STATUS_IDEA, 'Idea'),
+    (STATUS_SCRIPTING, 'Scripting'),
+    (STATUS_DESIGN, 'Design'),
+    (STATUS_EDITING, 'Editing'),
+    (STATUS_REVIEW, 'Review'),
+    (STATUS_SCHEDULED, 'Scheduled'),
+    (STATUS_PUBLISHED, 'Published'),
+]
+BOARD_ORDER = [s for s, _ in STATUS_CHOICES]
+
+CONTENT_TYPE_CHOICES = [
+    ('carousel', 'Carousel / Static'),
+    ('reel', 'Reel / Short'),
+    ('story', 'Story'),
+    ('article', 'Article'),
+    ('video', 'Long-form Video'),
+    ('podcast', 'Podcast'),
+    ('report', 'Report'),
+    ('other', 'Other'),
+]
+
+PRIORITY_CHOICES = [
+    ('low', 'Low'),
+    ('medium', 'Medium'),
+    ('high', 'High'),
+    ('urgent', 'Urgent'),
+]
+
+EFFORT_CHOICES = [
+    ('s', 'Small'),
+    ('m', 'Medium'),
+    ('l', 'Large'),
+]
+
+# Offered in the UI; stored as a JSON list so a new platform needs no migration.
+PLATFORM_OPTIONS = [
+    'Instagram', 'LinkedIn', 'YouTube', 'X', 'Facebook',
+    'Website', 'Substack', 'WhatsApp', 'Threads', 'Other',
+]
+
+
+class ContentItem(models.Model):
+    brand = models.CharField(max_length=200, blank=True)
+    title = models.CharField(max_length=500)
+    content_type = models.CharField(
+        max_length=20, choices=CONTENT_TYPE_CHOICES, default='other')
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_IDEA, db_index=True)
+
+    # Two independent assignment tracks — the writing side and the design side
+    # are usually different people and are scheduled separately.
+    content_assignees = models.ManyToManyField(
+        'career_app.OnboardingSubmission', blank=True,
+        related_name='content_items_writing')
+    graphics_assignees = models.ManyToManyField(
+        'career_app.OnboardingSubmission', blank=True,
+        related_name='content_items_graphics')
+
+    doc_url = models.URLField(max_length=1000, blank=True)      # Google Doc / design file
+    extra_links = models.JSONField(default=list, blank=True)    # [{label, url}, …]
+
+    due_date = models.DateField(null=True, blank=True)          # work owed by
+    release_date = models.DateField(null=True, blank=True, db_index=True)  # drives the calendar
+
+    platforms = models.JSONField(default=list, blank=True)      # ['Instagram', …]
+    posting_url = models.URLField(max_length=1000, blank=True)  # where it went live
+
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
+    effort = models.CharField(max_length=1, choices=EFFORT_CHOICES, blank=True)
+    notes = models.TextField(blank=True)
+
+    # The linked task. SET_NULL so deleting a task never destroys the content row.
+    task = models.ForeignKey(
+        'career_app.Task', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='content_items')
+
+    # Manual position within a Kanban column (lower first).
+    order = models.PositiveIntegerField(default=0)
+
+    created_by_admin = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        db_constraint=False, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'content_items'
+        ordering = ['order', '-created_at']
+        indexes = [
+            models.Index(fields=['status', 'order']),
+            models.Index(fields=['release_date']),
+            models.Index(fields=['due_date']),
+        ]
+
+    def __str__(self):
+        return f'{self.title} [{self.status}]'
+
+
+class ContentActivity(models.Model):
+    """Audit trail + lightweight comments, shown in the detail panel.
+
+    Every status move, reschedule and edit writes one row, so a piece of content
+    carries its own history — who moved it, when, and from what.
+    """
+    VERB_CHOICES = [
+        ('created', 'Created'),
+        ('updated', 'Updated'),
+        ('status_changed', 'Status changed'),
+        ('rescheduled', 'Rescheduled'),
+        ('assigned', 'Assignees changed'),
+        ('commented', 'Commented'),
+        ('task_linked', 'Task linked'),
+        ('deleted', 'Deleted'),
+    ]
+
+    item = models.ForeignKey(
+        ContentItem, on_delete=models.CASCADE, related_name='activity')
+    actor_admin = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        db_constraint=False, related_name='+')
+    actor_name = models.CharField(max_length=255, blank=True)
+    verb = models.CharField(max_length=20, choices=VERB_CHOICES)
+    detail = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'content_activity'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['item', '-created_at'])]
+
+    def __str__(self):
+        return f'{self.verb} · {self.item_id}'

@@ -720,3 +720,15 @@ export const pollMonitorNow       = (source)    => adminFetch('/api/nimble/poll-
 export const getMonitorWeeklyReport = ()        => adminFetch('/api/nimble/weekly-report');
 export const sendMonitorWeeklyReport = ()       => adminFetch('/api/nimble/weekly-report/send', 'POST');
 export const monitorCsvUrl        = ()          => `${API_URL}/api/nimble/export/csv/`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTENT CALENDAR (content_app) — the Content team's planning workspace.
+// ─────────────────────────────────────────────────────────────────────────────
+export const getContentBoard       = (mine)       => adminFetch(`/api/content/board${mine ? '?mine=1' : ''}`);
+export const listContentItems      = (params = '') => adminFetch(`/api/content/items${params ? `?${params}` : ''}`);
+export const createContentItem     = (data)       => adminFetch('/api/content/items', 'POST', data);
+export const updateContentItem     = (id, data)   => adminFetch(`/api/content/items/${id}`, 'PATCH', data);
+export const deleteContentItem     = (id)         => adminFetch(`/api/content/items/${id}`, 'DELETE');
+export const moveContentItem       = (id, data)   => adminFetch(`/api/content/items/${id}/move`, 'POST', data);
+export const rescheduleContentItem = (id, date)   => adminFetch(`/api/content/items/${id}/reschedule`, 'POST', { release_date: date });
+export const getContentActivity    = (id)         => adminFetch(`/api/content/items/${id}/activity`);

@@ -104,6 +104,7 @@ INSTALLED_APPS = [
     'docs_app',
     'nimble_app',
     'mail_app',
+    'content_app',
 ]
 
 REST_FRAMEWORK = {

@@ -77,6 +77,9 @@ const NimbleMonitor = lazy(() => import('./pages/Nimble/NimbleMonitor.jsx'));
 // TIES Mail
 const MailApp = lazy(() => import('./pages/Mail/MailApp.jsx'));
 const MailAdmin = lazy(() => import('./pages/Mail/MailAdmin.jsx'));
+
+// Content Calendar
+const ContentCalendar = lazy(() => import('./pages/Content/ContentCalendar.jsx'));
 const MyWork = lazy(() => import('./pages/MyWork/MyWork.jsx'));
 const AdvisoryPanel = lazy(() => import('./pages/Advisory/AdvisoryPanel.jsx'));
 const TechnicalDashboard = lazy(() => import('./pages/Technical/TechnicalDashboard.jsx'));
@@ -166,6 +169,7 @@ function App() {
               <Route path="/nimble/monitor" element={<NimbleMonitor />} />
               <Route path="/mail" element={<MailApp />} />
               <Route path="/mail/admin" element={<MailAdmin />} />
+              <Route path="/content/calendar" element={<ContentCalendar />} />
 
               {/* Accounts Routes */}
               <Route path="/accounts/users" element={<UserManagement />} />
