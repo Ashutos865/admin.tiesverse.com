@@ -106,7 +106,7 @@ class ContentItemViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = (ContentItem.objects
-              .prefetch_related('content_assignees', 'graphics_assignees')
+              .prefetch_related('content_assignees', 'graphics_assignees', 'tasks', 'tasks__assigned_to')
               .all())
         p = self.request.query_params
 
@@ -250,7 +250,7 @@ class ContentBoardView(APIView):
         tier, member = _tier(request.user)
 
         qs = (ContentItem.objects
-              .prefetch_related('content_assignees', 'graphics_assignees')
+              .prefetch_related('content_assignees', 'graphics_assignees', 'tasks', 'tasks__assigned_to')
               .all())
         if request.query_params.get('mine') in ('1', 'true', 'yes') and member:
             qs = qs.filter(Q(content_assignees__id=member.id)

@@ -65,16 +65,21 @@ class ContentItemSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'task', 'created_at', 'updated_at']
 
     def get_task_detail(self, obj):
-        if not obj.task_id:
+        """Every linked task — one per assignee, so the panel can show who owes
+        what rather than only the first person's."""
+        rows = []
+        for t in obj.tasks.all():
+            rows.append({
+                'id': t.id, 'status': t.status, 'priority': t.priority,
+                'due_date': t.due_date, 'progress': t.progress,
+                'track': t.assigned_to_department or '',
+                'assigned_to_name': (getattr(t.assigned_to, 'candidate_name', '')
+                                     if t.assigned_to_id else ''),
+            })
+        if not rows:
             return None
-        t = obj.task
-        if t is None:
-            return None
-        return {
-            'id': t.id, 'status': t.status, 'priority': t.priority,
-            'due_date': t.due_date, 'progress': t.progress,
-            'assigned_to_name': getattr(t.assigned_to, 'candidate_name', '') if t.assigned_to_id else '',
-        }
+        rows.sort(key=lambda r: (r['track'] != 'Content', r['assigned_to_name']))
+        return rows
 
     def get_is_overdue(self, obj):
         """Past its due date and not finished — drives the red marker in the UI."""

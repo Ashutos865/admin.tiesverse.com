@@ -392,26 +392,43 @@ export default function ContentPanel({
             value={form.notes} disabled={!canEdit} onChange={(e) => set('notes', e.target.value)} />
         </div>
 
-        {/* linked task */}
-        {!isNew && item?.task_detail && (
+        {/* linked tasks — one per assignee, so everyone sees their own work */}
+        {!isNew && Array.isArray(item?.task_detail) && item.task_detail.length > 0 && (
           <div style={{
             border: '1px solid var(--outline-variant)', borderRadius: 9, padding: 12,
             marginBottom: 14, background: 'var(--surface-container-low)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 7 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
               <ListChecks size={14} style={{ color: 'var(--primary)' }} />
-              <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-main)' }}>Linked task</span>
+              <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-main)' }}>
+                Linked tasks ({item.task_detail.length})
+              </span>
               <a href="/hr/tasks" style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--primary)' }}>
                 Open in Tasks
               </a>
             </div>
-            <div style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-              #{item.task_detail.id} · <b style={{ color: 'var(--text-main)' }}>{item.task_detail.status}</b>
-              {item.task_detail.assigned_to_name && <> · {item.task_detail.assigned_to_name}</>}
-              {item.task_detail.due_date && <> · due {item.task_detail.due_date}</>}
-            </div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 6 }}>
-              Moving this item to Published marks the task Done, and vice-versa.
+            {item.task_detail.map((t) => (
+              <div key={t.id} style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0',
+                fontSize: 12.5, color: 'var(--text-muted)',
+              }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 4,
+                  background: 'color-mix(in srgb, var(--primary) 12%, transparent)',
+                  color: 'var(--primary)',
+                }}>{t.track || '—'}</span>
+                <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>
+                  {t.assigned_to_name || 'Unassigned'}
+                </span>
+                <span style={{ marginLeft: 'auto' }}>
+                  #{t.id} · <b style={{ color: 'var(--text-main)' }}>{t.status}</b>
+                </span>
+              </div>
+            ))}
+            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 8,
+                          paddingTop: 8, borderTop: '1px solid var(--outline-variant)' }}>
+              Each assignee gets their own task. Publishing marks them all done; the item
+              only auto-publishes once everyone has finished.
             </div>
           </div>
         )}

@@ -97,10 +97,16 @@ class ContentItem(models.Model):
     effort = models.CharField(max_length=1, choices=EFFORT_CHOICES, blank=True)
     notes = models.TextField(blank=True)
 
-    # The linked task. SET_NULL so deleting a task never destroys the content row.
+    # Linked tasks — ONE PER ASSIGNEE, because career_app.Task.assigned_to is a
+    # ForeignKey and can only name one person. Three people on a piece of content
+    # therefore means three tasks, so the work shows up for each of them.
+    # `task` is kept as the "primary" task for backwards compatibility and for a
+    # quick summary in the panel; `tasks` is the full set.
     task = models.ForeignKey(
         'career_app.Task', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='content_items')
+    tasks = models.ManyToManyField(
+        'career_app.Task', blank=True, related_name='content_items_all')
 
     # Manual position within a Kanban column (lower first).
     order = models.PositiveIntegerField(default=0)
