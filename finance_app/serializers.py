@@ -24,23 +24,28 @@ class MoneyAwareSerializer(serializers.ModelSerializer):
                 self.fields.pop(f, None)
 
     def validate(self, attrs):
-        """Picking "Other" must be accompanied by saying what it was — a row
-        reading "Other · ₹40,000" is useless to whoever reads the ledger later.
+        """Every row must say what it is: either one of the categories Finance
+        has defined, or a line of free text.
 
-        A Finance-defined category counts as saying it, so choosing one of those
-        does not also demand free text.
+        There is no built-in category list any more — it was equipment language
+        that stopped applying once assets left the page — so a row with neither
+        would land in the ledger as a bare amount with no description at all.
         """
         attrs = super().validate(attrs)
-        category = attrs.get('category', getattr(self.instance, 'category', None))
         custom = attrs.get('custom_category', getattr(self.instance, 'custom_category', None))
-        if category == 'other' and not custom:
-            said = (attrs.get('category_other')
-                    or getattr(self.instance, 'category_other', '') or '').strip()
-            if not said:
-                raise serializers.ValidationError(
-                    {'category_other': 'Say what this is — "Other" on its own is '
-                                       'not much use when reading the ledger later.'})
-            attrs['category_other'] = said
+        if custom:
+            # A chosen category is the description; drop any stale free text so
+            # the row does not carry two competing answers.
+            attrs['category_other'] = ''
+            return attrs
+
+        said = (attrs.get('category_other')
+                or getattr(self.instance, 'category_other', '') or '').strip()
+        if not said:
+            raise serializers.ValidationError(
+                {'category_other': 'Say what this is for — pick a category, or '
+                                   'describe it, so the ledger still makes sense later.'})
+        attrs['category_other'] = said
         return attrs
 
 

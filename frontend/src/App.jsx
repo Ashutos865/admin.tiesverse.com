@@ -81,7 +81,7 @@ const MailAdmin = lazy(() => import('./pages/Mail/MailAdmin.jsx'));
 // Content Calendar
 const ContentCalendar = lazy(() => import('./pages/Content/ContentCalendar.jsx'));
 
-// Assets & Finance (advisory / finance / superadmin only)
+// Finance (advisory / finance / superadmin only)
 const FinancePage = lazy(() => import('./pages/Finance/FinancePage.jsx'));
 const MyWork = lazy(() => import('./pages/MyWork/MyWork.jsx'));
 const AdvisoryPanel = lazy(() => import('./pages/Advisory/AdvisoryPanel.jsx'));

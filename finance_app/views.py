@@ -226,8 +226,7 @@ class FinanceBoardView(APIView):
                   .only('id', 'candidate_name').order_by('candidate_name'))
 
         from .models import (
-            CATEGORY_CHOICES, CONDITION_CHOICES, CURRENCY_CHOICES,
-            CYCLE_CHOICES, ASSET_STATUS_CHOICES, REQUEST_STATUS_CHOICES,
+            CURRENCY_CHOICES, CYCLE_CHOICES, REQUEST_STATUS_CHOICES,
         )
         can_decide = tier in ('finance', 'admin')
         return Response({
@@ -236,8 +235,6 @@ class FinanceBoardView(APIView):
             'can_decide': can_decide,
             # Drives the Finance-team tab, which nobody else may even see.
             'is_superadmin': bool(request.user.is_superuser),
-            'assets': AssetItemSerializer(
-                AssetItem.objects.select_related('assigned_to')[:400], many=True, context=ctx).data,
             'subscriptions': SubscriptionSerializer(
                 Subscription.objects.select_related('owner')[:400], many=True, context=ctx).data,
             'requests': PurchaseRequestSerializer(
@@ -250,12 +247,13 @@ class FinanceBoardView(APIView):
             'custom_categories': FinanceCategorySerializer(
                 FinanceCategory.objects.all() if can_decide
                 else FinanceCategory.objects.filter(is_active=True), many=True).data,
+            # No category list here any more: the built-in one was equipment
+            # language (Laptop, Monitor, Camera) which stopped making sense when
+            # assets left this page. Categories are now whatever Finance defines
+            # in `custom_categories`, plus a free-text note for one-offs.
             'choices': {
                 'currencies': [{'value': v, 'label': l} for v, l in CURRENCY_CHOICES],
-                'categories': [{'value': v, 'label': l} for v, l in CATEGORY_CHOICES],
-                'conditions': [{'value': v, 'label': l} for v, l in CONDITION_CHOICES],
                 'cycles': [{'value': v, 'label': l} for v, l in CYCLE_CHOICES],
-                'asset_statuses': [{'value': v, 'label': l} for v, l in ASSET_STATUS_CHOICES],
                 'request_statuses': [{'value': v, 'label': l} for v, l in REQUEST_STATUS_CHOICES],
             },
         })

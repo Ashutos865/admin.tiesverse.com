@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Wallet, Package, Repeat, ReceiptText, TrendingUp, Plus, RefreshCw, X,
+  Wallet, Repeat, ReceiptText, TrendingUp, Plus, RefreshCw, X,
   Loader2, Check, Ban, IndianRupee, Search, AlertTriangle, ExternalLink, Trash2,
   Tags, Users, UserPlus, UserMinus,
 } from 'lucide-react';
 import {
-  getFinanceBoard, createFinanceAsset, updateFinanceAsset, deleteFinanceAsset,
-  createSubscription, updateSubscription, deleteSubscription,
+  getFinanceBoard, createSubscription, updateSubscription, deleteSubscription,
   createFinanceRequest, approveFinanceRequest, rejectFinanceRequest,
   payFinanceRequest, getFinanceSummary,
   createFinanceCategory, updateFinanceCategory, deleteFinanceCategory,
   getFinanceTeam, setFinanceTeam,
 } from '../../apiClient';
 
-/* Assets & Finance — the confidential half of the portal.
+/* Finance — the confidential half of the portal.
 
    Reached only by advisory, the Finance department and superadmins; the sidebar
    link does not exist for anyone else and the API returns 403 regardless.
@@ -54,8 +53,6 @@ const td = { padding: '11px 12px', fontSize: 13, borderBottom: '1px solid var(--
 const STATUS_COLOR = {
   pending: '#b45309', approved: '#2563eb', rejected: '#b91c1c',
   purchased: '#7c3aed', paid: '#067a50', cancelled: '#7c7267',
-  in_stock: '#2563eb', assigned: '#067a50', repair: '#b45309',
-  retired: '#7c7267', lost: '#b91c1c',
 };
 
 /* ₹ with Indian digit grouping (1,20,000 not 120,000). */
@@ -107,7 +104,7 @@ export default function FinancePage() {
     setLoading(true);
     const res = await getFinanceBoard();
     if (res && !res.error) setData(res);
-    else flash('error', res?.error || 'Could not load Assets & Finance.');
+    else flash('error', res?.error || 'Could not load Finance.');
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -132,7 +129,6 @@ export default function FinancePage() {
 
   const tabs = [
     ['requests', 'Requests', ReceiptText, (data?.requests || []).filter((r) => r.status === 'pending').length],
-    ['assets', 'Assets', Package, (data?.assets || []).length],
     ['subscriptions', 'Subscriptions', Repeat, (data?.subscriptions || []).length],
     ['spend', 'Spend', TrendingUp, 0],
     // Only the people who can actually change these see the tabs at all.
@@ -145,9 +141,9 @@ export default function FinancePage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6, flexWrap: 'wrap' }}>
         <Wallet size={22} style={{ color: 'var(--primary)' }} />
         <div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-main)' }}>Assets & Finance</div>
+          <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-main)' }}>Finance</div>
           <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
-            Equipment, subscriptions and spending — visible to advisory and finance only
+            Spending, subscriptions and approvals — visible to advisory and finance only
           </div>
         </div>
         <div style={{ flex: 1 }} />
@@ -202,9 +198,6 @@ export default function FinancePage() {
           </div>
         )}
         <div style={{ flex: 1 }} />
-        {tab === 'assets' && canRaise && (
-          <button style={btn} onClick={() => setModal({ kind: 'asset' })}><Plus size={14} /> Add asset</button>
-        )}
         {tab === 'subscriptions' && canRaise && (
           <button style={btn} onClick={() => setModal({ kind: 'subscription' })}><Plus size={14} /> Add subscription</button>
         )}
@@ -217,10 +210,6 @@ export default function FinancePage() {
       ) : tab === 'requests' ? (
         <RequestTable rows={filtered(data?.requests, ['title', 'description'])}
           canDecide={canDecide} onOpen={(r) => setModal({ kind: 'decide', row: r })} />
-      ) : tab === 'assets' ? (
-        <AssetTable rows={filtered(data?.assets, ['name', 'serial', 'vendor'])}
-          onDelete={(id) => window.confirm('Delete this asset?')
-            && act(() => deleteFinanceAsset(id), 'Asset deleted.')} />
       ) : tab === 'subscriptions' ? (
         <SubTable rows={filtered(data?.subscriptions, ['name', 'vendor'])}
           onDelete={(id) => window.confirm('Delete this subscription?')
@@ -236,7 +225,7 @@ export default function FinancePage() {
       {modal && (
         <Modal
           modal={modal} choices={choices} members={data?.members || []}
-          customCategories={data?.custom_categories || []}
+          customCategories={data?.custom_categories || []} canManageCategories={canDecide}
           canDecide={canDecide}
           onClose={() => setModal(null)}
           onSaved={(text) => { setModal(null); flash('ok', text); load(); }}
@@ -287,44 +276,6 @@ function RequestTable({ rows, canDecide, onOpen }) {
               <td style={td}>
                 <button style={{ ...btn, padding: '4px 10px', fontSize: 12 }} onClick={() => onOpen(r)}>
                   {canDecide && r.status === 'pending' ? 'Decide' : 'View'}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function AssetTable({ rows, onDelete }) {
-  if (!rows.length) return <Empty>No assets recorded yet.</Empty>;
-  return (
-    <div style={{ ...card, overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
-        <thead><tr>
-          <th style={th}>Asset</th><th style={th}>Category</th><th style={th}>Serial</th>
-          <th style={th}>Assigned to</th><th style={th}>Bought</th>
-          <th style={th}>Cost</th><th style={th}>In ₹</th><th style={th}>Status</th><th style={th} />
-        </tr></thead>
-        <tbody>
-          {rows.map((a) => (
-            <tr key={a.id}>
-              <td style={{ ...td, fontWeight: 700, color: 'var(--text-main)' }}>{a.name}
-                {a.vendor && <div style={{ fontSize: 11.5, fontWeight: 400, color: 'var(--text-muted)' }}>{a.vendor}</div>}
-              </td>
-              <td style={{ ...td, color: 'var(--text-muted)' }}>{catLabel(a)}</td>
-              <td style={{ ...td, color: 'var(--text-muted)', fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>
-                {a.serial || '—'}
-              </td>
-              <td style={{ ...td, color: 'var(--text-muted)' }}>{a.assigned_to_name || '—'}</td>
-              <td style={{ ...td, color: 'var(--text-muted)' }}>{fmtDate(a.purchase_date)}</td>
-              <td style={td}>{a.currency} {Number(a.amount).toLocaleString('en-IN')}</td>
-              <td style={{ ...td, fontWeight: 700 }}>{inr(a.amount_inr)}</td>
-              <td style={td}><Pill text={a.status} /></td>
-              <td style={td}>
-                <button style={{ ...btn, padding: 5, color: '#b91c1c' }} onClick={() => onDelete(a.id)}>
-                  <Trash2 size={13} />
                 </button>
               </td>
             </tr>
@@ -421,11 +372,10 @@ function SpendView({ summary }) {
 }
 
 /* ── modals ────────────────────────────────────────────────────────────── */
-function Modal({ modal, choices, members, customCategories, canDecide, onClose, onSaved, onError }) {
+function Modal({ modal, choices, members, customCategories, canDecide, canManageCategories, onClose, onSaved, onError }) {
   const { kind, row } = modal;
   const [f, setF] = useState(() => ({
-    currency: 'INR', category: 'other', cycle: 'monthly', condition: 'good',
-    status: 'in_stock', amount: '', ...(row || {}),
+    currency: 'INR', category: 'other', cycle: 'monthly', amount: '', ...(row || {}),
   }));
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
@@ -438,7 +388,6 @@ function Modal({ modal, choices, members, customCategories, canDecide, onClose, 
     setBusy(true);
     let res;
     if (kind === 'request') res = await createFinanceRequest(f);
-    else if (kind === 'asset') res = await createFinanceAsset(f);
     else if (kind === 'subscription') res = await createSubscription(f);
     setBusy(false);
     if (res && !res.error) onSaved(kind === 'request' ? 'Request raised.' : 'Saved.');
@@ -453,7 +402,7 @@ function Modal({ modal, choices, members, customCategories, canDecide, onClose, 
     else onError(res?.error || 'That did not work.');
   };
 
-  const title = { request: 'Raise a purchase request', asset: 'Add an asset',
+  const title = { request: 'Raise a purchase request',
                   subscription: 'Add a subscription', decide: row?.title }[kind];
 
   return (
@@ -501,32 +450,36 @@ function Modal({ modal, choices, members, customCategories, canDecide, onClose, 
             {kind !== 'subscription' && (
               <div style={{ marginBottom: 13 }}>
                 <label style={label}>Category</label>
-                <select style={input} value={f.custom_category ? `c${f.custom_category}` : f.category}
+                {/* Only the categories Finance has defined. The old built-in
+                    list was equipment language — Laptop, Monitor, Camera — which
+                    stopped making sense once assets left this page. Everything
+                    stores as 'other' plus either a category or a note, so no
+                    existing row needed rewriting. */}
+                <select style={input} value={f.custom_category ? `c${f.custom_category}` : ''}
                   onChange={(e) => {
                     const v = e.target.value;
-                    // Finance-defined categories are prefixed so the two lists
-                    // can share one dropdown.
-                    if (v.startsWith('c')) setF({ ...f, custom_category: Number(v.slice(1)), category: 'other' });
-                    else setF({ ...f, custom_category: null, category: v });
+                    setF({
+                      ...f, category: 'other',
+                      custom_category: v ? Number(v.slice(1)) : null,
+                      // Switching to a real category clears the free text, so a
+                      // stale note cannot linger behind the chosen name.
+                      category_other: v ? '' : (f.category_other || ''),
+                    });
                   }}>
-                  {(choices.categories || []).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  <option value="">— something else —</option>
                   {/* A switched-off category still has to appear if this row
                       already uses it, or editing would silently drop it. */}
-                  {pickable.length > 0 && (
-                    <optgroup label="Your categories">
-                      {pickable.map((c) => <option key={c.id} value={`c${c.id}`}>{c.name}</option>)}
-                    </optgroup>
-                  )}
+                  {pickable.map((c) => <option key={c.id} value={`c${c.id}`}>{c.name}</option>)}
                 </select>
-                {/* "Other" on its own tells a future reader nothing, so say what
-                    it was. A Finance-defined category counts as saying it. */}
-                {f.category === 'other' && !f.custom_category && (
+                {!f.custom_category && (
                   <div style={{ marginTop: 8 }}>
                     <input style={input} value={f.category_other || ''}
-                      onChange={set('category_other')} autoFocus
+                      onChange={set('category_other')}
                       placeholder="What is it? e.g. Printer ink, Domain renewal, Event banner" />
                     <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>
-                      Required — so the ledger still makes sense months from now.
+                      {canManageCategories
+                        ? 'Required — or add it under Categories to reuse it later.'
+                        : 'Required — so the ledger still makes sense months from now.'}
                     </div>
                   </div>
                 )}
@@ -561,15 +514,6 @@ function Modal({ modal, choices, members, customCategories, canDecide, onClose, 
               </div>
             )}
 
-            {kind === 'asset' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 13 }}>
-                <div><label style={label}>Serial</label>
-                  <input style={input} value={f.serial || ''} onChange={set('serial')} /></div>
-                <div><label style={label}>Purchased on</label>
-                  <input style={input} type="date" value={f.purchase_date || ''} onChange={set('purchase_date')} /></div>
-              </div>
-            )}
-
             {kind === 'request' && (
               <div style={{ marginBottom: 13 }}>
                 <label style={label}>Why it is needed</label>
@@ -578,11 +522,11 @@ function Modal({ modal, choices, members, customCategories, canDecide, onClose, 
               </div>
             )}
 
-            {(kind === 'asset' || kind === 'subscription') && (
+            {kind === 'subscription' && (
               <div style={{ marginBottom: 13 }}>
-                <label style={label}>{kind === 'asset' ? 'Assigned to' : 'Owner'}</label>
-                <select style={input} value={f.assigned_to || f.owner || ''}
-                  onChange={(e) => setF({ ...f, [kind === 'asset' ? 'assigned_to' : 'owner']: e.target.value || null })}>
+                <label style={label}>Owner</label>
+                <select style={input} value={f.owner || ''}
+                  onChange={(e) => setF({ ...f, owner: e.target.value || null })}>
                   <option value="">— nobody —</option>
                   {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
@@ -592,7 +536,7 @@ function Modal({ modal, choices, members, customCategories, canDecide, onClose, 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
               <button style={btn} onClick={onClose} disabled={busy}>Cancel</button>
               <button style={btnPrimary} onClick={save} disabled={busy || !(f.title || f.name) || !f.amount
-                  || (f.category === 'other' && !f.custom_category && kind !== 'subscription' && !(f.category_other || '').trim())}>
+                  || (kind !== 'subscription' && !f.custom_category && !(f.category_other || '').trim())}>
                 {busy ? <><Loader2 size={14} className="fin-spin" /> Saving…</> : 'Save'}
               </button>
             </div>
@@ -730,7 +674,7 @@ function CategoriesTab({ rows, onChanged, flash }) {
         </button>
         <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5 }}>
           These appear in the category dropdown alongside the built-in ones, for
-          both requests and assets.
+          requests.
         </div>
       </div>
 

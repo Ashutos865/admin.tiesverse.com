@@ -179,7 +179,7 @@ export const portals = [
       { name: 'Oversight & Updates', path: '/advisory', icon: ClipboardCheck, advisoryOrLead: true },
       // Money. Gated on `financeAccess`, NOT `advisoryOrLead` — team leads share
       // this portal and must not see costs. Members and HR never reach it.
-      { name: 'Assets & Finance', path: '/advisory/finance', icon: Wallet, financeAccess: true },
+      { name: 'Finance', path: '/advisory/finance', icon: Wallet, financeAccess: true },
     ],
   },
   {
