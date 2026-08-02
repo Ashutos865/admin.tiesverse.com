@@ -1,0 +1,578 @@
+/* TIES Mail — a mail client in the TIES palette.
+
+   Visual language borrowed from the reference designs: an atmospheric gradient
+   background, frosted-glass surfaces that float rather than sit in boxes,
+   generous corner radii, and soft diffuse shadows instead of hard borders.
+   The colour stays TIES — warm cream and orange, not sky blue. */
+
+:root {
+  /* Atmospheric backdrop: warm cream, lightest at the top like a horizon. */
+  --bg-top: #fff6ec;
+  --bg-mid: #fdeee0;
+  --bg-bot: #f8e7d6;
+
+  /* Frosted surfaces. Translucent so the gradient reads through them. */
+  --glass: rgba(255, 255, 255, .72);
+  --glass-strong: rgba(255, 255, 255, .88);
+  --glass-soft: rgba(255, 255, 255, .45);
+  --glass-line: rgba(255, 255, 255, .65);   /* the light top edge on glass */
+  --hairline: rgba(120, 85, 50, .1);        /* separation without a hard rule */
+
+  --ink: #241d16;
+  --ink-2: #574a3d;
+  --muted: #8d8073;
+
+  --accent: #fe7a00;
+  --accent-dark: #e06c00;
+  --accent-soft: rgba(254, 122, 0, .12);
+  --accent-glow: rgba(254, 122, 0, .32);
+  --ink-btn: #241d16;                       /* the dark anchor CTA */
+
+  --danger: #c02626;
+  --ok: #067a50;
+  --unread: rgba(254, 122, 0, .07);
+
+  /* One rounding scale, used everywhere. */
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-xl: 28px;
+  --r-pill: 999px;
+
+  /* Wide, faint shadows — depth without harshness. */
+  --shadow-sm: 0 2px 8px rgba(90, 60, 20, .06);
+  --shadow-md: 0 8px 24px rgba(90, 60, 20, .1);
+  --shadow-lg: 0 18px 48px rgba(90, 60, 20, .14);
+  --shadow-glow: 0 6px 20px rgba(254, 122, 0, .32);
+
+  color-scheme: light;
+}
+
+/* Deliberately light-only. The design is built around a bright warm gradient
+   and frosted glass; a dark inversion loses the whole effect, so the app does
+   NOT follow prefers-color-scheme. `color-scheme: light` above also stops the
+   browser from auto-darkening form controls. */
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  /* The horizon: a soft warm glow at the top fading into deeper cream. */
+  background:
+    radial-gradient(120% 80% at 50% -10%, #fffdfa 0%, transparent 60%),
+    radial-gradient(90% 60% at 85% 8%, rgba(254, 122, 0, .1) 0%, transparent 55%),
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 45%, var(--bg-bot) 100%);
+  background-attachment: fixed;
+}
+
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+input, textarea, select { font-family: inherit; font-size: 14px; }
+
+/* ── app shell ─────────────────────────────────────────────────────────── */
+/* Two explicit rows for the appbar and body. The phone-only nav and FAB are
+   later children, so they must be taken OUT of the grid flow (position:fixed
+   below) — otherwise the grid gives them implicit rows below the fold and they
+   scroll off-screen. `overflow:hidden` stops those rows creating a scrollbar. */
+.app {
+  height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+/* Belt and braces: keep them out of the flow at every width. They are only made
+   visible inside the phone media query. */
+.mobile-nav, .compose-fab { position: fixed; }
+
+/* A floating capsule rather than a bar welded to the top. */
+.appbar {
+  display: flex; align-items: center; gap: 14px;
+  margin: 12px 14px 0; padding: 0 16px; height: 60px;
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--glass-line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+}
+.logo { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; letter-spacing: -.02em; }
+.logo-dot { color: var(--accent); }
+.logo-tag {
+  font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  background: var(--accent-soft); color: var(--accent);
+  padding: 4px 9px; border-radius: var(--r-pill);
+}
+.spacer { flex: 1; }
+
+.searchbox {
+  flex: 1; max-width: 520px; display: flex; align-items: center; gap: 9px;
+  background: var(--glass-soft); border: 1px solid transparent;
+  border-radius: var(--r-pill); padding: 10px 16px;
+  transition: background .18s, border-color .18s;
+}
+.searchbox:focus-within { background: var(--glass-strong); border-color: var(--accent-soft); }
+.searchbox input { flex: 1; border: none; background: none; outline: none; color: var(--ink); }
+.searchbox svg { color: var(--muted); flex: none; }
+
+.iconbtn {
+  width: 38px; height: 38px; border-radius: var(--r-pill);
+  display: grid; place-items: center; color: var(--muted); flex: none;
+  transition: background .18s, color .18s, transform .18s;
+}
+.iconbtn:hover { background: var(--glass-strong); color: var(--ink); transform: translateY(-1px); }
+.iconbtn:active { transform: translateY(0); }
+
+.body {
+  display: grid; grid-template-columns: 220px 390px 1fr;
+  gap: 12px; padding: 12px 14px; min-height: 0;
+}
+/* Tablet: drop the reading pane, keep folders. A message opens as a sheet. */
+@media (max-width: 1100px) {
+  .body { grid-template-columns: 200px 1fr; }
+  .reader-pane { display: none; }
+  .reader-pane.is-open {
+    display: block; position: fixed; inset: 12px;
+    z-index: 60; box-shadow: var(--shadow-lg);
+  }
+}
+
+/* Phone-only chrome, hidden on larger screens. */
+.mobile-nav, .compose-fab, .reader-back { display: none; }
+
+/* Every pane is a floating frosted card. */
+.sidebar, .list-pane, .reader-pane {
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--glass-line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  min-height: 0;
+}
+
+/* ── sidebar ── */
+.sidebar { padding: 16px 12px; overflow-y: auto; }
+.compose-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 14px; border-radius: var(--r-pill); margin-bottom: 20px;
+  background: linear-gradient(135deg, #ff9330, var(--accent));
+  color: #fff; font-size: 14px; font-weight: 700;
+  box-shadow: var(--shadow-glow);
+  transition: transform .18s, box-shadow .18s;
+}
+.compose-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 28px var(--accent-glow); }
+.compose-btn:active { transform: translateY(0); }
+
+.folder {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 11px 14px; border-radius: var(--r-md); margin-bottom: 3px;
+  color: var(--ink-2); font-size: 13.5px; font-weight: 600; text-align: left;
+  transition: background .16s, color .16s;
+}
+.folder:hover { background: var(--glass-soft); }
+.folder.on {
+  background: var(--accent-soft); color: var(--accent); font-weight: 800;
+  box-shadow: inset 0 0 0 1px rgba(254, 122, 0, .16);
+}
+.folder .count { margin-left: auto; font-size: 11.5px; font-weight: 800; }
+
+.mailbox-switch { margin-top: 22px; }
+.mailbox-switch .label {
+  font-size: 10.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); padding: 0 14px; margin-bottom: 7px; display: block;
+}
+.mailbox-item {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  padding: 9px 14px; border-radius: var(--r-md); font-size: 12.5px; color: var(--ink-2);
+  transition: background .16s;
+}
+.mailbox-item:hover { background: var(--glass-soft); }
+.mailbox-item.on { background: var(--glass-strong); font-weight: 700; color: var(--ink); }
+.mailbox-item .addr { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-pill {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .05em;
+  background: var(--accent-soft); color: var(--accent);
+  padding: 3px 7px; border-radius: var(--r-pill); flex: none;
+}
+
+/* ── message list ── */
+.list-pane { overflow-y: auto; overflow-x: hidden; }
+.list-head {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--glass-strong);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  padding: 15px 18px; border-bottom: 1px solid var(--hairline);
+  display: flex; align-items: center; gap: 10px;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+.list-title { font-size: 15px; font-weight: 800; text-transform: capitalize; letter-spacing: -.01em; }
+.list-count { font-size: 12px; color: var(--muted); }
+
+.mrow {
+  display: flex; gap: 11px; width: 100%; text-align: left;
+  padding: 13px 16px; margin: 4px 8px; width: calc(100% - 16px);
+  border-radius: var(--r-md); align-items: flex-start;
+  transition: background .16s, transform .16s;
+}
+.mrow:hover { background: var(--glass-soft); }
+.mrow.unread { background: var(--unread); }
+.mrow.active {
+  background: var(--glass-strong);
+  box-shadow: var(--shadow-sm), inset 3px 0 0 var(--accent);
+}
+/* min-width:0 is required on a flex child or its text refuses to shrink and
+   overflows the row instead of truncating. */
+.mrow-body { flex: 1; min-width: 0; overflow: hidden; }
+.mrow-top { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
+.mrow-from {
+  font-size: 13px; color: var(--ink); flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mrow.unread .mrow-from { font-weight: 800; }
+.mrow-time { font-size: 11px; color: var(--muted); flex: none; }
+.mrow-subject {
+  font-size: 13px; color: var(--ink-2); margin-bottom: 3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mrow.unread .mrow-subject { font-weight: 700; color: var(--ink); }
+.mrow-snip {
+  font-size: 12px; color: var(--muted); line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  /* A quoted reply is often one very long unbroken line ("On Fri, Jul 31…"),
+     which line-clamp alone will not wrap — it would run past the row's edge. */
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.dot-unread {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+  flex: none; margin-top: 7px; box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ── reading pane ── */
+.reader-pane { overflow-y: auto; }
+.reader-head {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--glass-strong);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  padding: 16px 24px; border-bottom: 1px solid var(--hairline);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+.reader-subject { font-size: 20px; font-weight: 800; line-height: 1.3; flex: 1; min-width: 200px; letter-spacing: -.015em; }
+.reader-body { padding: 8px 24px 40px; }
+.thread-msg { padding: 20px 0; border-bottom: 1px solid var(--hairline); display: flex; gap: 14px; }
+.thread-msg:last-child { border-bottom: none; }
+.tm-from { font-size: 13.5px; font-weight: 700; }
+.tm-meta { font-size: 11.5px; color: var(--muted); }
+.tm-to { font-size: 12px; color: var(--muted); margin: 3px 0 12px; }
+.tm-text { font-size: 14.5px; line-height: 1.75; white-space: pre-wrap; word-break: break-word; color: var(--ink-2); }
+
+.avatar {
+  border-radius: 50%; flex: none; display: grid; place-items: center;
+  overflow: hidden; font-weight: 800;
+  background: linear-gradient(135deg, rgba(254, 147, 48, .22), var(--accent-soft));
+  color: var(--accent);
+  box-shadow: 0 2px 6px rgba(254, 122, 0, .16);
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.empty-state {
+  height: 100%; display: grid; place-items: center; align-content: center;
+  gap: 12px; color: var(--muted); text-align: center; padding: 40px;
+}
+.empty-state svg { opacity: .3; }
+
+/* ── controls ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 16px; border-radius: var(--r-pill);
+  border: 1px solid var(--glass-line); background: var(--glass-strong);
+  color: var(--ink-2); font-size: 13px; font-weight: 700;
+  box-shadow: var(--shadow-sm);
+  transition: transform .16s, box-shadow .16s, color .16s;
+}
+.btn:hover { color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.btn:active { transform: translateY(0); }
+.btn-primary {
+  background: linear-gradient(135deg, #ff9330, var(--accent));
+  color: #fff; border-color: transparent; box-shadow: var(--shadow-glow);
+}
+.btn-primary:hover { color: #fff; box-shadow: 0 10px 28px var(--accent-glow); }
+.btn-danger:hover { color: var(--danger); }
+.btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+.input {
+  width: 100%; padding: 12px 15px; border-radius: var(--r-md);
+  border: 1px solid var(--hairline); background: var(--glass-strong);
+  color: var(--ink); outline: none;
+  transition: border-color .18s, box-shadow .18s;
+}
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.label {
+  display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+}
+.field { margin-bottom: 14px; }
+
+.alert { padding: 11px 16px; border-radius: var(--r-md); font-size: 13px; font-weight: 600; margin: 12px 18px 0; }
+.alert-error { background: rgba(192, 38, 38, .1); color: var(--danger); }
+.alert-ok { background: rgba(6, 122, 80, .1); color: var(--ok); }
+
+/* ── login ── */
+.login-wrap { height: 100%; display: grid; place-items: center; padding: 24px; }
+.login-card {
+  width: 100%; max-width: 400px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--glass-line);
+  border-radius: var(--r-xl); padding: 38px 32px;
+  box-shadow: var(--shadow-lg);
+}
+/* The icon-in-a-rounded-square motif from the reference. */
+.login-badge {
+  width: 56px; height: 56px; margin: 0 auto 18px;
+  display: grid; place-items: center;
+  border-radius: 18px;
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--shadow-sm);
+  color: var(--accent);
+}
+.login-logo {
+  display: flex; align-items: center; gap: 8px; font-size: 21px; font-weight: 800;
+  justify-content: center; margin-bottom: 7px; letter-spacing: -.025em;
+}
+.login-sub { font-size: 13px; color: var(--muted); text-align: center; margin-bottom: 26px; line-height: 1.6; }
+.tabs {
+  display: flex; gap: 4px; background: var(--glass-soft); padding: 4px;
+  border-radius: var(--r-pill); margin-bottom: 20px;
+}
+.tab {
+  flex: 1; padding: 9px; border-radius: var(--r-pill);
+  font-size: 12.5px; font-weight: 700; color: var(--muted);
+  transition: background .18s, color .18s;
+}
+.tab.on { background: var(--glass-strong); color: var(--ink); box-shadow: var(--shadow-sm); }
+.pw-wrap { position: relative; }
+.pw-toggle { position: absolute; right: 10px; top: 11px; color: var(--muted); padding: 4px; }
+.login-note { font-size: 11.5px; color: var(--muted); margin-top: 18px; line-height: 1.6; text-align: center; }
+/* The dark anchor button from the reference, in TIES ink rather than black. */
+.btn-anchor {
+  width: 100%; justify-content: center; padding: 14px;
+  background: var(--ink-btn); color: var(--bg-top);
+  border-color: transparent; box-shadow: var(--shadow-md);
+}
+.btn-anchor:hover { color: var(--bg-top); box-shadow: var(--shadow-lg); }
+
+/* ── modal ── */
+.overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(40, 25, 8, .32);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  display: grid; place-items: center; padding: 20px;
+}
+.modal {
+  width: 100%; max-width: 620px; max-height: 90vh; overflow-y: auto;
+  background: var(--glass-strong);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--glass-line);
+  border-radius: var(--r-xl); padding: 26px;
+  box-shadow: var(--shadow-lg);
+}
+.modal-head { display: flex; align-items: center; margin-bottom: 20px; }
+.modal-title { font-size: 18px; font-weight: 800; letter-spacing: -.015em; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+/* ── compose ───────────────────────────────────────────────────────────────
+   Follows the reference: a pill header holding the address fields, one large
+   open writing area, and a floating footer with a circular send button. Labels
+   sit inline so attention goes to the message, not the form. */
+.compose {
+  width: 100%; max-width: 720px; max-height: 88vh;
+  display: flex; flex-direction: column;
+  background: var(--glass-strong);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--glass-line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.compose-top {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px; border-bottom: 1px solid var(--hairline);
+}
+.compose-title { font-size: 15px; font-weight: 800; letter-spacing: -.01em; }
+.compose-from {
+  margin-left: auto; font-size: 12px; color: var(--muted);
+  background: var(--glass-soft); padding: 5px 12px; border-radius: var(--r-pill);
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* The address block reads as one grouped card, like the reference. */
+.compose-head { padding: 12px 14px 6px; }
+.compose-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; border-radius: var(--r-md); margin-bottom: 4px;
+  background: var(--glass-soft);
+  transition: background .16s, box-shadow .16s;
+}
+.compose-row:focus-within { background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
+.compose-key {
+  font-size: 12.5px; font-weight: 800; color: var(--muted);
+  min-width: 54px; flex: none; letter-spacing: .01em;
+}
+.compose-row input {
+  flex: 1; border: none; background: none; outline: none;
+  font-size: 14px; color: var(--ink); min-width: 0;
+}
+.compose-cc {
+  font-size: 12px; font-weight: 800; color: var(--muted);
+  padding: 4px 10px; border-radius: var(--r-pill); flex: none;
+}
+.compose-cc:hover { background: var(--accent-soft); color: var(--accent); }
+
+.compose-body {
+  flex: 1; min-height: 240px; resize: none;
+  margin: 6px 20px 4px; padding: 14px 6px;
+  border: none; background: none; outline: none;
+  font-size: 15px; line-height: 1.75; color: var(--ink);
+}
+.compose-body::placeholder { color: var(--muted); }
+
+.compose-foot {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px; border-top: 1px solid var(--hairline);
+  background: var(--glass-soft);
+}
+.compose-hint { font-size: 12px; color: var(--muted); }
+
+/* The circular send button from the reference. */
+.send-fab {
+  width: 50px; height: 50px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, #ff9330, var(--accent));
+  box-shadow: var(--shadow-glow);
+  transition: transform .18s, box-shadow .18s, opacity .18s;
+}
+.send-fab:hover:not(:disabled) { transform: translateY(-2px) scale(1.04); box-shadow: 0 12px 30px var(--accent-glow); }
+.send-fab:active:not(:disabled) { transform: translateY(0) scale(.98); }
+.send-fab:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
+
+/* ── phone ─────────────────────────────────────────────────────────────────
+   The sidebar cannot fit, so folders move to a bottom bar and Compose becomes
+   a floating button. Reading a message covers the list, with a back arrow. All
+   fixed chrome respects the iOS safe area so nothing sits under the home bar. */
+@media (max-width: 760px) {
+  .body {
+    grid-template-columns: 1fr;
+    padding: 10px 10px calc(78px + env(safe-area-inset-bottom));
+    gap: 10px;
+  }
+  .sidebar { display: none; }
+
+  .appbar {
+    margin: 8px 10px 0; padding: 0 10px; height: 54px; gap: 8px;
+    border-radius: var(--r-md);
+  }
+  .logo { font-size: 16px; }
+  .logo-tag { display: none; }
+  .searchbox { padding: 8px 12px; }
+  .searchbox input { font-size: 16px; }   /* 16px stops iOS zooming on focus */
+
+  .list-pane { border-radius: var(--r-md); }
+  .list-head { padding: 12px 14px; border-radius: var(--r-md) var(--r-md) 0 0; }
+  .mrow { padding: 12px 12px; margin: 3px 6px; width: calc(100% - 12px); }
+  .mrow-snip { -webkit-line-clamp: 1; }
+
+  /* Reading a message takes over the screen. */
+  .reader-pane.is-open {
+    inset: 0; border-radius: 0; border: none;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .reader-head {
+    border-radius: 0; padding: 12px 14px;
+    padding-top: calc(12px + env(safe-area-inset-top));
+  }
+  .reader-back { display: grid; margin-left: -4px; }
+  .reader-subject { font-size: 17px; min-width: 0; }
+  .reader-body { padding: 8px 16px 40px; }
+  .thread-msg { gap: 11px; padding: 16px 0; }
+  .tm-text { font-size: 15px; }
+
+  /* Folder bar, replacing the hidden sidebar. */
+  .mobile-nav {
+    display: flex; position: fixed; left: 10px; right: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 50;
+    background: var(--glass-strong);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-md);
+    padding: 6px;
+  }
+  .mnav-item {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 8px 4px; border-radius: var(--r-md);
+    font-size: 10.5px; font-weight: 700; color: var(--muted);
+    min-height: 52px; justify-content: center;      /* comfortable tap target */
+  }
+  .mnav-item.on { color: var(--accent); background: var(--accent-soft); }
+  .mnav-icon { position: relative; display: grid; place-items: center; }
+  .mnav-dot {
+    position: absolute; top: -2px; right: -4px;
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 2px var(--glass-strong);
+  }
+
+  .compose-fab {
+    display: grid; place-items: center; position: fixed; z-index: 55;
+    right: 16px; bottom: calc(84px + env(safe-area-inset-bottom));
+    width: 56px; height: 56px; border-radius: 50%;
+    background: linear-gradient(135deg, #ff9330, var(--accent));
+    color: #fff; box-shadow: var(--shadow-glow);
+  }
+  .compose-fab:active { transform: scale(.94); }
+
+  /* Compose fills the screen — a centred dialog is unusable beside a keyboard. */
+  .overlay { padding: 0; align-items: stretch; }
+  .compose {
+    max-width: none; max-height: none; height: 100%;
+    border-radius: 0; border: none;
+  }
+  .compose-top { padding-top: calc(14px + env(safe-area-inset-top)); }
+  .compose-from { display: none; }
+  .compose-head { padding: 10px 10px 4px; }
+  .compose-row { padding: 12px; }
+  .compose-row input, .compose-body { font-size: 16px; }   /* no iOS zoom */
+  .compose-body { margin: 4px 14px; min-height: 160px; }
+  .compose-foot { padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); }
+
+  /* Modals become bottom sheets. */
+  .modal {
+    max-width: none; border-radius: var(--r-xl) var(--r-xl) 0 0;
+    margin-top: auto; max-height: 92vh;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+  .login-wrap { padding: 16px; }
+  .login-card { padding: 30px 22px; border-radius: var(--r-lg); }
+  .login-card input { font-size: 16px; }
+}
+
+/* Very small phones — reclaim the last of the horizontal space. */
+@media (max-width: 400px) {
+  .appbar { gap: 6px; }
+  .searchbox { padding: 8px 10px; }
+  .mrow { padding: 11px 10px; }
+}
+
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
