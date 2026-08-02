@@ -165,6 +165,52 @@ def get_content_calendar_access(user):
     return ('none', member)
 
 
+FINANCE_DEPARTMENT = 'finance'
+
+
+def _in_finance_department(member):
+    if not member:
+        return False
+    return any(str(d).strip().lower() == FINANCE_DEPARTMENT
+               for d in (member.assigned_departments or []))
+
+
+def get_finance_access(user):
+    """Access to Assets & Finance — returns (tier, member).
+
+    Money is confidential, so this gate is deliberately narrow. Unlike every
+    other access function here, being HR grants nothing: HR administers people,
+    not spending, and must not see amounts or even that the Finance department
+    exists.
+
+      'admin'    superuser — everything, and the only role that can see or
+                 assign the (restricted) Finance department
+      'finance'  Finance-department member — approves requests, sees reporting
+      'advisory' advisory — raises requests and sees all assets and money
+      'none'     everyone else, including HR, team leads and ordinary members
+
+    Team leads are excluded on purpose: they share the Advisory portal, so the
+    money links must gate on this rather than on `advisoryOrLead`.
+    """
+    if getattr(user, 'is_superuser', False):
+        return ('admin', None)
+
+    member = get_member_for_user(user)
+    if member is None:
+        return ('none', None)
+
+    if _in_finance_department(member):
+        return ('finance', member)
+    if (member.portal_role or '') == 'advisory':
+        return ('advisory', member)
+    return ('none', member)
+
+
+def can_see_money(user):
+    tier, _ = get_finance_access(user)
+    return tier in ('admin', 'finance', 'advisory')
+
+
 NIMBLE_DEPARTMENT = 'nimble'   # matched case-insensitively against assigned_departments
 
 

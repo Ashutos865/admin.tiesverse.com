@@ -478,6 +478,33 @@ class OfferLetterViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Applicant not found'}, status=404)
 
 
+def _guard_restricted_departments(incoming, existing, user):
+    """Stop a non-superadmin adding or removing a restricted department.
+
+    HR cannot see that Finance exists, so it must not be possible to put someone
+    into it — or, just as importantly, to quietly drop someone out of it by
+    saving a member form that never contained it.
+    """
+    incoming = [str(d) for d in (incoming or [])]
+    if getattr(user, 'is_superuser', False):
+        return incoming
+
+    restricted = {
+        n.strip().lower() for n in
+        HRDepartment.objects.filter(is_restricted=True).values_list('name', flat=True)
+    }
+    if not restricted:
+        return incoming
+
+    # Drop any restricted name they tried to add…
+    kept = [d for d in incoming if d.strip().lower() not in restricted]
+    # …and preserve any they already had, which their form could not show them.
+    for d in (existing or []):
+        if str(d).strip().lower() in restricted and d not in kept:
+            kept.append(d)
+    return kept
+
+
 class HRDepartmentViewSet(viewsets.ModelViewSet):
     queryset = HRDepartment.objects.all()
     serializer_class = HRDepartmentSerializer
@@ -486,6 +513,26 @@ class HRDepartmentViewSet(viewsets.ModelViewSet):
     # need add/change/delete_hrdepartment — i.e. HR/Admin only. Team Leads (view
     # only) can't manage departments, and the page is hidden from them.
     permission_classes = [IsAuthenticated, StaffModelPermissions]
+
+    def get_queryset(self):
+        """Restricted departments (Finance) are invisible to everyone but a
+        superadmin — HR must not see that the department exists, so filtering it
+        out of the queryset also blocks retrieve/update/delete by id."""
+        qs = HRDepartment.objects.all()
+        if not getattr(self.request.user, 'is_superuser', False):
+            qs = qs.exclude(is_restricted=True)
+        return qs
+
+    def perform_create(self, serializer):
+        # Only a superadmin may mark a department restricted.
+        if not getattr(self.request.user, 'is_superuser', False):
+            serializer.validated_data.pop('is_restricted', None)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        if not getattr(self.request.user, 'is_superuser', False):
+            serializer.validated_data.pop('is_restricted', None)
+        serializer.save()
 
 
 # ── Onboarding — email helper ─────────────────────────────────────────────────
@@ -597,7 +644,9 @@ class OnboardingVerifyView(APIView):
                 sub.verified_by = _actor_name(request.user)
 
         if 'assigned_departments' in request.data:
-            sub.assigned_departments = request.data['assigned_departments']
+            sub.assigned_departments = _guard_restricted_departments(
+                request.data['assigned_departments'], sub.assigned_departments,
+                request.user)
         if 'hr_notes' in request.data:
             sub.hr_notes = request.data['hr_notes']
         if 'role_offered' in request.data:
@@ -1015,6 +1064,7 @@ class MeView(APIView):
         # TIES Mail: 'admin' | 'user' | 'none', plus the addresses they can open.
         mail_tier, mailboxes = access.get_mail_access(request.user)
         content_tier, _ = access.get_content_calendar_access(request.user)
+        finance_tier, _ = access.get_finance_access(request.user)
         # Can this user manage others' article access (open the Manage-access panel)?
         can_manage_articles = bool(
             request.user.is_superuser
@@ -1038,6 +1088,7 @@ class MeView(APIView):
             'nimble_access': nimble_tier,          # 'full' | 'none'
             'mail_access': mail_tier,              # 'admin' | 'user' | 'none'
             'content_access': content_tier,        # 'full' | 'member' | 'none'
+            'finance_access': finance_tier,        # 'admin' | 'finance' | 'advisory' | 'none'
             'mail_addresses': [b.address for b in mailboxes],
             'can_manage_articles': can_manage_articles,
             'member': OnboardingSubmissionSerializer(member).data if member else None,

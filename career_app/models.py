@@ -47,6 +47,11 @@ class HRDepartment(models.Model):
     lead_name = models.CharField(max_length=255, blank=True)
     co_lead_name = models.CharField(max_length=255, blank=True)
     is_active = models.BooleanField(default=True)
+    # A restricted department is invisible to HR: it is filtered out of the
+    # department list and cannot be assigned to a member by anyone except a
+    # superadmin. Finance is restricted, so HR cannot see it exists, let alone
+    # put someone in it.
+    is_restricted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
