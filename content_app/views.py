@@ -64,9 +64,40 @@ def _members_qs():
             if any(str(d).strip().lower() == 'content' for d in (r.assigned_departments or []))]
 
 
-def _member_chip(m):
+def avatar_map(member_ids):
+    """{member_id: avatar_url} for many members in TWO queries, not 2·N.
+
+    Profile pictures live on accounts_app.UserProfile (default DB) while members
+    live on turso_db, so the hop is member → MemberAccount.user_id → UserProfile.
+    The per-object helper in career_app.serializers does this one member at a
+    time, which is fine for a profile page but would be ~50 queries for a board
+    of 26 people — hence this batched version.
+    """
+    ids = [i for i in member_ids if i]
+    if not ids:
+        return {}
+    try:
+        from accounts_app.models import UserProfile
+        from career_app.models import MemberAccount
+
+        acct = dict(MemberAccount.objects.filter(submission_id__in=ids)
+                    .values_list('submission_id', 'user_id'))
+        user_ids = [u for u in acct.values() if u]
+        if not user_ids:
+            return {}
+        prof = dict(UserProfile.objects.filter(user_id__in=user_ids)
+                    .exclude(avatar_url='')
+                    .values_list('user_id', 'avatar_url'))
+        return {mid: prof[uid] for mid, uid in acct.items()
+                if uid and prof.get(uid)}
+    except Exception:  # noqa: BLE001 — a missing picture must never break the board
+        return {}
+
+
+def _member_chip(m, avatars=None):
     return {'id': m.id, 'name': m.candidate_name,
-            'email': m.candidate_email, 'crew_id': m.crew_id}
+            'email': m.candidate_email, 'crew_id': m.crew_id,
+            'avatar_url': (avatars or {}).get(m.id, '')}
 
 
 class ContentItemViewSet(viewsets.ModelViewSet):
@@ -225,7 +256,16 @@ class ContentBoardView(APIView):
             qs = qs.filter(Q(content_assignees__id=member.id)
                            | Q(graphics_assignees__id=member.id)).distinct()
 
-        items = ContentItemSerializer(qs, many=True).data
+        # Resolve every avatar the page needs in one batch, then hand the map to
+        # the serializer via context so assignee chips render real photos.
+        members = _members_qs()
+        needed = {m.id for m in members}
+        for it in qs:
+            needed.update(a.id for a in it.content_assignees.all())
+            needed.update(a.id for a in it.graphics_assignees.all())
+        avatars = avatar_map(needed)
+
+        items = ContentItemSerializer(qs, many=True, context={'avatars': avatars}).data
 
         # Brands come from the website's Brand table so the two stay consistent.
         try:
@@ -248,5 +288,5 @@ class ContentBoardView(APIView):
                 'platforms': PLATFORM_OPTIONS,
                 'brands': brands,
             },
-            'members': [_member_chip(m) for m in _members_qs()],
+            'members': [_member_chip(m, avatars) for m in members],
         })

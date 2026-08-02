@@ -10,11 +10,29 @@ from .models import ContentActivity, ContentItem
 
 
 class MemberChipSerializer(serializers.Serializer):
-    """Just enough of a member to draw an avatar chip."""
+    """Just enough of a member to draw an avatar chip.
+
+    `avatar_url` is read from a prebuilt {member_id: url} map passed in context —
+    profile pictures live on accounts_app.UserProfile in the OTHER database, so
+    resolving them per-object would cost two queries per person. The board view
+    builds the map once; when it is absent (a single-item fetch) we fall back to
+    looking that one member up.
+    """
     id = serializers.IntegerField()
     name = serializers.CharField(source='candidate_name')
     email = serializers.CharField(source='candidate_email')
     crew_id = serializers.CharField(required=False, allow_null=True)
+    avatar_url = serializers.SerializerMethodField()
+
+    def get_avatar_url(self, obj):
+        cached = self.context.get('avatars')
+        if cached is not None:
+            return cached.get(obj.id, '')
+        try:
+            from content_app.views import avatar_map
+            return avatar_map([obj.id]).get(obj.id, '')
+        except Exception:  # noqa: BLE001
+            return ''
 
 
 class ContentActivitySerializer(serializers.ModelSerializer):

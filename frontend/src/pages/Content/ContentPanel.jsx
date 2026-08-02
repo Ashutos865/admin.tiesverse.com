@@ -47,6 +47,27 @@ const EMPTY = {
 const initialsOf = (n) => (n || '?').trim().split(/\s+/).slice(0, 2)
   .map((w) => w[0]?.toUpperCase() || '').join('');
 
+/* A person's profile picture, falling back to initials when they have none or
+   the image fails to load. */
+function Face({ person, size = 24, ring }) {
+  const [broken, setBroken] = useState(false);
+  const src = !broken ? (person.avatar_url || '') : '';
+  return (
+    <span style={{
+      width: size, height: size, borderRadius: '50%', display: 'grid', placeItems: 'center',
+      overflow: 'hidden', flex: 'none', fontSize: size * 0.4, fontWeight: 800,
+      background: 'color-mix(in srgb, var(--primary) 18%, transparent)',
+      color: 'var(--primary)',
+      ...(ring ? { border: '1px solid color-mix(in srgb, var(--primary) 30%, transparent)' } : {}),
+    }}>
+      {src
+        ? <img src={src} alt="" onError={() => setBroken(true)}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        : initialsOf(person.name)}
+    </span>
+  );
+}
+
 /* A compact, searchable multi-select for assignees.
 
    Rendering every member as an always-visible chip does not scale — with ~30
@@ -103,11 +124,7 @@ function AssigneePicker({ title, members, selected, disabled, onToggle, onClear 
             background: 'color-mix(in srgb, var(--primary) 12%, transparent)',
             color: 'var(--primary)',
           }}>
-            <span style={{
-              width: 19, height: 19, borderRadius: '50%', display: 'grid', placeItems: 'center',
-              fontSize: 9, fontWeight: 800,
-              background: 'color-mix(in srgb, var(--primary) 22%, transparent)',
-            }}>{initialsOf(m.name)}</span>
+            <Face person={m} size={19} />
             {m.name}
             {!disabled && (
               <span role="button" title="Remove"
@@ -157,12 +174,7 @@ function AssigneePicker({ title, members, selected, disabled, onToggle, onClear 
                     background: on ? 'color-mix(in srgb, var(--primary) 9%, transparent)' : 'transparent',
                     color: 'var(--text-main)',
                   }}>
-                  <span style={{
-                    width: 24, height: 24, borderRadius: '50%', display: 'grid', placeItems: 'center',
-                    fontSize: 10, fontWeight: 800, flex: 'none',
-                    background: 'color-mix(in srgb, var(--primary) 15%, transparent)',
-                    color: 'var(--primary)',
-                  }}>{initialsOf(m.name)}</span>
+                  <Face person={m} size={24} />
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden',
                                  textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {m.name}

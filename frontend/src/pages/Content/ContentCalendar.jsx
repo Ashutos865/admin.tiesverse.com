@@ -62,17 +62,35 @@ function Pill({ text, color, title }) {
   );
 }
 
+/* One person's face. Uses their real profile picture when they have one and
+   falls back to initials — a broken image would otherwise leave a blank hole,
+   so a failed load flips back to initials too. */
+function Face({ person, size = 24, style }) {
+  const [broken, setBroken] = useState(false);
+  const src = !broken ? (person.avatar_url || '') : '';
+  return (
+    <span title={person.name} style={{
+      width: size, height: size, borderRadius: '50%', display: 'grid', placeItems: 'center',
+      overflow: 'hidden', flex: 'none',
+      fontSize: size * 0.38, fontWeight: 800,
+      background: 'color-mix(in srgb, var(--primary) 16%, transparent)',
+      color: 'var(--primary)', border: '2px solid var(--surface-container-lowest)',
+      ...style,
+    }}>
+      {src
+        ? <img src={src} alt="" onError={() => setBroken(true)}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        : initials(person.name)}
+    </span>
+  );
+}
+
 function Avatars({ people = [], size = 24 }) {
   if (!people.length) return <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</span>;
   return (
     <span style={{ display: 'inline-flex' }}>
       {people.slice(0, 3).map((p, i) => (
-        <span key={p.id} title={p.name} style={{
-          width: size, height: size, borderRadius: '50%', display: 'grid', placeItems: 'center',
-          fontSize: size * 0.38, fontWeight: 800, marginLeft: i ? -7 : 0,
-          background: 'color-mix(in srgb, var(--primary) 16%, transparent)',
-          color: 'var(--primary)', border: '2px solid var(--surface-container-lowest)',
-        }}>{initials(p.name)}</span>
+        <Face key={p.id} person={p} size={size} style={{ marginLeft: i ? -7 : 0 }} />
       ))}
       {people.length > 3 && (
         <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 5, alignSelf: 'center' }}>
@@ -522,4 +540,4 @@ function MonthView({ items, month, setMonth, onOpen, onReschedule, canEdit }) {
   );
 }
 
-export { STATUS_COLOR, PRIORITY_COLOR, Pill, Avatars, fmtDay, iso, btn, btnPrimary, input, card };
+export { STATUS_COLOR, PRIORITY_COLOR, Pill, Avatars, Face, fmtDay, iso, btn, btnPrimary, input, card };
