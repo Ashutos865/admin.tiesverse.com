@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X, Trash2, Save, Loader2, ExternalLink, History, ListChecks,
   Search, Check, ChevronDown, UserPlus,
+  MessageCircle,
 } from 'lucide-react';
 
 /* The right-hand detail panel — the single place a content item is edited.
@@ -41,7 +42,7 @@ const EMPTY = {
   title: '', brand: '', content_type: 'other', status: 'idea',
   content_assignees: [], graphics_assignees: [], doc_url: '', extra_links: [],
   due_date: '', release_date: '', platforms: [], posting_url: '',
-  priority: 'medium', effort: '', notes: '',
+  priority: 'medium', effort: '', notes: '', notify_on_assign: true,
 };
 
 const initialsOf = (n) => (n || '?').trim().split(/\s+/).slice(0, 2)
@@ -249,6 +250,7 @@ export default function ContentPanel({
       posting_url: form.posting_url, priority: form.priority,
       effort: form.effort, notes: form.notes,
       due_date: form.due_date || null, release_date: form.release_date || null,
+      notify_on_assign: form.notify_on_assign !== false,
     };
     const res = await onSave(isNew ? null : item.id, payload);
     setSaving(false);
@@ -390,6 +392,32 @@ export default function ContentPanel({
           <label style={label}>Notes</label>
           <textarea style={{ ...input, minHeight: 90, resize: 'vertical', lineHeight: 1.55 }}
             value={form.notes} disabled={!canEdit} onChange={(e) => set('notes', e.target.value)} />
+        </div>
+
+        {/* WhatsApp notification switch. Meta bills per message, so notifying is
+            a deliberate choice per item rather than something that always fires. */}
+        <div style={{
+          ...field, border: '1px solid var(--outline-variant)', borderRadius: 9,
+          padding: '11px 13px', background: 'var(--surface-container-low)',
+        }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10,
+                          cursor: canEdit ? 'pointer' : 'default' }}>
+            <input type="checkbox" disabled={!canEdit}
+              checked={form.notify_on_assign !== false}
+              onChange={(e) => set('notify_on_assign', e.target.checked)}
+              style={{ width: 17, height: 17, accentColor: 'var(--primary)', cursor: 'inherit' }} />
+            <span style={{ flex: 1 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6,
+                             fontSize: 13, fontWeight: 700, color: 'var(--text-main)' }}>
+                <MessageCircle size={14} style={{ color: '#25D366' }} />
+                Notify assignees on WhatsApp
+              </span>
+              <span style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                Messages only people who added a number and opted in, and only when
+                they are newly assigned — editing later never re-sends.
+              </span>
+            </span>
+          </label>
         </div>
 
         {/* linked tasks — one per assignee, so everyone sees their own work */}

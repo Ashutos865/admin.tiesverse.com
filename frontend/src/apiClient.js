@@ -732,3 +732,7 @@ export const deleteContentItem     = (id)         => adminFetch(`/api/content/it
 export const moveContentItem       = (id, data)   => adminFetch(`/api/content/items/${id}/move`, 'POST', data);
 export const rescheduleContentItem = (id, date)   => adminFetch(`/api/content/items/${id}/reschedule`, 'POST', { release_date: date });
 export const getContentActivity    = (id)         => adminFetch(`/api/content/items/${id}/activity`);
+export const getMyNotificationPrefs    = ()      => adminFetch('/api/career/me/notifications');
+export const updateMyNotificationPrefs = (data)  => adminFetch('/api/career/me/notifications', 'PATCH', data);
+export const getWhatsAppStatus         = ()      => adminFetch('/api/content/whatsapp');
+export const sendWhatsAppTest          = (to)    => adminFetch('/api/content/whatsapp', 'POST', { to });

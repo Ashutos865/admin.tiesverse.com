@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { NavLink } from 'react-router-dom';
+import { MessageCircle } from 'lucide-react';
 import {
     getAttendanceList, checkIn, checkOut,
     getLeaveList, createLeaveRequest,
     getOffboardingList, createOffboardingRequest, getOffboardingDetail,
     getTasks, updateTask,
     getAssets,
+    getMyNotificationPrefs, updateMyNotificationPrefs,
 } from '../../apiClient';
 import { useMe } from '../../context/MeContext';
 import WorkSessionsPanel from './WorkSessionsPanel.jsx';
@@ -524,6 +526,102 @@ function ProfilePanel({ member }) {
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
                 Need a change to your details? Contact HR.
             </p>
+            <NotificationPrefs />
+        </div>
+    );
+}
+
+/* WhatsApp notifications — the member's own number and consent.
+
+   Deliberately self-service: being messaged about work is the member's choice,
+   not something HR switches on for them. Without both a number and the tick,
+   nothing is ever sent. */
+function NotificationPrefs() {
+    const [prefs, setPrefs] = useState(null);
+    const [number, setNumber] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [msg, setMsg] = useState(null);
+
+    useEffect(() => {
+        let alive = true;
+        getMyNotificationPrefs()
+            .then((r) => {
+                if (!alive || !r || r.error) { if (alive) setPrefs({}); return; }
+                setPrefs(r);
+                setNumber(r.whatsapp_number || '');
+            })
+            .catch(() => { if (alive) setPrefs({}); });
+        return () => { alive = false; };
+    }, []);
+
+    const flash = (type, text) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 4000); };
+
+    const save = async (patch) => {
+        setBusy(true);
+        const res = await updateMyNotificationPrefs(patch);
+        setBusy(false);
+        if (res && !res.error) {
+            setPrefs(res);
+            setNumber(res.whatsapp_number || '');
+            flash('ok', 'Saved.');
+        } else flash('error', res?.error || 'Could not save.');
+    };
+
+    if (prefs === null) return null;
+
+    const optedIn = !!prefs.notify_whatsapp;
+    return (
+        <div style={{ ...card, maxWidth: 520, marginTop: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <MessageCircle size={16} style={{ color: '#25D366' }} />
+                <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text-main)' }}>
+                    WhatsApp notifications
+                </h3>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px', lineHeight: 1.55 }}>
+                Get a WhatsApp message when you are assigned content work. Your number is
+                used only for work notifications.
+            </p>
+
+            {msg && (
+                <div style={{
+                    padding: '8px 11px', borderRadius: 7, fontSize: 12.5, fontWeight: 600, marginBottom: 12,
+                    background: msg.type === 'error' ? 'rgba(185,28,28,.1)' : 'rgba(6,122,80,.1)',
+                    color: msg.type === 'error' ? '#b91c1c' : '#067a50',
+                }}>{msg.text}</div>
+            )}
+
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                            letterSpacing: '.04em', color: 'var(--text-muted)', marginBottom: 5 }}>
+                WhatsApp number
+            </label>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <input value={number} onChange={(e) => setNumber(e.target.value)} disabled={busy}
+                    placeholder="+91 98765 43210"
+                    style={{ flex: 1, padding: '9px 11px', borderRadius: 8, fontSize: 13,
+                             border: '1px solid var(--outline-variant)', color: 'var(--text-main)',
+                             background: 'var(--surface-container-lowest)', outline: 'none' }} />
+                <button onClick={() => save({ whatsapp_number: number })}
+                    disabled={busy || number === (prefs.whatsapp_number || '')}
+                    style={{ padding: '8px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                             fontSize: 13, fontWeight: 700, color: '#fff', background: 'var(--primary)',
+                             opacity: (busy || number === (prefs.whatsapp_number || '')) ? .5 : 1 }}>
+                    Save
+                </button>
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 9,
+                            cursor: prefs.whatsapp_number ? 'pointer' : 'not-allowed' }}>
+                <input type="checkbox" checked={optedIn} disabled={busy || !prefs.whatsapp_number}
+                    onChange={(e) => save({ notify_whatsapp: e.target.checked })}
+                    style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
+                <span style={{ fontSize: 13, color: 'var(--text-main)' }}>
+                    Send me WhatsApp notifications
+                    {!prefs.whatsapp_number && (
+                        <span style={{ color: 'var(--text-muted)', fontSize: 12 }}> — add a number first</span>
+                    )}
+                </span>
+            </label>
         </div>
     );
 }
