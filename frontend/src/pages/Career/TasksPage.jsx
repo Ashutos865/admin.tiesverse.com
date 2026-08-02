@@ -35,6 +35,8 @@ export default function TasksPage() {
     const [members, setMembers] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [view, setView] = useState('kanban'); // 'kanban' | 'list'
+    const [dragTask, setDragTask] = useState(null);      // card being dragged
+    const [dragOverCol, setDragOverCol] = useState(null); // column under the cursor
     const [filterMember, setFilterMember] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
     const [loading, setLoading] = useState(true);
@@ -145,9 +147,17 @@ export default function TasksPage() {
     };
 
     const moveStatus = async (task, newStatus) => {
+        if (!task || task.status === newStatus) return;
+        // Move the card immediately and put it back if the save fails — waiting
+        // for a round trip makes dragging feel broken.
+        const prev = tasks;
+        setTasks(ts => ts.map(t => (t.id === task.id ? { ...t, status: newStatus } : t)));
         const res = await updateTask(task.id, { status: newStatus });
         if (res?.id) load();
-        else showToast('Failed to move task', true);
+        else {
+            setTasks(prev);
+            showToast('Failed to move task', true);
+        }
     };
 
     const kanbanCols = KANBAN_COLS.map(col => ({
@@ -209,8 +219,18 @@ export default function TasksPage() {
             {loading ? <p style={{ color: 'var(--text-muted)' }}>Loading...</p> : (
                 view === 'kanban' ? (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, overflowX: 'auto' }}>
-                        {kanbanCols.map(col => (
-                            <div key={col.key} style={{ minWidth: 200 }}>
+                        {kanbanCols.map(col => {
+                            const hot = dragOverCol === col.key && dragTask && dragTask.status !== col.key;
+                            return (
+                            <div key={col.key} style={{ minWidth: 200 }}
+                                onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.key); }}
+                                onDragLeave={() => setDragOverCol(c => (c === col.key ? null : c))}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    setDragOverCol(null);
+                                    if (dragTask) moveStatus(dragTask, col.key);
+                                    setDragTask(null);
+                                }}>
                                 <div style={{
                                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                     padding: '8px 12px', borderRadius: '8px 8px 0 0',
@@ -219,18 +239,28 @@ export default function TasksPage() {
                                     <span style={{ fontSize: 12, fontWeight: 700, color: STATUS_STYLE[col.key]?.color }}>{col.label}</span>
                                     <span style={{ fontSize: 11, color: STATUS_STYLE[col.key]?.color, opacity: .7 }}>{col.tasks.length}</span>
                                 </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                <div style={{
+                                    display: 'flex', flexDirection: 'column', gap: 8, minHeight: 90,
+                                    borderRadius: 8, padding: hot ? 6 : 0,
+                                    outline: hot ? '2px dashed var(--primary)' : 'none',
+                                    background: hot ? 'color-mix(in srgb, var(--primary) 7%, transparent)' : 'transparent',
+                                    transition: 'background .12s',
+                                }}>
                                     {col.tasks.map(t => (
-                                        <TaskCard key={t.id} task={t} onEdit={openEdit} onDelete={handleDelete} onMove={moveStatus} />
+                                        <TaskCard key={t.id} task={t} onEdit={openEdit} onDelete={handleDelete} onMove={moveStatus}
+                                            dragging={dragTask?.id === t.id}
+                                            onDragStart={() => setDragTask(t)}
+                                            onDragEnd={() => { setDragTask(null); setDragOverCol(null); }} />
                                     ))}
                                     {col.tasks.length === 0 && (
                                         <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12, border: '1px dashed var(--outline-variant)', borderRadius: 8 }}>
-                                            No tasks
+                                            {hot ? `Drop to move to ${col.label}` : 'No tasks'}
                                         </div>
                                     )}
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 ) : (
                     tasks.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>No tasks found.</p> : (
@@ -367,14 +397,28 @@ export default function TasksPage() {
     );
 }
 
-function TaskCard({ task, onEdit, onDelete, onMove }) {
+function TaskCard({ task, onEdit, onDelete, onMove, dragging, onDragStart, onDragEnd }) {
     const ss = STATUS_STYLE[task.status] || STATUS_STYLE.todo;
     const nextStatuses = KANBAN_COLS.map(c => c.key).filter(s => s !== task.status && s !== 'cancelled');
+    const canDrag = typeof onDragStart === 'function';   // list view passes none
     return (
-        <div style={{
+        <div
+            draggable={canDrag}
+            onDragStart={(e) => {
+                if (!canDrag) return;
+                // Required by Firefox, which ignores drags with no payload.
+                try { e.dataTransfer.setData('text/plain', String(task.id)); } catch { /* ignore */ }
+                e.dataTransfer.effectAllowed = 'move';
+                onDragStart();
+            }}
+            onDragEnd={onDragEnd}
+            style={{
             background: 'var(--surface-container-low)',
             border: '1px solid var(--outline-variant)',
             borderRadius: 10, padding: '12px 14px',
+            cursor: canDrag ? 'grab' : 'default',
+            opacity: dragging ? 0.4 : 1,
+            boxShadow: dragging ? '0 6px 18px rgba(0,0,0,.18)' : 'none',
         }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: PRIORITY_COLOR[task.priority] }}>{cap(task.priority)}</span>

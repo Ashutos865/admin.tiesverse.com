@@ -376,7 +376,12 @@ function BoardView({ items, choices, onOpen, onMove, canEdit }) {
             {colItems.map((i) => (
               <div key={i.id}
                 draggable={canEdit}
-                onDragStart={() => setDragId(i.id)}
+                onDragStart={(e) => {
+                  // Firefox ignores a drag that carries no data.
+                  try { e.dataTransfer.setData('text/plain', String(i.id)); } catch { /* ignore */ }
+                  e.dataTransfer.effectAllowed = 'move';
+                  setDragId(i.id);
+                }}
                 onDragEnd={() => { setDragId(null); setOverCol(null); }}
                 onClick={() => onOpen(i)}
                 style={{
@@ -489,7 +494,7 @@ function MonthView({ items, month, setMonth, onOpen, onReschedule, canEdit }) {
                 {dayItems.slice(0, 3).map((i) => (
                   <div key={i.id}
                     draggable={canEdit}
-                    onDragStart={() => setDragId(i.id)}
+                    onDragStart={(e) => { try { e.dataTransfer.setData('text/plain', String(i.id)); } catch { /* ignore */ } e.dataTransfer.effectAllowed = 'move'; setDragId(i.id); }}
                     onDragEnd={() => { setDragId(null); setOverDay(null); }}
                     onClick={() => onOpen(i)}
                     title={i.title}
@@ -523,7 +528,7 @@ function MonthView({ items, month, setMonth, onOpen, onReschedule, canEdit }) {
             {unscheduled.map((i) => (
               <div key={i.id}
                 draggable={canEdit}
-                onDragStart={() => setDragId(i.id)}
+                onDragStart={(e) => { try { e.dataTransfer.setData('text/plain', String(i.id)); } catch { /* ignore */ } e.dataTransfer.effectAllowed = 'move'; setDragId(i.id); }}
                 onDragEnd={() => setDragId(null)}
                 onClick={() => onOpen(i)}
                 style={{
