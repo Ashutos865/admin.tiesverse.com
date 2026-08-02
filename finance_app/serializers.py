@@ -22,6 +22,21 @@ class MoneyAwareSerializer(serializers.ModelSerializer):
             for f in MONEY_FIELDS + ('approved_amount',):
                 self.fields.pop(f, None)
 
+    def validate(self, attrs):
+        """Picking "Other" must be accompanied by saying what it was — a row
+        reading "Other · ₹40,000" is useless to whoever reads the ledger later."""
+        attrs = super().validate(attrs)
+        category = attrs.get('category', getattr(self.instance, 'category', None))
+        if category == 'other':
+            said = (attrs.get('category_other')
+                    or getattr(self.instance, 'category_other', '') or '').strip()
+            if not said:
+                raise serializers.ValidationError(
+                    {'category_other': 'Say what this is — "Other" on its own is '
+                                       'not much use when reading the ledger later.'})
+            attrs['category_other'] = said
+        return attrs
+
 
 class ExchangeRateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -37,7 +52,7 @@ class AssetItemSerializer(MoneyAwareSerializer):
     class Meta:
         model = AssetItem
         fields = [
-            'id', 'name', 'category', 'serial', 'vendor',
+            'id', 'name', 'category', 'category_other', 'serial', 'vendor',
             'purchase_date', 'warranty_until', 'condition', 'status',
             'assigned_to', 'assigned_to_name', 'assigned_at', 'notes',
             'amount', 'currency', 'amount_inr', 'fx_rate', 'fx_date', 'fx_missing',
@@ -93,7 +108,7 @@ class PurchaseRequestSerializer(MoneyAwareSerializer):
     class Meta:
         model = PurchaseRequest
         fields = [
-            'id', 'title', 'description', 'category', 'justification',
+            'id', 'title', 'description', 'category', 'category_other', 'justification',
             'needed_by', 'raised_on',
             'requested_by', 'requested_by_name',
             'status', 'approved_amount', 'approved_on',

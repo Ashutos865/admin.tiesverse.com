@@ -121,6 +121,9 @@ class AssetItem(MoneyMixin):
     """A physical or licensed item the org owns."""
     name = models.CharField(max_length=255)
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='other')
+    # What "Other" actually was. Required by the serializer when category is
+    # 'other', because a bare "Other · ₹40,000" is unreadable months later.
+    category_other = models.CharField(max_length=120, blank=True)
     serial = models.CharField(max_length=120, blank=True)
     vendor = models.CharField(max_length=200, blank=True)
     purchase_date = models.DateField(null=True, blank=True)
@@ -198,6 +201,7 @@ class PurchaseRequest(MoneyMixin):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='other')
+    category_other = models.CharField(max_length=120, blank=True)   # required when category='other'
     justification = models.TextField(blank=True)
     needed_by = models.DateField(null=True, blank=True)
 

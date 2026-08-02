@@ -62,6 +62,10 @@ const inr = (v) => (v === null || v === undefined || v === '')
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN',
   { day: '2-digit', month: 'short', year: '2-digit' }) : '—');
 
+/* Show what "Other" actually was, rather than the bare word. */
+const catLabel = (r) => (r.category === 'other' && r.category_other)
+  ? r.category_other : String(r.category || '').replace(/_/g, ' ');
+
 function Pill({ text, color }) {
   const c = color || STATUS_COLOR[text] || '#7c7267';
   return (
@@ -253,7 +257,7 @@ function RequestTable({ rows, canDecide, onOpen }) {
             <tr key={r.id}>
               <td style={{ ...td, fontWeight: 700, color: 'var(--text-main)', maxWidth: 260 }}>
                 {r.title}
-                <div style={{ fontSize: 11.5, fontWeight: 400, color: 'var(--text-muted)' }}>{r.category}</div>
+                <div style={{ fontSize: 11.5, fontWeight: 400, color: 'var(--text-muted)' }}>{catLabel(r)}</div>
               </td>
               <td style={{ ...td, color: 'var(--text-muted)' }}>{r.requested_by_name || '—'}</td>
               <td style={{ ...td, color: 'var(--text-muted)' }}>{fmtDate(r.raised_on)}</td>
@@ -297,7 +301,7 @@ function AssetTable({ rows, onDelete }) {
               <td style={{ ...td, fontWeight: 700, color: 'var(--text-main)' }}>{a.name}
                 {a.vendor && <div style={{ fontSize: 11.5, fontWeight: 400, color: 'var(--text-muted)' }}>{a.vendor}</div>}
               </td>
-              <td style={{ ...td, color: 'var(--text-muted)' }}>{a.category}</td>
+              <td style={{ ...td, color: 'var(--text-muted)' }}>{catLabel(a)}</td>
               <td style={{ ...td, color: 'var(--text-muted)', fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>
                 {a.serial || '—'}
               </td>
@@ -484,6 +488,18 @@ function Modal({ modal, choices, members, canDecide, onClose, onSaved, onError }
                 <select style={input} value={f.category} onChange={set('category')}>
                   {(choices.categories || []).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
+                {/* "Other" on its own tells a future reader nothing, so say what
+                    it was. The API requires this too, not just the form. */}
+                {f.category === 'other' && (
+                  <div style={{ marginTop: 8 }}>
+                    <input style={input} value={f.category_other || ''}
+                      onChange={set('category_other')} autoFocus
+                      placeholder="What is it? e.g. Printer ink, Domain renewal, Event banner" />
+                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>
+                      Required — so the ledger still makes sense months from now.
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -532,7 +548,8 @@ function Modal({ modal, choices, members, canDecide, onClose, onSaved, onError }
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
               <button style={btn} onClick={onClose} disabled={busy}>Cancel</button>
-              <button style={btnPrimary} onClick={save} disabled={busy || !(f.title || f.name) || !f.amount}>
+              <button style={btnPrimary} onClick={save} disabled={busy || !(f.title || f.name) || !f.amount
+                  || (f.category === 'other' && kind !== 'subscription' && !(f.category_other || '').trim())}>
                 {busy ? <><Loader2 size={14} className="fin-spin" /> Saving…</> : 'Save'}
               </button>
             </div>
