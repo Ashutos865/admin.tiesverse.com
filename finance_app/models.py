@@ -95,6 +95,30 @@ class MoneyMixin(models.Model):
         abstract = True
 
 
+class FinanceCategory(models.Model):
+    """A category the Finance team defines themselves.
+
+    The built-in CATEGORY_CHOICES cover the obvious cases, but no fixed list
+    survives contact with a real organisation — so Finance and superadmins can
+    add their own rather than everything unfamiliar becoming "Other".
+    """
+    name = models.CharField(max_length=80, unique=True)
+    description = models.CharField(max_length=200, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_by_admin = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        db_constraint=False, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'finance_categories'
+        ordering = ['name']
+        verbose_name_plural = 'finance categories'
+
+    def __str__(self):
+        return self.name
+
+
 class ExchangeRate(models.Model):
     """One currency's value in INR on one date.
 
@@ -122,8 +146,12 @@ class AssetItem(MoneyMixin):
     name = models.CharField(max_length=255)
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='other')
     # What "Other" actually was. Required by the serializer when category is
-    # 'other', because a bare "Other · ₹40,000" is unreadable months later.
+    # 'other', because a bare "Other · Rs 40,000" is unreadable months later.
     category_other = models.CharField(max_length=120, blank=True)
+    # A Finance-defined category, used instead of the fixed list when set.
+    custom_category = models.ForeignKey(
+        'FinanceCategory', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='assets')
     serial = models.CharField(max_length=120, blank=True)
     vendor = models.CharField(max_length=200, blank=True)
     purchase_date = models.DateField(null=True, blank=True)
@@ -202,6 +230,9 @@ class PurchaseRequest(MoneyMixin):
     description = models.TextField(blank=True)
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='other')
     category_other = models.CharField(max_length=120, blank=True)   # required when category='other'
+    custom_category = models.ForeignKey(
+        'FinanceCategory', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='requests')
     justification = models.TextField(blank=True)
     needed_by = models.DateField(null=True, blank=True)
 

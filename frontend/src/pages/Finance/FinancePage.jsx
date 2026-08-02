@@ -2,12 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Wallet, Package, Repeat, ReceiptText, TrendingUp, Plus, RefreshCw, X,
   Loader2, Check, Ban, IndianRupee, Search, AlertTriangle, ExternalLink, Trash2,
+  Tags, Users, UserPlus, UserMinus,
 } from 'lucide-react';
 import {
   getFinanceBoard, createFinanceAsset, updateFinanceAsset, deleteFinanceAsset,
   createSubscription, updateSubscription, deleteSubscription,
   createFinanceRequest, approveFinanceRequest, rejectFinanceRequest,
   payFinanceRequest, getFinanceSummary,
+  createFinanceCategory, updateFinanceCategory, deleteFinanceCategory,
+  getFinanceTeam, setFinanceTeam,
 } from '../../apiClient';
 
 /* Assets & Finance — the confidential half of the portal.
@@ -63,8 +66,9 @@ const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN',
   { day: '2-digit', month: 'short', year: '2-digit' }) : '—');
 
 /* Show what "Other" actually was, rather than the bare word. */
-const catLabel = (r) => (r.category === 'other' && r.category_other)
-  ? r.category_other : String(r.category || '').replace(/_/g, ' ');
+const catLabel = (r) => r.custom_category_name
+  || ((r.category === 'other' && r.category_other) ? r.category_other
+      : String(r.category || '').replace(/_/g, ' '));
 
 function Pill({ text, color }) {
   const c = color || STATUS_COLOR[text] || '#7c7267';
@@ -131,6 +135,9 @@ export default function FinancePage() {
     ['assets', 'Assets', Package, (data?.assets || []).length],
     ['subscriptions', 'Subscriptions', Repeat, (data?.subscriptions || []).length],
     ['spend', 'Spend', TrendingUp, 0],
+    // Only the people who can actually change these see the tabs at all.
+    ...(canDecide ? [['categories', 'Categories', Tags, 0]] : []),
+    ...(data?.is_superadmin ? [['team', 'Finance team', Users, 0]] : []),
   ];
 
   return (
@@ -187,7 +194,7 @@ export default function FinancePage() {
             </button>
           ))}
         </div>
-        {tab !== 'spend' && (
+        {!['spend', 'categories', 'team'].includes(tab) && (
           <div style={{ position: 'relative', flex: 1, minWidth: 190, maxWidth: 300 }}>
             <Search size={14} style={{ position: 'absolute', left: 10, top: 10, color: 'var(--text-muted)' }} />
             <input style={{ ...input, paddingLeft: 31 }} value={search} placeholder="Search…"
@@ -218,6 +225,10 @@ export default function FinancePage() {
         <SubTable rows={filtered(data?.subscriptions, ['name', 'vendor'])}
           onDelete={(id) => window.confirm('Delete this subscription?')
             && act(() => deleteSubscription(id), 'Subscription deleted.')} />
+      ) : tab === 'categories' ? (
+        <CategoriesTab rows={data?.custom_categories || []} onChanged={load} flash={flash} />
+      ) : tab === 'team' ? (
+        <TeamTab flash={flash} onChanged={load} />
       ) : (
         <SpendView summary={summary} />
       )}
@@ -225,6 +236,7 @@ export default function FinancePage() {
       {modal && (
         <Modal
           modal={modal} choices={choices} members={data?.members || []}
+          customCategories={data?.custom_categories || []}
           canDecide={canDecide}
           onClose={() => setModal(null)}
           onSaved={(text) => { setModal(null); flash('ok', text); load(); }}
@@ -409,7 +421,7 @@ function SpendView({ summary }) {
 }
 
 /* ── modals ────────────────────────────────────────────────────────────── */
-function Modal({ modal, choices, members, canDecide, onClose, onSaved, onError }) {
+function Modal({ modal, choices, members, customCategories, canDecide, onClose, onSaved, onError }) {
   const { kind, row } = modal;
   const [f, setF] = useState(() => ({
     currency: 'INR', category: 'other', cycle: 'monthly', condition: 'good',
@@ -417,6 +429,10 @@ function Modal({ modal, choices, members, canDecide, onClose, onSaved, onError }
   }));
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+  const pickable = useMemo(
+    () => (customCategories || []).filter((c) => c.is_active || c.id === f.custom_category),
+    [customCategories, f.custom_category]);
 
   const save = async () => {
     setBusy(true);
@@ -485,12 +501,26 @@ function Modal({ modal, choices, members, canDecide, onClose, onSaved, onError }
             {kind !== 'subscription' && (
               <div style={{ marginBottom: 13 }}>
                 <label style={label}>Category</label>
-                <select style={input} value={f.category} onChange={set('category')}>
+                <select style={input} value={f.custom_category ? `c${f.custom_category}` : f.category}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    // Finance-defined categories are prefixed so the two lists
+                    // can share one dropdown.
+                    if (v.startsWith('c')) setF({ ...f, custom_category: Number(v.slice(1)), category: 'other' });
+                    else setF({ ...f, custom_category: null, category: v });
+                  }}>
                   {(choices.categories || []).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  {/* A switched-off category still has to appear if this row
+                      already uses it, or editing would silently drop it. */}
+                  {pickable.length > 0 && (
+                    <optgroup label="Your categories">
+                      {pickable.map((c) => <option key={c.id} value={`c${c.id}`}>{c.name}</option>)}
+                    </optgroup>
+                  )}
                 </select>
                 {/* "Other" on its own tells a future reader nothing, so say what
-                    it was. The API requires this too, not just the form. */}
-                {f.category === 'other' && (
+                    it was. A Finance-defined category counts as saying it. */}
+                {f.category === 'other' && !f.custom_category && (
                   <div style={{ marginTop: 8 }}>
                     <input style={input} value={f.category_other || ''}
                       onChange={set('category_other')} autoFocus
@@ -500,6 +530,19 @@ function Modal({ modal, choices, members, canDecide, onClose, onSaved, onError }
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {kind === 'request' && (
+              <div style={{ marginBottom: 13 }}>
+                <label style={label}>Date raised</label>
+                <input style={input} type="date" max={new Date().toISOString().slice(0, 10)}
+                  value={f.raised_on || new Date().toISOString().slice(0, 10)}
+                  onChange={set('raised_on')} />
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Back-date it if the spend already happened — a foreign amount is then
+                  converted at that day's rate, not today's.
+                </div>
               </div>
             )}
 
@@ -549,7 +592,7 @@ function Modal({ modal, choices, members, canDecide, onClose, onSaved, onError }
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
               <button style={btn} onClick={onClose} disabled={busy}>Cancel</button>
               <button style={btnPrimary} onClick={save} disabled={busy || !(f.title || f.name) || !f.amount
-                  || (f.category === 'other' && kind !== 'subscription' && !(f.category_other || '').trim())}>
+                  || (f.category === 'other' && !f.custom_category && kind !== 'subscription' && !(f.category_other || '').trim())}>
                 {busy ? <><Loader2 size={14} className="fin-spin" /> Saving…</> : 'Save'}
               </button>
             </div>
@@ -626,5 +669,241 @@ function DecidePanel({ row, canDecide, busy, decide }) {
         </div>
       )}
     </>
+  );
+}
+
+/* ── Categories ────────────────────────────────────────────────────────────
+   The built-in category list cannot cover everything a growing team spends on,
+   so Finance defines its own. Deleting one that is already in use is refused by
+   the API rather than silently orphaning rows, and the count is shown here so
+   nobody is surprised by that. */
+function CategoriesTab({ rows, onChanged, flash }) {
+  const [name, setName] = useState('');
+  const [desc, setDesc] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const add = async () => {
+    const n = name.trim();
+    if (!n) return;
+    setBusy(true);
+    const res = await createFinanceCategory({ name: n, description: desc.trim() });
+    setBusy(false);
+    if (res && !res.error) { setName(''); setDesc(''); flash('ok', `“${n}” added.`); onChanged(); }
+    else flash('error', res?.error || 'Could not add that category.');
+  };
+
+  const remove = async (c) => {
+    if (c.in_use) {
+      flash('error', `“${c.name}” is used by ${c.in_use} row${c.in_use === 1 ? '' : 's'} — `
+        + 'turn it off instead of deleting it.');
+      return;
+    }
+    if (!window.confirm(`Delete “${c.name}”?`)) return;
+    const res = await deleteFinanceCategory(c.id);
+    if (res && !res.error) { flash('ok', 'Category deleted.'); onChanged(); }
+    else flash('error', res?.error || 'Could not delete that.');
+  };
+
+  const toggle = async (c) => {
+    const res = await updateFinanceCategory(c.id, { is_active: !c.is_active });
+    if (res && !res.error) { flash('ok', c.is_active ? 'Hidden from the picker.' : 'Back in the picker.'); onChanged(); }
+    else flash('error', res?.error || 'Could not update that.');
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <div style={{ ...card, padding: 16, width: 300, flexShrink: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 12, color: 'var(--text-main)' }}>
+          New category
+        </div>
+        <label style={label}>Name</label>
+        <input style={{ ...input, marginBottom: 11 }} value={name} placeholder="e.g. Travel"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()} />
+        <label style={label}>Description <span style={{ fontWeight: 500, textTransform: 'none' }}>(optional)</span></label>
+        <input style={{ ...input, marginBottom: 13 }} value={desc} placeholder="Flights, trains, cabs"
+          onChange={(e) => setDesc(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()} />
+        <button style={{ ...btnPrimary, width: '100%', justifyContent: 'center' }}
+          onClick={add} disabled={busy || !name.trim()}>
+          {busy ? <Loader2 size={14} className="fin-spin" /> : <Plus size={15} />} Add category
+        </button>
+        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5 }}>
+          These appear in the category dropdown alongside the built-in ones, for
+          both requests and assets.
+        </div>
+      </div>
+
+      <div style={{ ...card, flex: 1, minWidth: 340, overflow: 'hidden' }}>
+        {(rows || []).length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+            No categories of your own yet — the built-in list is all that shows in the picker.
+          </div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={th}>Category</th><th style={th}>Used by</th>
+              <th style={th}>In picker</th><th style={th} />
+            </tr></thead>
+            <tbody>
+              {rows.map((c) => (
+                <tr key={c.id} style={{ opacity: c.is_active ? 1 : 0.55 }}>
+                  <td style={td}>
+                    <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>{c.name}</div>
+                    {c.description && (
+                      <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{c.description}</div>
+                    )}
+                  </td>
+                  <td style={{ ...td, color: 'var(--text-muted)' }}>
+                    {c.in_use ? `${c.in_use} row${c.in_use === 1 ? '' : 's'}` : '—'}
+                  </td>
+                  <td style={td}>
+                    <button style={{ ...btn, padding: '5px 10px', fontSize: 12 }} onClick={() => toggle(c)}>
+                      {c.is_active ? 'Shown' : 'Hidden'}
+                    </button>
+                  </td>
+                  <td style={{ ...td, textAlign: 'right' }}>
+                    <button title={c.in_use ? 'In use — cannot delete' : 'Delete'}
+                      style={{ ...btn, padding: '5px 8px', color: c.in_use ? 'var(--text-muted)' : '#b91c1c' }}
+                      onClick={() => remove(c)}>
+                      <Trash2 size={13} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Finance team ──────────────────────────────────────────────────────────
+   Superadmin only. Finance is a restricted department: it does not appear in
+   the HR department dropdown at all, so this screen is the only way in or out
+   of it. Adding someone here gives them approval rights and sight of every
+   amount, which is why the confirmation is explicit. */
+function TeamTab({ flash, onChanged }) {
+  const [state, setState] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [busyId, setBusyId] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await getFinanceTeam();
+    if (res && !res.error) setState(res);
+    else flash('error', res?.error || 'Could not load the Finance team.');
+    setLoading(false);
+  }, [flash]);
+  useEffect(() => { load(); }, [load]);
+
+  const change = async (m, action) => {
+    const msg = action === 'add'
+      ? `Give ${m.candidate_name} Finance access?\n\nThey will see every amount in the `
+        + 'system and be able to approve and reject spending.'
+      : `Remove ${m.candidate_name} from Finance?\n\nThey will immediately lose sight of all amounts.`;
+    if (!window.confirm(msg)) return;
+    setBusyId(m.id);
+    const res = await setFinanceTeam(m.id, action);
+    setBusyId(null);
+    if (res && !res.error) {
+      flash('ok', action === 'add' ? `${m.candidate_name} added to Finance.`
+                                   : `${m.candidate_name} removed from Finance.`);
+      load(); onChanged();
+    } else flash('error', res?.error || 'That did not work.');
+  };
+
+  if (loading && !state) {
+    return (
+      <div style={{ ...card, padding: 50, textAlign: 'center', color: 'var(--text-muted)' }}>
+        <Loader2 size={22} className="fin-spin" /> Loading…
+      </div>
+    );
+  }
+
+  const term = q.trim().toLowerCase();
+  const candidates = (state?.candidates || []).filter(
+    (m) => !term || `${m.candidate_name} ${m.candidate_email} ${m.crew_id || ''}`.toLowerCase().includes(term));
+
+  const Row = ({ m, action }) => (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px',
+      borderBottom: '1px solid var(--surface-container-low)',
+    }}>
+      <div style={{
+        width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+        background: 'var(--surface-container-low)', display: 'grid', placeItems: 'center',
+        fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', overflow: 'hidden',
+      }}>
+        {m.avatar_url
+          ? <img src={m.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : (m.candidate_name || '?').charAt(0).toUpperCase()}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-main)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {m.candidate_name}
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-muted)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {m.crew_id ? `${m.crew_id} · ` : ''}{m.candidate_email}
+        </div>
+      </div>
+      <button style={{ ...btn, padding: '6px 11px', fontSize: 12,
+                       ...(action === 'add' ? {} : { color: '#b91c1c' }) }}
+        disabled={busyId === m.id} onClick={() => change(m, action)}>
+        {busyId === m.id ? <Loader2 size={13} className="fin-spin" />
+          : action === 'add' ? <UserPlus size={13} /> : <UserMinus size={13} />}
+        {action === 'add' ? 'Add' : 'Remove'}
+      </button>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{
+        display: 'flex', gap: 9, alignItems: 'flex-start', padding: '11px 13px', marginBottom: 14,
+        borderRadius: 10, background: 'rgba(180,83,9,.08)', color: '#b45309', fontSize: 12.5,
+      }}>
+        <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+        <div>
+          Finance is a hidden department — it does not appear in the HR department list, and
+          only you can change who is in it. Members here approve spending and see every amount.
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div style={{ ...card, flex: 1, minWidth: 300, overflow: 'hidden' }}>
+          <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--outline-variant)',
+                        fontSize: 12.5, fontWeight: 800, color: 'var(--text-main)' }}>
+            In Finance ({(state?.members || []).length})
+          </div>
+          {(state?.members || []).length === 0 ? (
+            <div style={{ padding: 34, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+              Nobody yet. Until someone is added, only you can approve spending.
+            </div>
+          ) : state.members.map((m) => <Row key={m.id} m={m} action="remove" />)}
+        </div>
+
+        <div style={{ ...card, flex: 1, minWidth: 300, overflow: 'hidden' }}>
+          <div style={{ padding: '9px 13px', borderBottom: '1px solid var(--outline-variant)' }}>
+            <div style={{ position: 'relative' }}>
+              <Search size={14} style={{ position: 'absolute', left: 10, top: 10, color: 'var(--text-muted)' }} />
+              <input style={{ ...input, paddingLeft: 31 }} value={q} placeholder="Search everyone else…"
+                onChange={(e) => setQ(e.target.value)} />
+            </div>
+          </div>
+          <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+            {candidates.length === 0 ? (
+              <div style={{ padding: 34, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                {term ? 'Nobody matches that.' : 'No other active members.'}
+              </div>
+            ) : candidates.map((m) => <Row key={m.id} m={m} action="add" />)}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

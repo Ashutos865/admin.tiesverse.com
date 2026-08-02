@@ -757,3 +757,9 @@ export const payFinanceRequest    = (id, d)     => adminFetch(`/api/finance/requ
 export const getExchangeRates     = ()          => adminFetch('/api/finance/rates');
 export const setExchangeRate      = (d)         => adminFetch('/api/finance/rates', 'POST', d);
 export const getFinanceAudit      = ()          => adminFetch('/api/finance/audit');
+export const listFinanceCategories  = ()       => adminFetch('/api/finance/categories');
+export const createFinanceCategory  = (d)      => adminFetch('/api/finance/categories', 'POST', d);
+export const updateFinanceCategory  = (id, d)  => adminFetch(`/api/finance/categories/${id}`, 'PATCH', d);
+export const deleteFinanceCategory  = (id)     => adminFetch(`/api/finance/categories/${id}`, 'DELETE');
+export const getFinanceTeam         = ()       => adminFetch('/api/finance/team');
+export const setFinanceTeam         = (member, action) => adminFetch('/api/finance/team', 'POST', { member, action });

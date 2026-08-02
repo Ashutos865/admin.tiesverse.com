@@ -9,7 +9,8 @@ amounts by accident.
 from rest_framework import serializers
 
 from .models import (
-    AssetItem, ExchangeRate, FinanceAuditLog, PurchaseRequest, Subscription,
+    AssetItem, ExchangeRate, FinanceAuditLog, FinanceCategory, PurchaseRequest,
+    Subscription,
 )
 
 MONEY_FIELDS = ('amount', 'currency', 'amount_inr', 'fx_rate', 'fx_date', 'fx_missing')
@@ -24,10 +25,15 @@ class MoneyAwareSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """Picking "Other" must be accompanied by saying what it was — a row
-        reading "Other · ₹40,000" is useless to whoever reads the ledger later."""
+        reading "Other · ₹40,000" is useless to whoever reads the ledger later.
+
+        A Finance-defined category counts as saying it, so choosing one of those
+        does not also demand free text.
+        """
         attrs = super().validate(attrs)
         category = attrs.get('category', getattr(self.instance, 'category', None))
-        if category == 'other':
+        custom = attrs.get('custom_category', getattr(self.instance, 'custom_category', None))
+        if category == 'other' and not custom:
             said = (attrs.get('category_other')
                     or getattr(self.instance, 'category_other', '') or '').strip()
             if not said:
@@ -48,11 +54,13 @@ class ExchangeRateSerializer(serializers.ModelSerializer):
 class AssetItemSerializer(MoneyAwareSerializer):
     assigned_to_name = serializers.CharField(
         source='assigned_to.candidate_name', read_only=True, default='')
+    custom_category_name = serializers.CharField(
+        source='custom_category.name', read_only=True, default='')
 
     class Meta:
         model = AssetItem
         fields = [
-            'id', 'name', 'category', 'category_other', 'serial', 'vendor',
+            'id', 'name', 'category', 'category_other', 'custom_category', 'custom_category_name', 'serial', 'vendor',
             'purchase_date', 'warranty_until', 'condition', 'status',
             'assigned_to', 'assigned_to_name', 'assigned_at', 'notes',
             'amount', 'currency', 'amount_inr', 'fx_rate', 'fx_date', 'fx_missing',
@@ -102,13 +110,15 @@ class SubscriptionSerializer(MoneyAwareSerializer):
 class PurchaseRequestSerializer(MoneyAwareSerializer):
     requested_by_name = serializers.CharField(
         source='requested_by.candidate_name', read_only=True, default='')
+    custom_category_name = serializers.CharField(
+        source='custom_category.name', read_only=True, default='')
     linked_asset_name = serializers.CharField(
         source='linked_asset.name', read_only=True, default='')
 
     class Meta:
         model = PurchaseRequest
         fields = [
-            'id', 'title', 'description', 'category', 'category_other', 'justification',
+            'id', 'title', 'description', 'category', 'category_other', 'custom_category', 'custom_category_name', 'justification',
             'needed_by', 'raised_on',
             'requested_by', 'requested_by_name',
             'status', 'approved_amount', 'approved_on',
@@ -145,3 +155,22 @@ class FinanceAuditLogSerializer(serializers.ModelSerializer):
         fields = ['id', 'actor_name', 'action', 'object_type', 'object_id',
                   'detail', 'created_at']
         read_only_fields = fields
+
+
+class FinanceCategorySerializer(serializers.ModelSerializer):
+    in_use = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FinanceCategory
+        fields = ['id', 'name', 'description', 'is_active', 'in_use', 'created_at']
+        read_only_fields = ['id', 'in_use', 'created_at']
+
+    def get_in_use(self, obj):
+        """Whether anything references it — the UI warns before deleting."""
+        return obj.assets.count() + obj.requests.count()
+
+    def validate_name(self, v):
+        v = (v or '').strip()
+        if not v:
+            raise serializers.ValidationError('Give the category a name.')
+        return v

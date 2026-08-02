@@ -17,11 +17,12 @@ from rest_framework.views import APIView
 
 from . import currency, services
 from .models import (
-    AssetItem, ExchangeRate, FinanceAuditLog, PurchaseRequest, Subscription,
+    AssetItem, ExchangeRate, FinanceAuditLog, FinanceCategory, PurchaseRequest,
+    Subscription,
 )
 from .serializers import (
     AssetItemSerializer, ExchangeRateSerializer, FinanceAuditLogSerializer,
-    PurchaseRequestSerializer, SubscriptionSerializer,
+    FinanceCategorySerializer, PurchaseRequestSerializer, SubscriptionSerializer,
 )
 
 
@@ -228,10 +229,13 @@ class FinanceBoardView(APIView):
             CATEGORY_CHOICES, CONDITION_CHOICES, CURRENCY_CHOICES,
             CYCLE_CHOICES, ASSET_STATUS_CHOICES, REQUEST_STATUS_CHOICES,
         )
+        can_decide = tier in ('finance', 'admin')
         return Response({
             'tier': tier,
             'can_raise': tier in ('advisory', 'admin'),
-            'can_decide': tier in ('finance', 'admin'),
+            'can_decide': can_decide,
+            # Drives the Finance-team tab, which nobody else may even see.
+            'is_superadmin': bool(request.user.is_superuser),
             'assets': AssetItemSerializer(
                 AssetItem.objects.select_related('assigned_to')[:400], many=True, context=ctx).data,
             'subscriptions': SubscriptionSerializer(
@@ -240,6 +244,12 @@ class FinanceBoardView(APIView):
                 PurchaseRequest.objects.select_related('requested_by')[:400], many=True, context=ctx).data,
             'summary': services.spend_summary(),
             'members': [{'id': m.id, 'name': m.candidate_name} for m in people],
+            # Whoever manages categories needs to see the switched-off ones too,
+            # or a hidden category becomes unreachable; everyone else only gets
+            # what the picker should offer.
+            'custom_categories': FinanceCategorySerializer(
+                FinanceCategory.objects.all() if can_decide
+                else FinanceCategory.objects.filter(is_active=True), many=True).data,
             'choices': {
                 'currencies': [{'value': v, 'label': l} for v, l in CURRENCY_CHOICES],
                 'categories': [{'value': v, 'label': l} for v, l in CATEGORY_CHOICES],
@@ -285,3 +295,118 @@ class FinanceAuditView(APIView):
     def get(self, request):
         rows = FinanceAuditLog.objects.all()[:200]
         return Response({'log': FinanceAuditLogSerializer(rows, many=True).data})
+
+
+class FinanceCategoryViewSet(viewsets.ModelViewSet):
+    """Categories the Finance team defines for themselves.
+
+    Advisory may read them (they pick one when raising a request) but only
+    Finance and superadmins may create or change them — otherwise the list drifts
+    into a mess that nobody owns.
+    """
+    serializer_class = FinanceCategorySerializer
+    permission_classes = [FinancePermission]
+
+    def get_queryset(self):
+        qs = FinanceCategory.objects.all()
+        if self.request.query_params.get('active') in ('1', 'true'):
+            qs = qs.filter(is_active=True)
+        return qs
+
+    def _deny_unless_finance(self):
+        tier, _ = _tier(self.request.user)
+        if tier not in ('finance', 'admin'):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                'Only the Finance department can manage categories.')
+
+    def perform_create(self, serializer):
+        self._deny_unless_finance()
+        obj = serializer.save(created_by_admin=self.request.user)
+        services.log(self.request.user, 'created', 'report', obj.id,
+                     f'Added category “{obj.name}”.')
+
+    def perform_update(self, serializer):
+        self._deny_unless_finance()
+        obj = serializer.save()
+        services.log(self.request.user, 'updated', 'report', obj.id,
+                     f'Edited category “{obj.name}”.')
+
+    def perform_destroy(self, instance):
+        self._deny_unless_finance()
+        # Rows already filed under it keep their FK as NULL rather than
+        # vanishing, so deleting a category never destroys spending history.
+        services.log(self.request.user, 'deleted', 'report', instance.id,
+                     f'Removed category “{instance.name}”.')
+        instance.delete()
+
+
+class FinanceTeamView(APIView):
+    """Who is in the Finance department — superadmin only.
+
+    Finance is a restricted department, so HR cannot see or change its
+    membership. This is the one place it can be managed, and it is deliberately
+    narrow: only a superadmin decides who controls money.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _denied(self, request):
+        if getattr(request.user, 'is_superuser', False):
+            return None
+        return Response(
+            {'error': 'Only a superadmin can manage the Finance team.'}, status=403)
+
+    def get(self, request):
+        denied = self._denied(request)
+        if denied:
+            return denied
+        from career_app.models import OnboardingSubmission
+
+        everyone = (OnboardingSubmission.objects.filter(status='verified')
+                    .only('id', 'candidate_name', 'candidate_email',
+                          'crew_id', 'assigned_departments')
+                    .order_by('candidate_name'))
+        members, others = [], []
+        for m in everyone:
+            # Same key names the rest of the app uses for a member, so the
+            # frontend does not need a second shape for this one screen.
+            row = {'id': m.id, 'candidate_name': m.candidate_name,
+                   'candidate_email': m.candidate_email, 'crew_id': m.crew_id}
+            in_finance = any(str(d).strip().lower() == 'finance'
+                             for d in (m.assigned_departments or []))
+            (members if in_finance else others).append(row)
+        return Response({'members': members, 'candidates': others})
+
+    def post(self, request):
+        """Add or remove one person. {member: id, action: 'add'|'remove'}"""
+        denied = self._denied(request)
+        if denied:
+            return denied
+        from career_app.models import OnboardingSubmission
+
+        member = OnboardingSubmission.objects.filter(pk=request.data.get('member')).first()
+        if not member:
+            return Response({'error': 'Member not found.'}, status=404)
+
+        action = (request.data.get('action') or 'add').lower()
+        depts = list(member.assigned_departments or [])
+        has = [d for d in depts if str(d).strip().lower() == 'finance']
+
+        if action == 'add':
+            if has:
+                return Response({'error': 'Already in the Finance team.'}, status=400)
+            depts.append('FINANCE')
+            note = f'Added {member.candidate_name} to the Finance team.'
+        elif action == 'remove':
+            if not has:
+                return Response({'error': 'Not in the Finance team.'}, status=400)
+            depts = [d for d in depts if str(d).strip().lower() != 'finance']
+            note = f'Removed {member.candidate_name} from the Finance team.'
+        else:
+            return Response({'error': 'action must be add or remove.'}, status=400)
+
+        member.assigned_departments = depts
+        member.save(update_fields=['assigned_departments'])
+        services.log(request.user, 'updated', 'report', member.id, note)
+        return Response({'ok': True, 'detail': note,
+                         'assigned_departments': member.assigned_departments})

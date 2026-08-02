@@ -37,15 +37,35 @@ def log(user, action, object_type, object_id=None, detail=''):
         return None
 
 
+def _valuation_date(obj):
+    """Which date's exchange rate a row should be valued at.
+
+    Normally today. But a back-dated request — something bought in January and
+    only recorded now — must use January's rate, or the figure is wrong by
+    however much the currency has moved since. Never uses a future date.
+    """
+    when = getattr(obj, 'raised_on', None) or date.today()
+    return min(when, date.today())
+
+
 def create_request(obj, user):
     """Stamp the raising date and freeze nothing yet — the rate is taken at
     approval, not at request time, because the asked-for figure is only a
-    proposal."""
+    proposal.
+
+    `raised_on` may be back-dated by the requester to when the spend actually
+    happened; it is clamped to today, since a request cannot be raised in the
+    future.
+    """
+    today = date.today()
     if not obj.raised_on:
-        obj.raised_on = date.today()
+        obj.raised_on = today
+    elif obj.raised_on > today:
+        obj.raised_on = today
     obj.save()
+    back = ' (back-dated)' if obj.raised_on < today else ''
     log(user, 'created', 'request', obj.id,
-        f'Raised “{obj.title}” for {obj.currency} {obj.amount} on {obj.raised_on}.')
+        f'Raised “{obj.title}” for {obj.currency} {obj.amount} on {obj.raised_on}{back}.')
     return obj
 
 
@@ -55,8 +75,13 @@ def approve_request(obj, user, *, approved_amount=None, note='', on=None):
     `approved_amount` may differ from what was asked for — Finance sanctions the
     real number. The rate used is the one for the approval date, stored on the
     row so the figure never moves afterwards.
+
+    For a back-dated request the rate is taken from when it was actually raised,
+    not today: recording a January purchase in August should value it at
+    January's rate, otherwise the books are wrong by however much the currency
+    has moved since.
     """
-    when = on or date.today()
+    when = on or _valuation_date(obj)
     obj.status = 'approved'
     obj.approved_amount = (approved_amount if approved_amount is not None else obj.amount)
     obj.approved_on = when
