@@ -58,7 +58,7 @@ class ContentItemSerializer(serializers.ModelSerializer):
             'content_assignees_detail', 'graphics_assignees_detail',
             'doc_url', 'extra_links', 'due_date', 'release_date',
             'platforms', 'posting_url', 'priority', 'effort', 'notes',
-            'task', 'task_detail', 'order', 'is_overdue',
+            'task', 'task_detail', 'order', 'is_overdue', 'notify_on_assign',
             'created_at', 'updated_at',
         ]
         # The task link is managed by services.ensure_task, never by the client.

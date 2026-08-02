@@ -183,6 +183,14 @@ class OnboardingSubmission(models.Model):
     emergency_phone = models.CharField(max_length=20, blank=True)
     emergency_relation = models.CharField(max_length=100, blank=True)
 
+    # The member's OWN contact number for work notifications. Deliberately
+    # separate from emergency_phone, which belongs to their next of kin —
+    # sending someone's task reminders to their parent would be wrong.
+    # Stored in E.164 (+919876543210) because that is what WhatsApp requires.
+    whatsapp_number = models.CharField(max_length=20, blank=True)
+    # Opt-in is explicit: no tick, no message.
+    notify_whatsapp = models.BooleanField(default=False)
+
     # Cloudflare R2 object keys
     aadhaar_key = models.CharField(max_length=500, blank=True)
     college_id_key = models.CharField(max_length=500, blank=True)

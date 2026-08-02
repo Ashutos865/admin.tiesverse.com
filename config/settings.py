@@ -285,6 +285,25 @@ SES_FROM_EMAIL = os.environ.get('SES_FROM_EMAIL', 'noreply@tiesverse.com')
 # own SES configuration set so its reputation/metrics stay separate from
 # transactional mail (offer letters, certificates). Optional — blank = unset.
 SES_PORTAL_MAIL_CONFIG_SET = os.environ.get('SES_PORTAL_MAIL_CONFIG_SET', '')
+
+# ── WhatsApp (official Meta WhatsApp Cloud API) ──────────────────────────────
+# Dormant until these are filled in: with no token/phone id the sender records
+# every notification as 'skipped (not configured)' and nothing is sent, so the
+# feature can ship and be exercised long before the Meta account exists.
+# To go live, set these in .env and restart — no code change:
+#   WHATSAPP_ACCESS_TOKEN   permanent System User token (whatsapp_business_messaging)
+#   WHATSAPP_PHONE_NUMBER_ID  from WhatsApp Manager → API Setup
+#   WHATSAPP_ENABLED=True
+WHATSAPP_ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN', '')
+WHATSAPP_PHONE_NUMBER_ID = os.environ.get('WHATSAPP_PHONE_NUMBER_ID', '')
+WHATSAPP_BUSINESS_ACCOUNT_ID = os.environ.get('WHATSAPP_BUSINESS_ACCOUNT_ID', '')
+WHATSAPP_API_VERSION = os.environ.get('WHATSAPP_API_VERSION', 'v21.0')
+WHATSAPP_ENABLED = os.environ.get('WHATSAPP_ENABLED', 'False').lower() == 'true'
+# Meta charges per message, so cap the blast radius of a bug or a bad loop.
+WHATSAPP_DAILY_CAP = int(os.environ.get('WHATSAPP_DAILY_CAP', '200'))
+# Approved template used for "you've been assigned content" (Utility category).
+WHATSAPP_TEMPLATE_ASSIGNED = os.environ.get('WHATSAPP_TEMPLATE_ASSIGNED', 'content_assigned')
+WHATSAPP_TEMPLATE_LANG = os.environ.get('WHATSAPP_TEMPLATE_LANG', 'en')
 # Inbound: SES writes received mail here; `ingest_portal_mail` drains it into the
 # portal and deletes each object (the bucket is a staging area, not storage).
 SES_INBOUND_BUCKET = os.environ.get('SES_INBOUND_BUCKET', 'tiesverse-portal-mail')

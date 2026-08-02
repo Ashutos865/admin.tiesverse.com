@@ -10,6 +10,7 @@ Access follows career_app.access.get_content_calendar_access:
   member -> create, and edit items they are assigned to
   none   -> 403
 """
+from django.conf import settings
 from django.db.models import Prefetch, Q
 from rest_framework import permissions, status, viewsets
 from rest_framework.permissions import IsAuthenticated
@@ -240,6 +241,70 @@ class ContentActivityView(APIView):
             return Response({'error': 'Not found.'}, status=404)
         rows = item.activity.all()[:100]
         return Response({'activity': ContentActivitySerializer(rows, many=True).data})
+
+
+class WhatsAppStatusView(APIView):
+    """GET — is WhatsApp live, and what has it sent?  POST — send a test message.
+
+    Superadmin only: this exposes configuration state and can spend money.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _denied(self, request):
+        if getattr(request.user, 'is_superuser', False):
+            return None
+        return Response({'error': 'Only a superadmin can manage WhatsApp.'}, status=403)
+
+    def get(self, request):
+        denied = self._denied(request)
+        if denied:
+            return denied
+        from . import whatsapp
+        from .models import WhatsAppLog
+
+        rows = WhatsAppLog.objects.select_related('member')[:60]
+        return Response({
+            'config': whatsapp.config_status(),
+            'sent_today': whatsapp.sent_today(),
+            'counts': {
+                s: WhatsAppLog.objects.filter(status=s).count()
+                for s in ('sent', 'skipped', 'failed')
+            },
+            'log': [{
+                'id': r.id,
+                'member': getattr(r.member, 'candidate_name', '') if r.member_id else '',
+                'to': r.to_number,
+                'status': r.status,
+                'error': r.error,
+                'template': r.template,
+                'created_at': r.created_at,
+            } for r in rows],
+            'members_opted_in': _opt_in_count(),
+        })
+
+    def post(self, request):
+        denied = self._denied(request)
+        if denied:
+            return denied
+        from . import whatsapp
+
+        to = (request.data.get('to') or '').strip()
+        if not to:
+            return Response({'error': 'Give a number to test with.'}, status=400)
+        row = whatsapp.send_template(
+            to,
+            getattr(settings, 'WHATSAPP_TEMPLATE_ASSIGNED', 'content_assigned'),
+            ['there', 'Test message', 'Content', 'today', 'https://admin.tiesverse.com'],
+            actor=request.user,
+        )
+        return Response({'status': row.status, 'error': row.error, 'wamid': row.wamid},
+                        status=200 if row.status == 'sent' else 400)
+
+
+def _opt_in_count():
+    from career_app.models import OnboardingSubmission
+    return (OnboardingSubmission.objects
+            .filter(notify_whatsapp=True).exclude(whatsapp_number='').count())
 
 
 class ContentBoardView(APIView):

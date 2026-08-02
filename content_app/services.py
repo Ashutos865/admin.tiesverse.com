@@ -127,6 +127,14 @@ def ensure_task(item, actor=None):
                 item.tasks.add(task)
                 log(item, 'task_linked',
                     f'Task #{task.id} assigned to {member.candidate_name} ({track}).', actor)
+                # Only NEW assignees are notified — re-saving an item must not
+                # message everyone again.
+                if item.notify_on_assign:
+                    try:
+                        from . import whatsapp
+                        whatsapp.notify_assignment(item, member, track, actor)
+                    except Exception:  # noqa: BLE001 — never block the save
+                        pass
             live.append(task)
 
         # `task` stays as the primary pointer so older reads keep working.

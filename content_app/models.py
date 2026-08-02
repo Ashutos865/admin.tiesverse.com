@@ -111,6 +111,10 @@ class ContentItem(models.Model):
     # Manual position within a Kanban column (lower first).
     order = models.PositiveIntegerField(default=0)
 
+    # Per-item switch: WhatsApp costs money per message, so notifying is a
+    # deliberate choice rather than something that fires on every edit.
+    notify_on_assign = models.BooleanField(default=True)
+
     created_by_admin = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         db_constraint=False, related_name='+')
@@ -128,6 +132,46 @@ class ContentItem(models.Model):
 
     def __str__(self):
         return f'{self.title} [{self.status}]'
+
+
+class WhatsAppLog(models.Model):
+    """Every WhatsApp notification attempt — sent, skipped or failed.
+
+    Meta bills per message, so there is a record of exactly what went out and
+    what did not. `skipped` is a first-class outcome, not an error: it covers a
+    member with no opt-in, a missing number, the daily cap, and the normal state
+    before any credentials exist — each with its reason in `error`.
+    """
+    STATUS_CHOICES = [
+        ('sent', 'Sent'),
+        ('skipped', 'Skipped'),
+        ('failed', 'Failed'),
+    ]
+
+    member = models.ForeignKey(
+        'career_app.OnboardingSubmission', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='whatsapp_logs')
+    item = models.ForeignKey(
+        'ContentItem', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='whatsapp_logs')
+    to_number = models.CharField(max_length=20, blank=True)
+    template = models.CharField(max_length=100, blank=True)
+    params = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, db_index=True)
+    error = models.CharField(max_length=500, blank=True)
+    wamid = models.CharField(max_length=128, blank=True)   # Meta's message id
+    sent_by_admin = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        db_constraint=False, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'content_whatsapp_logs'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['status', '-created_at'])]
+
+    def __str__(self):
+        return f'{self.status} → {self.to_number or "(no number)"}'
 
 
 class ContentActivity(models.Model):

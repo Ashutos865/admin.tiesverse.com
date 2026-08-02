@@ -20,6 +20,7 @@ from .views import (
     CertificateIssueView, SendCertificateEmailView, DocumentAuditLogListView,
     MeView, DirectorySearchView, ArticleAccessManagementView,
     MemberIdentityClassView, MemberAccountStatusView, MemberIdentityHistoryView,
+    MyNotificationPrefsView,
     MemberCrewIdView, CrewReportingView,
     AttendanceListView, AttendanceCheckInView, AttendanceCheckOutView,
     AttendanceApproveView, AttendanceDetailView,
@@ -61,6 +62,7 @@ urlpatterns = [
     path('', include(router.urls)),
     # Current member identity + scope
     path('me/', MeView.as_view(), name='career-me'),
+    path('me/notifications/', MyNotificationPrefsView.as_view(), name='my-notifications'),
     path('article-access/', ArticleAccessManagementView.as_view(), name='article-access-manage'),
     # Crew ID identity management
     path('members/<int:pk>/identity-class/', MemberIdentityClassView.as_view(), name='member-identity-class'),

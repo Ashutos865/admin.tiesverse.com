@@ -1097,6 +1097,63 @@ class MemberAccountStatusView(APIView):
         return Response(OnboardingSubmissionSerializer(member).data)
 
 
+class MyNotificationPrefsView(APIView):
+    """A member's own WhatsApp number and opt-in.
+
+    Separate from the HR edit path on purpose: consent to be messaged should be
+    the member's to give, and this lets them set it without HR involvement. Only
+    ever touches the caller's own record.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        member = access.get_member_for_user(request.user)
+        if member is None:
+            return Response({'error': 'No member profile.'}, status=404)
+        return Response({
+            'whatsapp_number': member.whatsapp_number,
+            'notify_whatsapp': member.notify_whatsapp,
+        })
+
+    def patch(self, request):
+        member = access.get_member_for_user(request.user)
+        if member is None:
+            return Response({'error': 'No member profile.'}, status=404)
+
+        fields = []
+        if 'whatsapp_number' in request.data:
+            from content_app.whatsapp import normalize_number
+            raw = (request.data.get('whatsapp_number') or '').strip()
+            if raw:
+                num = normalize_number(raw)
+                if not num:
+                    return Response(
+                        {'error': 'That does not look like a valid number. '
+                                  'Use the full number with country code, e.g. +91 98765 43210.'},
+                        status=400)
+                member.whatsapp_number = num
+            else:
+                member.whatsapp_number = ''
+                member.notify_whatsapp = False      # no number, no opt-in
+                fields.append('notify_whatsapp')
+            fields.append('whatsapp_number')
+
+        if 'notify_whatsapp' in request.data:
+            want = bool(request.data.get('notify_whatsapp'))
+            if want and not member.whatsapp_number:
+                return Response({'error': 'Add your WhatsApp number first.'}, status=400)
+            member.notify_whatsapp = want
+            if 'notify_whatsapp' not in fields:
+                fields.append('notify_whatsapp')
+
+        if fields:
+            member.save(update_fields=fields)
+        return Response({
+            'whatsapp_number': member.whatsapp_number,
+            'notify_whatsapp': member.notify_whatsapp,
+        })
+
+
 class MemberCrewIdView(APIView):
     """Superadmin-only manual Crew ID edit/assign with automatic swap.
 
