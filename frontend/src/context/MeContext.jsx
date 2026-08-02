@@ -41,6 +41,7 @@ export const MeProvider = ({ children }) => {
     nimbleAccess: me?.nimble_access || 'none',
     mailAccess: me?.mail_access || 'none',        // 'admin' | 'user' | 'none'
     contentAccess: me?.content_access || 'none',  // 'full' | 'member' | 'none'
+    financeAccess: me?.finance_access || 'none',  // 'admin' | 'finance' | 'advisory' | 'none'
     mailAddresses: me?.mail_addresses || [],
     // Can this user manage others' article publishing access?
     canManageArticles: Boolean(me?.can_manage_articles),

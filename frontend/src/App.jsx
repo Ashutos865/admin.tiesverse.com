@@ -80,6 +80,9 @@ const MailAdmin = lazy(() => import('./pages/Mail/MailAdmin.jsx'));
 
 // Content Calendar
 const ContentCalendar = lazy(() => import('./pages/Content/ContentCalendar.jsx'));
+
+// Assets & Finance (advisory / finance / superadmin only)
+const FinancePage = lazy(() => import('./pages/Finance/FinancePage.jsx'));
 const MyWork = lazy(() => import('./pages/MyWork/MyWork.jsx'));
 const AdvisoryPanel = lazy(() => import('./pages/Advisory/AdvisoryPanel.jsx'));
 const TechnicalDashboard = lazy(() => import('./pages/Technical/TechnicalDashboard.jsx'));
@@ -170,6 +173,7 @@ function App() {
               <Route path="/mail" element={<MailApp />} />
               <Route path="/mail/admin" element={<MailAdmin />} />
               <Route path="/content/calendar" element={<ContentCalendar />} />
+              <Route path="/advisory/finance" element={<FinancePage />} />
 
               {/* Accounts Routes */}
               <Route path="/accounts/users" element={<UserManagement />} />

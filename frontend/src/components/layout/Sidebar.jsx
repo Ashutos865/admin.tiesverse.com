@@ -36,6 +36,7 @@ import {
   UserCheck,
   Users,
   Video,
+  Wallet,
   X,
   Image as ImageIcon,
   BookOpen,
@@ -162,7 +163,6 @@ export const portals = [
       { name: 'Attendance',      path: '/hr/attendance',  icon: CalendarDays,      perms: ['view_attendancerecord', 'add_attendancerecord', 'change_attendancerecord'] },
       { name: 'Leave',           path: '/hr/leave',       icon: ClipboardList,     perms: ['view_leaverequest'] },
       { name: 'Offboarding',     path: '/hr/offboarding', icon: LogOut,            perms: ['view_offboardingrequest'] },
-      { name: 'Assets',          path: '/hr/assets',      icon: PackageOpen,       perms: ['view_asset'] },
       { name: 'Tasks',           path: '/hr/tasks',       icon: MonitorSmartphone, perms: ['view_task'] },
       { name: 'New Signups',     path: '/hr/signups',     icon: Users,             perms: ['add_onboardingsubmission'] },
       { name: 'Policies',        path: '/hr/policies',    icon: FileText,          scopeAll: true },
@@ -177,6 +177,9 @@ export const portals = [
     advisoryOrLead: true,
     links: [
       { name: 'Oversight & Updates', path: '/advisory', icon: ClipboardCheck, advisoryOrLead: true },
+      // Money. Gated on `financeAccess`, NOT `advisoryOrLead` — team leads share
+      // this portal and must not see costs. Members and HR never reach it.
+      { name: 'Assets & Finance', path: '/advisory/finance', icon: Wallet, financeAccess: true },
     ],
   },
   {
@@ -290,13 +293,16 @@ export const portals = [
 
 const Sidebar = ({ activePortal, isOpen, onClose }) => {
   const { hasAnyPermission, isSuperuser } = usePermissions();
-  const { isMember, isLead, isAdvisory, isDeveloper, scope, articleAccess, nimbleAccess, mailAccess, contentAccess } = useMe();
+  const { isMember, isLead, isAdvisory, isDeveloper, scope, articleAccess, nimbleAccess, mailAccess, contentAccess, financeAccess } = useMe();
   // Content writers/leads (or superusers) may see Articles & Reports.
   const hasArticleAccess = isSuperuser || articleAccess === 'full' || articleAccess === 'draft';
   // Nimble-department members (or superusers/org-wide staff) may see Nimble Monitor.
   const hasNimbleAccess = isSuperuser || nimbleAccess === 'full';
   const hasMailAccess = isSuperuser || mailAccess === 'admin' || mailAccess === 'user';
   const hasCalendarAccess = isSuperuser || contentAccess === 'full' || contentAccess === 'member';
+  // Money: advisory, the Finance department, or a superadmin. Explicitly NOT
+  // team leads, HR, or ordinary members.
+  const hasFinanceAccess = isSuperuser || ['admin', 'finance', 'advisory'].includes(financeAccess);
 
   // Which portal folder is expanded. Follows the current page by default, but the
   // user can freely open/collapse any folder by clicking its header.
@@ -312,6 +318,7 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
     if (portal.nimbleAccess) return hasNimbleAccess;
     if (portal.mailAccess) return hasMailAccess;
     if (portal.calendarAccess) return hasCalendarAccess;
+    if (portal.financeAccess) return hasFinanceAccess;
     if (portal.advisoryOnly) return isSuperuser || isAdvisory;
     if (portal.advisoryOrLead) return isSuperuser || isAdvisory || isLead;
     if (portal.perms === null) return isSuperuser;
@@ -324,6 +331,7 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
     if (link.nimbleAccess) return hasNimbleAccess;
     if (link.mailAccess) return hasMailAccess;
     if (link.calendarAccess) return hasCalendarAccess;
+    if (link.financeAccess) return hasFinanceAccess;
     if (link.superuserOnly) return isSuperuser;
     if (link.advisoryOnly) return isSuperuser || isAdvisory;
     if (link.advisoryOrLead) return isSuperuser || isAdvisory || isLead;

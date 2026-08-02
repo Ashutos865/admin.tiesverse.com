@@ -736,3 +736,24 @@ export const getMyNotificationPrefs    = ()      => adminFetch('/api/career/me/n
 export const updateMyNotificationPrefs = (data)  => adminFetch('/api/career/me/notifications', 'PATCH', data);
 export const getWhatsAppStatus         = ()      => adminFetch('/api/content/whatsapp');
 export const sendWhatsAppTest          = (to)    => adminFetch('/api/content/whatsapp', 'POST', { to });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASSETS & FINANCE (finance_app) — confidential: advisory / finance / superadmin.
+// ─────────────────────────────────────────────────────────────────────────────
+export const getFinanceBoard      = ()          => adminFetch('/api/finance/board');
+export const getFinanceSummary    = (year)      => adminFetch(`/api/finance/summary${year ? `?year=${year}` : ''}`);
+export const listFinanceAssets    = (q = '')    => adminFetch(`/api/finance/assets${q ? `?${q}` : ''}`);
+export const createFinanceAsset   = (d)         => adminFetch('/api/finance/assets', 'POST', d);
+export const updateFinanceAsset   = (id, d)     => adminFetch(`/api/finance/assets/${id}`, 'PATCH', d);
+export const deleteFinanceAsset   = (id)        => adminFetch(`/api/finance/assets/${id}`, 'DELETE');
+export const createSubscription   = (d)         => adminFetch('/api/finance/subscriptions', 'POST', d);
+export const updateSubscription   = (id, d)     => adminFetch(`/api/finance/subscriptions/${id}`, 'PATCH', d);
+export const deleteSubscription   = (id)        => adminFetch(`/api/finance/subscriptions/${id}`, 'DELETE');
+export const createFinanceRequest = (d)         => adminFetch('/api/finance/requests', 'POST', d);
+export const updateFinanceRequest = (id, d)     => adminFetch(`/api/finance/requests/${id}`, 'PATCH', d);
+export const approveFinanceRequest= (id, d)     => adminFetch(`/api/finance/requests/${id}/approve`, 'POST', d);
+export const rejectFinanceRequest = (id, d)     => adminFetch(`/api/finance/requests/${id}/reject`, 'POST', d);
+export const payFinanceRequest    = (id, d)     => adminFetch(`/api/finance/requests/${id}/paid`, 'POST', d);
+export const getExchangeRates     = ()          => adminFetch('/api/finance/rates');
+export const setExchangeRate      = (d)         => adminFetch('/api/finance/rates', 'POST', d);
+export const getFinanceAudit      = ()          => adminFetch('/api/finance/audit');
