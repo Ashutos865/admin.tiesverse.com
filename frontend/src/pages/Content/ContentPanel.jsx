@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  X, Trash2, Save, Loader2, ExternalLink, Plus, History, ListChecks, Link2,
+  X, Trash2, Save, Loader2, ExternalLink, History, ListChecks,
+  Search, Check, ChevronDown, UserPlus,
 } from 'lucide-react';
 
 /* The right-hand detail panel — the single place a content item is edited.
@@ -42,6 +43,158 @@ const EMPTY = {
   due_date: '', release_date: '', platforms: [], posting_url: '',
   priority: 'medium', effort: '', notes: '',
 };
+
+const initialsOf = (n) => (n || '?').trim().split(/\s+/).slice(0, 2)
+  .map((w) => w[0]?.toUpperCase() || '').join('');
+
+/* A compact, searchable multi-select for assignees.
+
+   Rendering every member as an always-visible chip does not scale — with ~30
+   people it buried the rest of the form, twice over. This shows only who is
+   actually assigned, and opens a filtered list on demand. */
+function AssigneePicker({ title, members, selected, disabled, onToggle, onClear }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const boxRef = useRef(null);
+
+  const chosen = useMemo(
+    () => members.filter((m) => selected.includes(m.id)),
+    [members, selected],
+  );
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return members;
+    return members.filter((m) => (m.name || '').toLowerCase().includes(q)
+      || (m.email || '').toLowerCase().includes(q)
+      || (m.crew_id || '').toLowerCase().includes(q));
+  }, [members, query]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  return (
+    <div style={field} ref={boxRef}>
+      <label style={label}>{title}</label>
+
+      {/* the control: selected people + an "add" affordance */}
+      <div
+        onClick={() => !disabled && setOpen((o) => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+          minHeight: 38, padding: '6px 9px', borderRadius: 8,
+          border: `1px solid ${open ? 'var(--primary)' : 'var(--outline-variant)'}`,
+          background: 'var(--surface-container-lowest)',
+          cursor: disabled ? 'default' : 'pointer',
+        }}>
+        {chosen.length === 0 && (
+          <span style={{ fontSize: 12.5, color: 'var(--text-muted)', flex: 1 }}>
+            {disabled ? 'Nobody assigned' : 'Click to assign…'}
+          </span>
+        )}
+        {chosen.map((m) => (
+          <span key={m.id} title={m.email} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            fontSize: 12, fontWeight: 700, padding: '3px 4px 3px 3px', borderRadius: 20,
+            background: 'color-mix(in srgb, var(--primary) 12%, transparent)',
+            color: 'var(--primary)',
+          }}>
+            <span style={{
+              width: 19, height: 19, borderRadius: '50%', display: 'grid', placeItems: 'center',
+              fontSize: 9, fontWeight: 800,
+              background: 'color-mix(in srgb, var(--primary) 22%, transparent)',
+            }}>{initialsOf(m.name)}</span>
+            {m.name}
+            {!disabled && (
+              <span role="button" title="Remove"
+                onClick={(e) => { e.stopPropagation(); onToggle(m.id); }}
+                style={{ display: 'flex', padding: 2, cursor: 'pointer', opacity: .75 }}>
+                <X size={11} />
+              </span>
+            )}
+          </span>
+        ))}
+        {!disabled && (
+          <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4,
+                         color: 'var(--text-muted)' }}>
+            {chosen.length > 0 && <UserPlus size={13} />}
+            <ChevronDown size={14} style={{ transform: open ? 'rotate(180deg)' : 'none' }} />
+          </span>
+        )}
+      </div>
+
+      {open && !disabled && (
+        <div style={{
+          marginTop: 4, borderRadius: 9, overflow: 'hidden',
+          border: '1px solid var(--outline-variant)',
+          background: 'var(--surface-container-lowest)',
+          boxShadow: '0 10px 28px rgba(0,0,0,.16)',
+        }}>
+          <div style={{ position: 'relative', padding: 8, borderBottom: '1px solid var(--outline-variant)' }}>
+            <Search size={13} style={{ position: 'absolute', left: 17, top: 17, color: 'var(--text-muted)' }} />
+            <input autoFocus value={query} placeholder="Search people…"
+              onChange={(e) => setQuery(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              style={{ ...input, paddingLeft: 30, fontSize: 12.5 }} />
+          </div>
+
+          <div style={{ maxHeight: 210, overflowY: 'auto' }}>
+            {matches.length === 0 ? (
+              <div style={{ padding: '12px 14px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+                {members.length === 0 ? 'No Content-department members found.' : 'No match.'}
+              </div>
+            ) : matches.map((m) => {
+              const on = selected.includes(m.id);
+              return (
+                <button key={m.id} type="button" onClick={() => onToggle(m.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
+                    padding: '8px 12px', border: 'none', cursor: 'pointer', fontSize: 13,
+                    background: on ? 'color-mix(in srgb, var(--primary) 9%, transparent)' : 'transparent',
+                    color: 'var(--text-main)',
+                  }}>
+                  <span style={{
+                    width: 24, height: 24, borderRadius: '50%', display: 'grid', placeItems: 'center',
+                    fontSize: 10, fontWeight: 800, flex: 'none',
+                    background: 'color-mix(in srgb, var(--primary) 15%, transparent)',
+                    color: 'var(--primary)',
+                  }}>{initialsOf(m.name)}</span>
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden',
+                                 textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.name}
+                    {m.crew_id && (
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>
+                        {m.crew_id}
+                      </span>
+                    )}
+                  </span>
+                  {on && <Check size={14} style={{ color: 'var(--primary)', flex: 'none' }} />}
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, padding: 8, borderTop: '1px solid var(--outline-variant)' }}>
+            <span style={{ fontSize: 11.5, color: 'var(--text-muted)', alignSelf: 'center' }}>
+              {selected.length} selected
+            </span>
+            <div style={{ flex: 1 }} />
+            {selected.length > 0 && (
+              <button type="button" onClick={onClear}
+                style={{ ...btn, padding: '5px 10px', fontSize: 12 }}>Clear</button>
+            )}
+            <button type="button" onClick={() => setOpen(false)}
+              style={{ ...btnPrimary, padding: '5px 12px', fontSize: 12 }}>Done</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ContentPanel({
   item, choices, members, canEdit, onClose, onSave, onDelete, loadActivity,
@@ -91,30 +244,14 @@ export default function ContentPanel({
   };
 
   const MemberChips = ({ k, title }) => (
-    <div style={field}>
-      <label style={label}>{title}</label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {members.length === 0 && (
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            No Content-department members found.
-          </span>
-        )}
-        {members.map((m) => {
-          const on = (form[k] || []).includes(m.id);
-          return (
-            <button key={m.id} type="button" disabled={!canEdit}
-              onClick={() => toggleIn(k, m.id)}
-              style={{
-                fontSize: 12, fontWeight: 700, padding: '5px 10px', borderRadius: 20,
-                cursor: canEdit ? 'pointer' : 'default',
-                border: `1px solid ${on ? 'var(--primary)' : 'var(--outline-variant)'}`,
-                background: on ? 'color-mix(in srgb, var(--primary) 12%, transparent)' : 'transparent',
-                color: on ? 'var(--primary)' : 'var(--text-muted)',
-              }}>{m.name}</button>
-          );
-        })}
-      </div>
-    </div>
+    <AssigneePicker
+      title={title}
+      members={members}
+      selected={form[k] || []}
+      disabled={!canEdit}
+      onToggle={(id) => toggleIn(k, id)}
+      onClear={() => set(k, [])}
+    />
   );
 
   return (
