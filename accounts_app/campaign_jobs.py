@@ -949,8 +949,12 @@ def process_campaign(camp):
             if ok and cert_id:
                 # Sending IS issuing: the QR must verify from the moment the mail
                 # lands, so the record is written right after the send succeeds.
+                # The record sees the RESOLVED values — a typed position like
+                # "Tech Intern" must reach the verify page, not just the PDF.
                 _record_campaign_certificate(cert_id, name, to, doc_key, doc_label,
-                                             cert_tid, cert_tpl_name, row, cid)
+                                             cert_tid, cert_tpl_name,
+                                             {**row, 'position': overlay.get('position') or row.get('position') or ''},
+                                             cid)
             return {'email': to, 'name': name, 'subject': subject,
                     'status': 'sent' if ok else 'failed', 'error': res.get('error') or '',
                     'cert': cert_id or cert_fname, 'mid': res.get('message_id') or ''}
