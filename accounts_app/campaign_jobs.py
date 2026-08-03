@@ -90,6 +90,16 @@ def generator_get_template(template_id):
         return json.loads(r.read())
 
 
+def generator_original(template_id):
+    """The template's untouched background PDF — no variables rendered at all.
+    Campaigns stamp values themselves, so starting from the clean original
+    means nothing invisible is ever drawn at the unused ID/QR spots (the
+    stand-in character showed as a stray "?" or box on some viewers), and one
+    download serves every recipient instead of one generator call each."""
+    with urlopen(f"{_gen_base()}/api/templates/{template_id}/original.pdf", timeout=120) as r:
+        return r.read()
+
+
 def generator_generate(template_id, data):
     body = json.dumps({'data': data}).encode()
     req = Request(f"{_gen_base()}/api/templates/{template_id}/generate",
@@ -564,6 +574,41 @@ CAMPAIGN_DOC_TYPES = {
 }
 
 
+def _doc_type_label(doc_key):
+    """The label for a document type — from the superadmin-managed table, so
+    the list is controlled in the app, not in this file. The dict above is only
+    the last-resort fallback (it mirrors what the table is seeded with)."""
+    if not doc_key:
+        return ''
+    try:
+        from .models import CertificateDocType
+        row = CertificateDocType.objects.filter(key=doc_key).only('label').first()
+        if row:
+            return row.label
+    except Exception:  # noqa: BLE001
+        pass
+    return CAMPAIGN_DOC_TYPES.get(doc_key, '')
+
+
+def _resolve_date_mapping(src):
+    """The two automatic date sources a certificate field can map to:
+    '__today__' (the send day) or '__date__:YYYY-MM-DD' (a date the sender
+    picked — a certificate for work finished last month is dated last month).
+    Returns None when src is neither, and formats like the certificates do:
+    "3 August 2026"."""
+    from datetime import date, datetime
+    if src == '__today__':
+        d = date.today()
+    elif isinstance(src, str) and src.startswith('__date__:'):
+        try:
+            d = datetime.strptime(src.split(':', 1)[1].strip(), '%Y-%m-%d').date()
+        except Exception:  # noqa: BLE001
+            d = date.today()
+    else:
+        return None
+    return f"{d.day} {d.strftime('%B %Y')}"
+
+
 def _fallback_cert_id(attempts=25):
     """A unique ID for templates that have no generator-enabled variable. The ID
     then appears only in the QR/record, not as text on the design — which is
@@ -612,7 +657,7 @@ def _record_campaign_certificate(cert_id, person_name, email, doc_key, doc_label
             template_name=str(template_name or ''), position=position,
             extra={'doc_type': doc_label or 'Certificate', 'avatar_url': avatar},
         )
-        if sub is not None and doc_key in CAMPAIGN_DOC_TYPES:
+        if sub is not None and doc_key:
             try:
                 sub.set_certificate_id(doc_key, cert_id)
             except Exception:  # noqa: BLE001
@@ -772,7 +817,7 @@ def process_campaign(camp):
         # Without it, campaign certificates are plain attachments (old behaviour).
         verify_qr = bool(cert and cert.get('verify_qr'))
         doc_key = str(cert.get('doc_type') or '') if cert else ''
-        doc_label = CAMPAIGN_DOC_TYPES.get(doc_key, '')
+        doc_label = _doc_type_label(doc_key)
         id_var = next((str(v.get('name')) for v in cert_vars if v.get('generator_enabled')), '')
 
         # ── Resume state: recompute counters from whatever's already logged, and
@@ -788,6 +833,20 @@ def process_campaign(camp):
                 counters['sent'] += 1
             else:
                 counters['failed'] += 1
+
+        # ONE clean background serves every recipient: the original PDF has no
+        # variables rendered, so nothing invisible is ever drawn at the unused
+        # ID/QR spots (the stand-in character showed as a stray "?" or box on
+        # some viewers), and N recipients cost one download, not N generator
+        # calls. If the download fails, per-recipient generation still works.
+        blank_pdf = None
+        if cert and cert_tid:
+            for _ in range(2):
+                try:
+                    blank_pdf = generator_original(cert_tid)
+                    break
+                except Exception:  # noqa: BLE001
+                    blank_pdf = None
 
         lock = threading.Lock()
         seen = set(logged_prior)   # first occurrence sends; later duplicates skip
@@ -809,43 +868,44 @@ def process_campaign(camp):
 
             attachments, cert_fname, cert_id, gen_error = None, '', '', ''
             if cert and cert_tid:
-                # A verified certificate needs its unique ID before generation, so
-                # the generator can render it at the design's cert-id spot.
                 if verify_qr:
                     cert_id = (_make_unique_cert_id(cert_vars, id_var) if id_var
                                else _fallback_cert_id())
-                # Ask the generator to render placeholders blank (ZW satisfies its
-                # required-field check); we stamp the real values ourselves after,
-                # because the generator does not substitute {{tokens}} reliably.
-                gen_data = {str(v.get('name')).lower(): ZW for v in cert_vars}
-                if cert_id and id_var:
-                    gen_data[id_var.lower()] = cert_id
-                pdf = None
-                for attempt in range(2):   # one retry on transient failure
-                    try:
-                        pdf = generator_generate(cert_tid, gen_data)
-                        break
-                    except Exception as exc:  # noqa: BLE001
-                        gen_error = str(exc)[:200]
+                # Start from the clean original and stamp everything ourselves.
+                # Per-recipient generation is only the fallback for when the
+                # original could not be fetched: it renders an invisible
+                # stand-in at every unused spot, which some viewers draw as "?".
+                pdf = blank_pdf
+                from_blank = pdf is not None
                 if pdf is None:
-                    return {'email': to, 'name': name, 'subject': subject, 'status': 'failed',
-                            'error': f'certificate not generated: {gen_error}'[:400], 'cert': '', 'mid': ''}
-                # Stamp the real recipient values onto the certificate. The ID is
-                # rendered by the generator itself; {{qr}} is drawn as an image.
+                    gen_data = {str(v.get('name')).lower(): ZW for v in cert_vars}
+                    if cert_id and id_var:
+                        gen_data[id_var.lower()] = cert_id
+                    for attempt in range(2):   # one retry on transient failure
+                        try:
+                            pdf = generator_generate(cert_tid, gen_data)
+                            break
+                        except Exception as exc:  # noqa: BLE001
+                            gen_error = str(exc)[:200]
+                    if pdf is None:
+                        return {'email': to, 'name': name, 'subject': subject, 'status': 'failed',
+                                'error': f'certificate not generated: {gen_error}'[:400], 'cert': '', 'mid': ''}
+                # Stamp the real recipient values — including the certificate ID
+                # when one is being issued; {{qr}} is drawn as an image below.
                 overlay = {}
                 for v in cert_vars:
-                    if cert_id and id_var and str(v.get('name')).lower() == id_var.lower():
+                    vname = str(v.get('name')).lower()
+                    if id_var and vname == id_var.lower():
+                        # From the blank we stamp the ID ourselves; the fallback
+                        # path had the generator render it, so stamping again
+                        # would double-print it.
+                        overlay[vname] = cert_id if from_blank else ''
                         continue
                     src = mapping.get(v.get('name'))
-                    if src == '__today__':
-                        # The send day, written the way the certificates write
-                        # dates: "3 August 2026".
-                        from datetime import date as _date
-                        d = _date.today()
-                        rv = f"{d.day} {d.strftime('%B %Y')}"
-                    else:
+                    rv = _resolve_date_mapping(src)
+                    if rv is None:
                         rv = row.get(src) if src else ''
-                    overlay[str(v.get('name')).lower()] = '' if rv is None else str(rv)
+                    overlay[vname] = '' if rv is None else str(rv)
                 stamp_els = [e for e in cert_els
                              if '{{qr}}' not in (e.get('content', '') or '').lower()]
                 pdf = overlay_values(pdf, stamp_els, overlay, design_w, design_h)

@@ -280,3 +280,26 @@ def create_or_update_user_profile(sender, instance, created, **kwargs):
             UserProfile.objects.create(user=instance)
         else:
             instance.profile.save()
+
+
+class CertificateDocType(models.Model):
+    """A document type a campaign certificate can be filed under.
+
+    The four the HR matrix tracks are seeded as built-in: they can be renamed
+    or hidden from the picker, but not deleted, because the matrix columns and
+    member records reference their keys. Everything else is superadmin-defined —
+    the list is theirs to control, not the code's.
+    """
+    key = models.SlugField(max_length=60, unique=True)
+    label = models.CharField(max_length=120)
+    is_active = models.BooleanField(default=True)
+    is_builtin = models.BooleanField(default=False)
+    order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'certificate_doc_types'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return self.label

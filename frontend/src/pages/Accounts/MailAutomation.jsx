@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Megaphone, Upload, Table, Database, Eye, Send, Plus, Trash2, ExternalLink, CheckCircle2, AlertTriangle, Award, Loader2, Save, FileEdit, FilePlus2, Clock, StopCircle, Info } from 'lucide-react';
-import { getEmailTemplates, sendCampaign, sendCampaignAsync, getCampaignStatus, cancelCampaign, getCampaigns, getCampaignRecipients, getSESSenders, getDataSources, getDataSourceRows, getEmailDrafts, createEmailDraft, updateEmailDraft, deleteEmailDraft } from '../../apiClient';
+import { getEmailTemplates, sendCampaign, sendCampaignAsync, getCampaignStatus, cancelCampaign, getCampaigns, getCampaignRecipients, getSESSenders, getDataSources, getDataSourceRows, getEmailDrafts, createEmailDraft, updateEmailDraft, deleteEmailDraft, getCertDocTypes, saveCertDocType } from '../../apiClient';
 import { listCertificateTemplates, getCertificateTemplate, generateCertificate } from '../Certificates/certificateApi';
 import { variableNamesFromElements } from '../Certificates/certificateUtils';
 
@@ -19,13 +19,13 @@ const usableCertVars = (t) => {
     return placed.length ? placed : nonGen;
 };
 
-// The four documents a verifiable certificate can be filed under — the same
-// four columns as the HR Certificates matrix.
-const CERT_DOC_TYPES = [
-    { key: 'offer_letter',    label: 'Offer Letter' },
-    { key: 'internship_cert', label: 'Internship Certificate' },
-    { key: 'lor',             label: 'Letter of Recommendation' },
-    { key: 'noc',             label: 'No Objection Certificate' },
+// Fallback document types, used only until the server list loads. The real
+// list is superadmin-managed (Certificates → document types), not hardcoded.
+const FALLBACK_DOC_TYPES = [
+    { key: 'offer_letter',    label: 'Offer Letter',              is_active: true },
+    { key: 'internship_cert', label: 'Internship Certificate',    is_active: true },
+    { key: 'lor',             label: 'Letter of Recommendation',  is_active: true },
+    { key: 'noc',             label: 'No Objection Certificate',  is_active: true },
 ];
 
 // blob -> base64 (no data: prefix), for attaching generated certificate PDFs.
@@ -126,6 +126,16 @@ export default function MailAutomation() {
     // public verify page and ticked in the member's document matrix.
     const [certVerifyQR, setCertVerifyQR] = useState(true);
     const [certDocType, setCertDocType] = useState('');
+    // The document-type list is server-managed, not hardcoded here.
+    const [docTypes, setDocTypes] = useState(FALLBACK_DOC_TYPES);
+    const [canManageTypes, setCanManageTypes] = useState(false);
+    const [manageTypes, setManageTypes] = useState(false);
+    const [newTypeLabel, setNewTypeLabel] = useState('');
+    const loadDocTypes = useCallback(async () => {
+        const r = await getCertDocTypes().catch(() => null);
+        if (r?.types) { setDocTypes(r.types); setCanManageTypes(!!r.can_manage); }
+    }, []);
+    useEffect(() => { loadDocTypes(); }, [loadDocTypes]);
     const [genProgress, setGenProgress] = useState(null);     // {done,total}
     // Drafts
     const [drafts, setDrafts] = useState([]);
@@ -695,18 +705,34 @@ export default function MailAutomation() {
                                                         </div>
                                                     )}
                                                     <div style={{ display: 'grid', gap: 8 }}>
-                                                        {certManualVars.map(v => (
-                                                            <div key={v.name} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                                                <code style={{ ...chip, minWidth: 130 }}>{v.name}</code>
-                                                                <span style={{ color: 'var(--text-muted)' }}>←</span>
-                                                                <select value={certMapping[v.name] || ''} onChange={e => setCertMapping(m => ({ ...m, [v.name]: e.target.value }))} style={{ ...input, flex: 1 }}>
-                                                                    <option value="">{v.default_value ? `— default (${v.default_value}) —` : '— blank —'}</option>
-                                                                    <option value="__today__">— today's date (send day) —</option>
-                                                                    <option value="email">email</option>
-                                                                    {allVars.map(vr => <option key={vr} value={vr}>{vr}</option>)}
-                                                                </select>
-                                                            </div>
-                                                        ))}
+                                                        {certManualVars.map(v => {
+                                                            const cur = certMapping[v.name] || '';
+                                                            const isCustomDate = cur.startsWith('__date__:');
+                                                            return (
+                                                                <div key={v.name} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                                    <code style={{ ...chip, minWidth: 130 }}>{v.name}</code>
+                                                                    <span style={{ color: 'var(--text-muted)' }}>←</span>
+                                                                    <select value={isCustomDate ? '__custom__' : cur}
+                                                                        onChange={e => {
+                                                                            const val = e.target.value === '__custom__'
+                                                                                ? `__date__:${new Date().toISOString().slice(0, 10)}`
+                                                                                : e.target.value;
+                                                                            setCertMapping(m => ({ ...m, [v.name]: val }));
+                                                                        }} style={{ ...input, flex: 1 }}>
+                                                                        <option value="">{v.default_value ? `— default (${v.default_value}) —` : '— blank —'}</option>
+                                                                        <option value="__today__">— today's date (send day) —</option>
+                                                                        <option value="__custom__">— a date I pick —</option>
+                                                                        <option value="email">email</option>
+                                                                        {allVars.map(vr => <option key={vr} value={vr}>{vr}</option>)}
+                                                                    </select>
+                                                                    {isCustomDate && (
+                                                                        <input type="date" value={cur.slice(9)}
+                                                                            onChange={e => setCertMapping(m => ({ ...m, [v.name]: `__date__:${e.target.value}` }))}
+                                                                            style={{ ...input, width: 150 }} />
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
                                                     </div>
                                                 </div>
                                             ) : (
@@ -728,14 +754,69 @@ export default function MailAutomation() {
                                                 </label>
                                                 {certVerifyQR ? (
                                                     <div style={{ marginTop: 10 }}>
-                                                        <Lbl>Which document is this?</Lbl>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                            <Lbl>Which document is this?</Lbl>
+                                                            {canManageTypes && (
+                                                                <button onClick={() => setManageTypes(v => !v)} style={{ ...ghostBtn, padding: '2px 8px', fontSize: 11.5, marginBottom: 6 }}>
+                                                                    {manageTypes ? 'Done' : 'Manage types'}
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                         <select value={certDocType} onChange={e => setCertDocType(e.target.value)} style={input}>
                                                             <option value="">Select the document type…</option>
-                                                            {CERT_DOC_TYPES.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
+                                                            {docTypes.filter(d => d.is_active || d.key === certDocType)
+                                                                .map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
                                                         </select>
                                                         <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
                                                             Stored under this type; recipients who are members get it ticked in their Certificates matrix.
                                                         </div>
+                                                        {manageTypes && (
+                                                            <div style={{ marginTop: 10, border: '1px solid var(--outline-variant,#e5e5e5)', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                                {docTypes.map(t => (
+                                                                    <div key={t.id || t.key} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                                                        <input defaultValue={t.label} style={{ ...input, flex: 1, padding: '6px 8px', opacity: t.is_active ? 1 : 0.55 }}
+                                                                            onBlur={async (e) => {
+                                                                                const v = e.target.value.trim();
+                                                                                if (!t.id || !v || v === t.label) return;
+                                                                                const r = await saveCertDocType({ id: t.id, label: v }).catch(() => null);
+                                                                                if (r?.ok) { showToast('Renamed'); loadDocTypes(); }
+                                                                                else showToast(r?.error || 'Rename failed', true);
+                                                                            }} />
+                                                                        <button style={{ ...ghostBtn, padding: '4px 9px', fontSize: 11.5 }}
+                                                                            onClick={async () => {
+                                                                                const r = await saveCertDocType({ id: t.id, is_active: !t.is_active }).catch(() => null);
+                                                                                if (r?.ok) loadDocTypes(); else showToast(r?.error || 'Failed', true);
+                                                                            }}>{t.is_active ? 'Hide' : 'Show'}</button>
+                                                                        {!t.is_builtin && (
+                                                                            <button style={{ ...iconBtn }} title="Delete"
+                                                                                onClick={async () => {
+                                                                                    if (!window.confirm(`Delete “${t.label}”?`)) return;
+                                                                                    const r = await saveCertDocType({ id: t.id, delete: true }).catch(() => null);
+                                                                                    if (r?.ok) { showToast('Deleted'); loadDocTypes(); }
+                                                                                    else showToast(r?.error || 'Delete failed', true);
+                                                                                }}><Trash2 size={13} /></button>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                                <div style={{ display: 'flex', gap: 6 }}>
+                                                                    <input value={newTypeLabel} onChange={e => setNewTypeLabel(e.target.value)}
+                                                                        placeholder="New document type, e.g. Completion Letter"
+                                                                        style={{ ...input, flex: 1, padding: '6px 8px' }}
+                                                                        onKeyDown={async (e) => { if (e.key === 'Enter') e.target.nextSibling?.click?.(); }} />
+                                                                    <button style={{ ...ghostBtn, padding: '4px 10px', fontSize: 12 }}
+                                                                        onClick={async () => {
+                                                                            const v = newTypeLabel.trim();
+                                                                            if (!v) return;
+                                                                            const r = await saveCertDocType({ label: v }).catch(() => null);
+                                                                            if (r?.ok) { setNewTypeLabel(''); showToast('Added'); loadDocTypes(); setCertDocType(r.key); }
+                                                                            else showToast(r?.error || 'Add failed', true);
+                                                                        }}><Plus size={13} style={{ verticalAlign: -2 }} /> Add</button>
+                                                                </div>
+                                                                <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                                                                    The four built-ins mirror the HR matrix columns — rename or hide them, but they cannot be deleted.
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>

@@ -934,3 +934,67 @@ class UserProfileView(views.APIView):
             serializer.save()
             return response.Response(serializer.data)
         return response.Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class CertDocTypesView(views.APIView):
+    """The document types a campaign certificate can be filed under.
+
+    GET  — the full list (active and hidden), plus whether the caller may edit.
+    POST — superadmin only. One action per call:
+             {label}                          create (key derived from label)
+             {id, label}                      rename
+             {id, is_active}                  show/hide in the picker
+             {id, delete: true}               remove (custom types only)
+
+    Built-ins (the four HR-matrix columns) can be renamed or hidden but never
+    deleted — member records and matrix columns reference their keys.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .models import CertificateDocType
+        return response.Response({
+            'types': [{'id': t.id, 'key': t.key, 'label': t.label,
+                       'is_active': t.is_active, 'is_builtin': t.is_builtin}
+                      for t in CertificateDocType.objects.all()],
+            'can_manage': bool(request.user.is_superuser),
+        })
+
+    def post(self, request):
+        from .models import CertificateDocType
+        if not request.user.is_superuser:
+            return response.Response({'error': 'Only a superadmin can change document types.'}, status=403)
+        d = request.data or {}
+
+        if d.get('id'):
+            t = CertificateDocType.objects.filter(id=d['id']).first()
+            if not t:
+                return response.Response({'error': 'No such document type.'}, status=404)
+            if d.get('delete'):
+                if t.is_builtin:
+                    return response.Response({'error': f'“{t.label}” is built-in — hide it instead.'}, status=400)
+                t.delete()
+                return response.Response({'ok': True})
+            if 'label' in d:
+                label = str(d['label'] or '').strip()
+                if not label:
+                    return response.Response({'error': 'Give it a name.'}, status=400)
+                t.label = label[:120]
+            if 'is_active' in d:
+                t.is_active = bool(d['is_active'])
+            t.save()
+            return response.Response({'ok': True})
+
+        label = str(d.get('label') or '').strip()
+        if not label:
+            return response.Response({'error': 'Give the document type a name.'}, status=400)
+        import re as _re
+        key = _re.sub(r'[^a-z0-9]+', '_', label.lower()).strip('_')[:60] or 'doc'
+        base, n = key, 2
+        while CertificateDocType.objects.filter(key=key).exists():
+            key = f'{base}_{n}'[:60]
+            n += 1
+        top = CertificateDocType.objects.order_by('-order').first()
+        t = CertificateDocType.objects.create(
+            key=key, label=label[:120], order=(top.order + 1 if top else 100))
+        return response.Response({'ok': True, 'id': t.id, 'key': t.key}, status=201)

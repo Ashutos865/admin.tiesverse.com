@@ -7,6 +7,7 @@ from .views import (
     PasswordChangeRequestView, PasswordChangeConfirmView, EmailTemplateViewSet,
     EmailCampaignViewSet, SESSendersView, FeaturedContentViewSet, PublicFeaturedView,
     EmailDraftViewSet, SESNotificationView, SiteNavCategoryViewSet,
+    CertDocTypesView,
 )
 
 router = DefaultRouter()
@@ -22,6 +23,7 @@ urlpatterns = [
     path('profile/', UserProfileView.as_view(), name='user-profile'),
     # Password reset (public, no auth)
     path('ses-senders/', SESSendersView.as_view(), name='ses-senders'),
+    path('cert-doc-types/', CertDocTypesView.as_view(), name='cert-doc-types'),
     # SES bounce/complaint/delivery notifications (via SNS) — public webhook
     path('ses-notify/', SESNotificationView.as_view(), name='ses-notify'),
     path('password-reset/', PasswordResetRequestView.as_view(), name='password-reset'),

@@ -763,3 +763,5 @@ export const updateFinanceCategory  = (id, d)  => adminFetch(`/api/finance/categ
 export const deleteFinanceCategory  = (id)     => adminFetch(`/api/finance/categories/${id}`, 'DELETE');
 export const getFinanceTeam         = ()       => adminFetch('/api/finance/team');
 export const setFinanceTeam         = (member, action) => adminFetch('/api/finance/team', 'POST', { member, action });
+export const getCertDocTypes = () => adminFetch('/api/accounts/cert-doc-types');
+export const saveCertDocType = (d) => adminFetch('/api/accounts/cert-doc-types', 'POST', d);
