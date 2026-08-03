@@ -11,7 +11,10 @@ import { variableNamesFromElements } from '../Certificates/certificateUtils';
 // certificate. Falls back to all manual variables if none can be detected.
 const usableCertVars = (t) => {
     const used = new Set(variableNamesFromElements(t?.text_elements || []));
-    const nonGen = (t?.variables || []).filter(v => !v.generator_enabled);
+    // `qr` is never fill-in data — it is drawn as an image at its placed spot,
+    // so offering it in the mapping list only invites a value that goes nowhere.
+    const nonGen = (t?.variables || []).filter(v => !v.generator_enabled
+        && String(v.name).toLowerCase() !== 'qr');
     const placed = nonGen.filter(v => used.has(String(v.name).toLowerCase()));
     return placed.length ? placed : nonGen;
 };
@@ -248,7 +251,10 @@ export default function MailAutomation() {
             const norm = (x) => String(x).toLowerCase().replace(/[^a-z0-9]/g, '');
             const sources = ['email', ...variables];
             const auto = Object.fromEntries(manual.map(v =>
-                [v.name, sources.find(s => norm(s) === norm(v.name)) || '']));
+                [v.name, sources.find(s => norm(s) === norm(v.name))
+                    // Date fields with no matching column default to the send
+                    // day — a certificate is dated when it is issued.
+                    || (/date/.test(norm(v.name)) ? '__today__' : '')]));
             setCertMapping(restoreCertMap.current || auto);   // restored draft mapping wins once
             restoreCertMap.current = null;
         }).catch(() => { if (alive) setCertTemplate(null); })
@@ -672,6 +678,7 @@ export default function MailAutomation() {
                                                                 <span style={{ color: 'var(--text-muted)' }}>←</span>
                                                                 <select value={certMapping[v.name] || ''} onChange={e => setCertMapping(m => ({ ...m, [v.name]: e.target.value }))} style={{ ...input, flex: 1 }}>
                                                                     <option value="">{v.default_value ? `— default (${v.default_value}) —` : '— blank —'}</option>
+                                                                    <option value="__today__">— today's date (send day) —</option>
                                                                     <option value="email">email</option>
                                                                     {variables.map(vr => <option key={vr} value={vr}>{vr}</option>)}
                                                                 </select>

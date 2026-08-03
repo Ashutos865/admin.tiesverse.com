@@ -807,7 +807,6 @@ def process_campaign(camp):
                 return {'email': to, 'name': name, 'subject': subject, 'status': 'skipped',
                         'error': 'duplicate' if dup else 'invalid or blank email', 'cert': '', 'mid': ''}
 
-            body = render_tokens(body_src, merged)
             attachments, cert_fname, cert_id, gen_error = None, '', '', ''
             if cert and cert_tid:
                 # A verified certificate needs its unique ID before generation, so
@@ -838,7 +837,14 @@ def process_campaign(camp):
                     if cert_id and id_var and str(v.get('name')).lower() == id_var.lower():
                         continue
                     src = mapping.get(v.get('name'))
-                    rv = row.get(src) if src else ''
+                    if src == '__today__':
+                        # The send day, written the way the certificates write
+                        # dates: "3 August 2026".
+                        from datetime import date as _date
+                        d = _date.today()
+                        rv = f"{d.day} {d.strftime('%B %Y')}"
+                    else:
+                        rv = row.get(src) if src else ''
                     overlay[str(v.get('name')).lower()] = '' if rv is None else str(rv)
                 stamp_els = [e for e in cert_els
                              if '{{qr}}' not in (e.get('content', '') or '').lower()]
@@ -856,6 +862,20 @@ def process_campaign(camp):
                     fname += '.pdf'
                 cert_fname = fname
                 attachments = [(fname, pdf, 'pdf')]
+
+            # The body is rendered AFTER certificate generation so the email can
+            # use what only exists then: the certificate's ID and its public
+            # verification link. An unfilled {{portal_url}} defaults to that
+            # link — the email's button then opens this recipient's certificate
+            # rather than going nowhere.
+            if cert_id:
+                base = getattr(settings, 'VERIFY_URL', '') or 'https://tiesverse.com/verify'
+                merged.setdefault('certificate_id', cert_id)
+                merged.setdefault('verify_url', f"{base.rstrip('/')}?id={cert_id}")
+                if not str(merged.get('portal_url') or '').strip():
+                    merged['portal_url'] = merged['verify_url']
+                subject = render_tokens(subject_src, merged)
+            body = render_tokens(body_src, merged)
 
             res = send_email(to, subject, body, from_email=source,
                              attachments=attachments, enabled=True, detailed=True)
