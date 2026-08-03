@@ -141,17 +141,18 @@ export default function CertificatesMatrix() {
         </div>
       )}
 
-      <CampaignIssued />
+      <CampaignIssued members={members} />
     </div>
   );
 }
 
 /* ── Issued from Mail Automation ──────────────────────────────────────────────
    Certificates sent as email campaigns are real issued documents — recorded on
-   the verify page and ticked in the matrix above when the recipient is a
-   member. This lists every one of them, including recipients who are NOT
-   members and therefore appear nowhere in the matrix. */
-function CampaignIssued() {
+   the verify page. A MEMBER's certificate already lives in the matrix above
+   (their cell is ticked with the ID), so this section lists only what the
+   matrix cannot show: recipients who are not members, and members issued a
+   custom document type the matrix has no column for. */
+function CampaignIssued({ members }) {
   const [rows, setRows] = useState(null);
   const [q, setQ] = useState('');
 
@@ -161,14 +162,25 @@ function CampaignIssued() {
       .catch(() => setRows([]));
   }, []);
 
+  const memberEmails = useMemo(() => new Set(
+    (members || []).map((m) => (m.candidate_email || '').trim().toLowerCase()).filter(Boolean),
+  ), [members]);
+  const matrixLabels = useMemo(() => new Set(COLUMNS.map((c) => c.label.toLowerCase())), []);
+
+  const visible = useMemo(() => (rows || []).filter((r) =>
+    !memberEmails.has((r.person_email || '').trim().toLowerCase())
+    // A member's custom-type document has no matrix column — keep it here,
+    // or it would appear in no view at all.
+    || !matrixLabels.has((r.subject_title || '').trim().toLowerCase()),
+  ), [rows, memberEmails, matrixLabels]);
+
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    const list = rows || [];
-    if (!s) return list;
-    return list.filter((r) =>
+    if (!s) return visible;
+    return visible.filter((r) =>
       `${r.certificate_id} ${r.person_name} ${r.person_email} ${r.subject_title} ${(r.data || {}).position || ''}`
         .toLowerCase().includes(s));
-  }, [rows, q]);
+  }, [visible, q]);
 
   const fmtDate = (v) => {
     if (!v) return '—';
@@ -183,18 +195,19 @@ function CampaignIssued() {
         <h2 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Megaphone size={18} style={{ color: 'var(--primary)' }} /> Issued from Mail Automation
         </h2>
-        {rows?.length > 0 && (
+        {visible.length > 0 && (
           <span style={{ fontSize: 11.5, fontWeight: 800, padding: '2px 9px', borderRadius: 20, background: 'color-mix(in srgb, var(--primary) 14%, transparent)', color: 'var(--primary)' }}>
-            {rows.length}
+            {visible.length}
           </span>
         )}
       </div>
       <p style={{ color: 'var(--text-muted)', fontSize: 12.5, marginTop: 4 }}>
-        Every certificate issued through a mail campaign — including recipients who are not members
-        and so have no row in the matrix above. Each ID opens its public verification page.
+        Only what the matrix above cannot show: recipients outside the member list, and custom
+        document types without a matrix column. A member's certificate appears as the tick in
+        their row above. Each ID opens its public verification page.
       </p>
 
-      {(rows?.length || 0) > 4 && (
+      {visible.length > 4 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 360, margin: '12px 0', padding: '7px 12px', borderRadius: 10, border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)' }}>
           <Search size={15} style={{ color: 'var(--text-muted)', flex: 'none' }} />
           <input value={q} onChange={(e) => setQ(e.target.value)}
@@ -208,7 +221,9 @@ function CampaignIssued() {
         <p style={{ color: 'var(--text-muted)', marginTop: 12 }}>Loading…</p>
       ) : filtered.length === 0 ? (
         <div style={{ marginTop: 12, padding: 30, textAlign: 'center', color: 'var(--text-muted)', border: '1px solid var(--outline-variant)', borderRadius: 12, background: 'var(--surface-container-low)', fontSize: 13 }}>
-          {q ? 'Nothing matches that.' : 'None yet — send one from Mail Automation with “Issue as verifiable certificates” on.'}
+          {q ? 'Nothing matches that.'
+            : (rows || []).length ? 'All campaign certificates so far went to members — see their rows in the matrix above.'
+            : 'None yet — send one from Mail Automation with “Issue as verifiable certificates” on.'}
         </div>
       ) : (
         <div style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--outline-variant)', borderRadius: 12 }}>
