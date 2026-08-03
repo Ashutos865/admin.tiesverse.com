@@ -100,9 +100,106 @@ def generator_generate(template_id, data):
 
 _TOKEN_RE = re.compile(r'\{\{\s*([a-zA-Z0-9_]+)\s*\}\}')
 
+_font_lock = threading.Lock()
+_font_map = None    # lowercase family -> registered reportlab font name
+
+
+def _load_generator_fonts():
+    """Download the template editor's uploaded fonts once and register them
+    with reportlab.
+
+    Certificates are stamped by US (overlay_values), and stamping in Helvetica
+    while the editor laid the template out in The Seasons put every value a few
+    points off — enough to drop names onto the certificate's dotted rules and
+    make issued certificates look nothing like the editor preview.
+
+    Never raises; a font that cannot be fetched or parsed is simply skipped and
+    that element falls back to Helvetica, so a generator outage cannot stop a
+    send.
+    """
+    global _font_map
+    with _font_lock:
+        if _font_map is not None:
+            return _font_map
+        fmap = {}
+        try:
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+            fonts_dir = os.path.join(str(settings.BASE_DIR), 'cert_fonts')
+            os.makedirs(fonts_dir, exist_ok=True)
+            manifest_path = os.path.join(fonts_dir, 'families.json')
+
+            # The listing names the families; the files themselves are cached on
+            # disk. When the generator is unreachable, fall back to the manifest
+            # written on a previous successful run — a flaky network must not
+            # produce a Helvetica certificate while the fonts sit right here.
+            entries = {}
+            try:
+                with urlopen(f"{_gen_base()}/api/editor/fonts", timeout=30) as r:
+                    listing = json.loads(r.read())
+                for f in listing:
+                    if f.get('source') == 'system' or not f.get('file_url'):
+                        continue
+                    family = str(f.get('family') or '').strip()
+                    if family:
+                        entries[family] = f['file_url']
+                with open(manifest_path, 'w', encoding='utf-8') as mh:
+                    json.dump(entries, mh)
+            except Exception:  # noqa: BLE001
+                try:
+                    with open(manifest_path, encoding='utf-8') as mh:
+                        entries = {k: None for k in json.load(mh)}
+                except Exception:  # noqa: BLE001
+                    entries = {}
+
+            for family, file_url in entries.items():
+                try:
+                    reg = 'CF-' + re.sub(r'[^A-Za-z0-9]+', '', family)
+                    path = os.path.join(fonts_dir, reg + '.ttf')
+                    if not os.path.exists(path):
+                        if not file_url:
+                            continue
+                        with urlopen(f"{_gen_base()}{file_url}", timeout=60) as fr:
+                            blob = fr.read()
+                        with open(path, 'wb') as fh:
+                            fh.write(blob)
+                    pdfmetrics.registerFont(TTFont(reg, path))
+                    fmap[family.lower()] = reg
+                except Exception:  # noqa: BLE001 — one bad font must not lose the rest
+                    continue
+        except Exception:  # noqa: BLE001
+            pass
+        # An empty map is a failure, not an answer: leave it uncached so the
+        # next certificate retries instead of stamping Helvetica forever.
+        if fmap:
+            _font_map = fmap
+        return fmap
+
 
 def _font_for(el):
-    bold, italic = el.get('is_bold'), el.get('is_italic')
+    """The registered face for an element — the family the editor actually shows.
+
+    The italic Seasons face is a separate foundry file with its own family name,
+    so "The Seasons Bold" + italic maps to it rather than to a synthetic oblique.
+    Helvetica stays as the fallback of last resort.
+    """
+    fonts = _load_generator_fonts()
+    fam = str(el.get('font_family') or '').strip().lower()
+    bold, italic = bool(el.get('is_bold')), bool(el.get('is_italic'))
+    candidates = []
+    if fam:
+        if bold and italic:
+            candidates += [f'{fam} bdit', f'{fam} bold italic']
+        if italic:
+            candidates += [f'{fam} italic', f'{fam} it']
+            if 'seasons' in fam:
+                candidates.append('fontspring demo theseasons bdit')
+        if bold:
+            candidates += [f'{fam} bold', f'{fam} bd']
+        candidates.append(fam)
+    for c in candidates:
+        if c in fonts:
+            return fonts[c]
     if bold and italic:
         return 'Helvetica-BoldOblique'
     if bold:
