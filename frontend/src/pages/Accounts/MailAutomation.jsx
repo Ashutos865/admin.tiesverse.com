@@ -226,6 +226,20 @@ export default function MailAutomation() {
     const variables = useMemo(() => varDefs.map(v => v.name), [varDefs]);        // names, for the existing UI
     const defaults = useMemo(() => Object.fromEntries(varDefs.filter(v => v.default !== '').map(v => [v.name, v.default])), [varDefs]);
 
+    // Certificate fields that no email variable covers become recipient columns
+    // of their own — the certificate needs the data even when the email never
+    // mentions it. (The concrete case: the email has name/document/portal_url,
+    // the certificate wants `position` — which could otherwise only be blank.)
+    // Date-ish fields are excluded because they default to the send day.
+    const normKey = (x) => String(x).toLowerCase().replace(/[^a-z0-9]/g, '');
+    const certExtraVars = useMemo(() => {
+        if (!attachCert || !certTemplate) return [];
+        const have = new Set(['email', ...variables].map(normKey));
+        return usableCertVars(certTemplate).map(v => String(v.name))
+            .filter(n => !have.has(normKey(n)) && !/date/.test(normKey(n)));
+    }, [attachCert, certTemplate, variables]);
+    const allVars = useMemo(() => [...variables, ...certExtraVars], [variables, certExtraVars]);
+
     // When template changes, reset subject + sender + auto-map columns.
     useEffect(() => {
         if (!template) return;
@@ -253,8 +267,11 @@ export default function MailAutomation() {
             const auto = Object.fromEntries(manual.map(v =>
                 [v.name, sources.find(s => norm(s) === norm(v.name))
                     // Date fields with no matching column default to the send
-                    // day — a certificate is dated when it is issued.
-                    || (/date/.test(norm(v.name)) ? '__today__' : '')]));
+                    // day — a certificate is dated when it is issued. Any other
+                    // unmatched field maps to the recipient column that gets
+                    // created for it (certExtraVars), so nothing is ever stuck
+                    // on "blank" with no way to feed it.
+                    || (/date/.test(norm(v.name)) ? '__today__' : String(v.name))]));
             setCertMapping(restoreCertMap.current || auto);   // restored draft mapping wins once
             restoreCertMap.current = null;
         }).catch(() => { if (alive) setCertTemplate(null); })
@@ -296,13 +313,13 @@ export default function MailAutomation() {
         if (source === 'manual') return manualRows.map(r => ({ ...r }));
         return csvData.map(r => {
             const out = { email: r[emailColumn] || '' };
-            variables.forEach(v => {
+            allVars.forEach(v => {
                 const val = r[mapping[v]];
                 out[v] = (val !== undefined && val !== '') ? val : (defaults[v] || '');  // unmapped -> default
             });
             return out;
         });
-    }, [source, manualRows, csvData, emailColumn, mapping, variables, defaults]);
+    }, [source, manualRows, csvData, emailColumn, mapping, allVars, defaults]);
 
     const validCount = recipients.filter(r => EMAIL_RE.test((r.email || '').trim())).length;
     const invalidCount = recipients.length - validCount;
@@ -313,7 +330,7 @@ export default function MailAutomation() {
         const emailCol = headers.find(h => /e-?mail/i.test(h)) || headers[0] || '';
         setEmailColumn(emailCol);
         const norm = (x) => x.toLowerCase().replace(/[^a-z0-9]/g, '');
-        setMapping(Object.fromEntries(variables.map(v => [v, headers.find(h => norm(h) === norm(v)) || ''])));
+        setMapping(Object.fromEntries(allVars.map(v => [v, headers.find(h => norm(h) === norm(v)) || ''])));
         setPreviewIdx(0);
     };
 
@@ -369,7 +386,7 @@ export default function MailAutomation() {
             showToast('Pick which document this certificate is (or turn off "Issue as verifiable certificates")', true);
             return;
         }
-        const list = testTo ? [{ ...(recipients[0] || sampleRow(variables)), email: testTo }] : recipients;
+        const list = testTo ? [{ ...(recipients[0] || sampleRow(allVars)), email: testTo }] : recipients;
         if (!list.length) { showToast('No recipients', true); return; }
         const attaching = attachCert && certTemplate;
         if (!testTo && !window.confirm(
@@ -599,7 +616,7 @@ export default function MailAutomation() {
                                 </div>
                             )}
 
-                            {source === 'manual' && <ManualEntry rows={manualRows} setRows={setManualRows} variables={variables} />}
+                            {source === 'manual' && <ManualEntry rows={manualRows} setRows={setManualRows} variables={allVars} />}
 
                             {source !== 'manual' && csvHeaders.length > 0 && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
@@ -611,11 +628,11 @@ export default function MailAutomation() {
                                             </select>
                                         </div>
                                     </div>
-                                    {variables.length > 0 && (
+                                    {allVars.length > 0 && (
                                         <div>
                                             <Lbl>Map variables → columns</Lbl>
                                             <div style={{ display: 'grid', gap: 8 }}>
-                                                {variables.map(v => (
+                                                {allVars.map(v => (
                                                     <div key={v} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                                                         <code style={{ ...chip, minWidth: 120 }}>{`{{${v}}}`}</code>
                                                         <span style={{ color: 'var(--text-muted)' }}>←</span>
@@ -671,6 +688,12 @@ export default function MailAutomation() {
                                             {certManualVars.length > 0 ? (
                                                 <div>
                                                     <Lbl>Fill certificate fields from recipient data</Lbl>
+                                                    {certExtraVars.length > 0 && (
+                                                        <div style={{ fontSize: 12, color: 'var(--text-muted)', margin: '2px 0 8px' }}>
+                                                            {certExtraVars.map(n => <code key={n} style={{ ...chip, marginRight: 4 }}>{n}</code>)}
+                                                            {certExtraVars.length === 1 ? 'is' : 'are'} certificate-only — the recipient table above has grown a column for {certExtraVars.length === 1 ? 'it' : 'each'}.
+                                                        </div>
+                                                    )}
                                                     <div style={{ display: 'grid', gap: 8 }}>
                                                         {certManualVars.map(v => (
                                                             <div key={v.name} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -680,7 +703,7 @@ export default function MailAutomation() {
                                                                     <option value="">{v.default_value ? `— default (${v.default_value}) —` : '— blank —'}</option>
                                                                     <option value="__today__">— today's date (send day) —</option>
                                                                     <option value="email">email</option>
-                                                                    {variables.map(vr => <option key={vr} value={vr}>{vr}</option>)}
+                                                                    {allVars.map(vr => <option key={vr} value={vr}>{vr}</option>)}
                                                                 </select>
                                                             </div>
                                                         ))}
