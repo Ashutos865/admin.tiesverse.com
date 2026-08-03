@@ -39,7 +39,7 @@ class Command(BaseCommand):
             heading='Overdue tasks need attention',
             paragraphs=[f'{len(overdue)} task(s) have passed their deadline without being completed:'],
             info_rows=rows,
-            footer_note='Automated escalation from the TiesVerse task board.',
+            footer_note='Automated escalation from the Tiesverse task board.',
         )
 
         emails = list(

@@ -1450,7 +1450,7 @@ def generate_webinar_meeting(request):
 
     try:
         res = google_calendar.create_event(
-            summary=f"{obj.title} — TiesVerse {obj.kind.title()}",
+            summary=f"{obj.title} — Tiesverse {obj.kind.title()}",
             description=obj.description or '',
             start_iso=start, duration_min=duration,
             attendees=hosts,  # only hosts invited now; paid registrants added on payment

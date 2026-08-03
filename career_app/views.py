@@ -433,7 +433,7 @@ class EnrollmentViewSet(viewsets.ViewSet):
         if google_calendar.is_configured():
             try:
                 res = google_calendar.create_interview_event(
-                    summary=f"TiesVerse Interview — {cand_name or cand_email} ({role})",
+                    summary=f"Tiesverse Interview — {cand_name or cand_email} ({role})",
                     description=f"Interview for {role}.\nCandidate: {cand_name} <{cand_email}>",
                     start_iso=interview_at,
                     duration_min=duration,
