@@ -904,7 +904,13 @@ def process_campaign(camp):
                     src = mapping.get(v.get('name'))
                     rv = _resolve_date_mapping(src)
                     if rv is None:
-                        rv = row.get(src) if src else ''
+                        if isinstance(src, str) and src.startswith('__value__:'):
+                            # A value the sender typed once, applied to every
+                            # recipient — "Advisory" for the whole batch without
+                            # a column for it.
+                            rv = src.split(':', 1)[1]
+                        else:
+                            rv = row.get(src) if src else ''
                     overlay[vname] = '' if rv is None else str(rv)
                 stamp_els = [e for e in cert_els
                              if '{{qr}}' not in (e.get('content', '') or '').lower()]

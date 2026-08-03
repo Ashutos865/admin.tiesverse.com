@@ -246,8 +246,10 @@ export default function MailAutomation() {
         if (!attachCert || !certTemplate) return [];
         const have = new Set(['email', ...variables].map(normKey));
         return usableCertVars(certTemplate).map(v => String(v.name))
-            .filter(n => !have.has(normKey(n)) && !/date/.test(normKey(n)));
-    }, [attachCert, certTemplate, variables]);
+            .filter(n => !have.has(normKey(n)) && !/date/.test(normKey(n))
+                // A field the sender types directly (or dates) needs no column.
+                && !String(certMapping[n] || '').startsWith('__'));
+    }, [attachCert, certTemplate, variables, certMapping]);
     const allVars = useMemo(() => [...variables, ...certExtraVars], [variables, certExtraVars]);
 
     // When template changes, reset subject + sender + auto-map columns.
@@ -708,23 +710,32 @@ export default function MailAutomation() {
                                                         {certManualVars.map(v => {
                                                             const cur = certMapping[v.name] || '';
                                                             const isCustomDate = cur.startsWith('__date__:');
+                                                            const isFixed = cur.startsWith('__value__:');
                                                             return (
                                                                 <div key={v.name} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                                                                     <code style={{ ...chip, minWidth: 130 }}>{v.name}</code>
                                                                     <span style={{ color: 'var(--text-muted)' }}>←</span>
-                                                                    <select value={isCustomDate ? '__custom__' : cur}
+                                                                    <select value={isFixed ? '__fixed__' : isCustomDate ? '__custom__' : cur}
                                                                         onChange={e => {
                                                                             const val = e.target.value === '__custom__'
                                                                                 ? `__date__:${new Date().toISOString().slice(0, 10)}`
+                                                                                : e.target.value === '__fixed__' ? '__value__:'
                                                                                 : e.target.value;
                                                                             setCertMapping(m => ({ ...m, [v.name]: val }));
-                                                                        }} style={{ ...input, flex: 1 }}>
+                                                                        }} style={{ ...input, flex: isFixed ? 0.6 : 1, minWidth: 150 }}>
                                                                         <option value="">{v.default_value ? `— default (${v.default_value}) —` : '— blank —'}</option>
+                                                                        <option value="__fixed__">— I type it (same for everyone) —</option>
                                                                         <option value="__today__">— today's date (send day) —</option>
                                                                         <option value="__custom__">— a date I pick —</option>
                                                                         <option value="email">email</option>
                                                                         {allVars.map(vr => <option key={vr} value={vr}>{vr}</option>)}
                                                                     </select>
+                                                                    {isFixed && (
+                                                                        <input value={cur.slice(10)} autoFocus
+                                                                            placeholder={`e.g. Advisory — goes on every certificate`}
+                                                                            onChange={e => setCertMapping(m => ({ ...m, [v.name]: `__value__:${e.target.value}` }))}
+                                                                            style={{ ...input, flex: 1 }} />
+                                                                    )}
                                                                     {isCustomDate && (
                                                                         <input type="date" value={cur.slice(9)}
                                                                             onChange={e => setCertMapping(m => ({ ...m, [v.name]: `__date__:${e.target.value}` }))}
