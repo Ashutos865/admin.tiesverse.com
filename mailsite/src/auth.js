@@ -46,5 +46,5 @@ export function hasPermission(user, codename) {
 }
 
 export function getDisplayName(user) {
-  return user?.name || user?.full_name || user?.username || user?.email || 'TiesVerse user';
+  return user?.name || user?.full_name || user?.username || user?.email || 'Tiesverse user';
 }
