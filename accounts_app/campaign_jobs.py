@@ -556,6 +556,71 @@ def _make_unique_cert_id(cert_vars, name, attempts=25):
     return cid
 
 
+CAMPAIGN_DOC_TYPES = {
+    'offer_letter': 'Offer Letter',
+    'internship_cert': 'Internship Certificate',
+    'lor': 'Letter of Recommendation',
+    'noc': 'No Objection Certificate',
+}
+
+
+def _fallback_cert_id(attempts=25):
+    """A unique ID for templates that have no generator-enabled variable. The ID
+    then appears only in the QR/record, not as text on the design — which is
+    fine: the QR is what gets scanned."""
+    import secrets
+    cid = ''
+    for _ in range(attempts):
+        cid = 'TIES-' + ''.join(secrets.choice('0123456789') for _ in range(6))
+        if not _cert_id_exists(cid):
+            break
+    _ISSUED_THIS_RUN.add(cid.upper())
+    return cid
+
+
+def _record_campaign_certificate(cert_id, person_name, email, doc_key, doc_label,
+                                 template_id, template_name, row, campaign_id):
+    """Make a campaign certificate's QR mean something: write the verify record,
+    and tick the member's certificate matrix when the recipient is a member.
+
+    Mirrors what the HR issue path stores (position, avatar for the verify page).
+    Never raises — a record failure must not turn a delivered email into a
+    'failed' row."""
+    try:
+        from config.certificate_workflow import record_certificate
+        position = str(row.get('position') or row.get('role') or '')
+        avatar, sub = '', None
+        try:
+            from career_app.models import OnboardingSubmission
+            sub = (OnboardingSubmission.objects
+                   .filter(candidate_email__iexact=email).order_by('-id').first())
+        except Exception:  # noqa: BLE001
+            sub = None
+        if sub is not None:
+            position = position or (sub.role_offered or '')
+            try:
+                if getattr(sub, 'account', None) and sub.account.user_id:
+                    from accounts_app.models import UserProfile
+                    pr = UserProfile.objects.filter(user_id=sub.account.user_id).first()
+                    avatar = (pr.avatar_url if pr else '') or ''
+            except Exception:  # noqa: BLE001
+                avatar = ''
+        record_certificate(
+            cert_id, person_name or email, doc_label or 'Certificate',
+            source_type='campaign', source_ref=f'campaign:{campaign_id}',
+            person_email=email, template_id=str(template_id or ''),
+            template_name=str(template_name or ''), position=position,
+            extra={'doc_type': doc_label or 'Certificate', 'avatar_url': avatar},
+        )
+        if sub is not None and doc_key in CAMPAIGN_DOC_TYPES:
+            try:
+                sub.set_certificate_id(doc_key, cert_id)
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _render_generator_pattern(cert_vars, name):
     """Best-effort readable ID from a generator variable's pattern/default when the
     generator's own value wasn't captured (single-send path has no batch row)."""
@@ -682,6 +747,7 @@ def process_campaign(camp):
         cert = cfg.get('certificate') or None
 
         cert_vars, cert_els, cert_tid, mapping, fname_pat = [], [], '', {}, 'certificate.pdf'
+        cert_tpl_name = ''
         design_w, design_h = 842.0, 595.0
         if cert:
             cert_tid = cert.get('template_id') or ''
@@ -692,12 +758,22 @@ def process_campaign(camp):
                     tpl_full = generator_get_template(cert_tid) or {}
                     cert_vars = tpl_full.get('variables') or []
                     cert_els = tpl_full.get('text_elements') or []
+                    cert_tpl_name = tpl_full.get('name') or ''
                     pgs = tpl_full.get('pages') or []
                     if pgs:
                         design_w = float(pgs[0].get('width') or design_w)
                         design_h = float(pgs[0].get('height') or design_h)
                 except Exception:  # noqa: BLE001
                     cert_vars, cert_els = [], []
+
+        # The sender's choice: issue these as REAL certificates — each one gets a
+        # unique ID + verification QR, is written to the verify store, and is
+        # ticked in the member's certificate matrix under the chosen document.
+        # Without it, campaign certificates are plain attachments (old behaviour).
+        verify_qr = bool(cert and cert.get('verify_qr'))
+        doc_key = str(cert.get('doc_type') or '') if cert else ''
+        doc_label = CAMPAIGN_DOC_TYPES.get(doc_key, '')
+        id_var = next((str(v.get('name')) for v in cert_vars if v.get('generator_enabled')), '')
 
         # ── Resume state: recompute counters from whatever's already logged, and
         # remember which emails are already handled so we never send them twice. ──
@@ -732,12 +808,19 @@ def process_campaign(camp):
                         'error': 'duplicate' if dup else 'invalid or blank email', 'cert': '', 'mid': ''}
 
             body = render_tokens(body_src, merged)
-            attachments, cert_fname, gen_error = None, '', ''
+            attachments, cert_fname, cert_id, gen_error = None, '', '', ''
             if cert and cert_tid:
+                # A verified certificate needs its unique ID before generation, so
+                # the generator can render it at the design's cert-id spot.
+                if verify_qr:
+                    cert_id = (_make_unique_cert_id(cert_vars, id_var) if id_var
+                               else _fallback_cert_id())
                 # Ask the generator to render placeholders blank (ZW satisfies its
                 # required-field check); we stamp the real values ourselves after,
                 # because the generator does not substitute {{tokens}} reliably.
                 gen_data = {str(v.get('name')).lower(): ZW for v in cert_vars}
+                if cert_id and id_var:
+                    gen_data[id_var.lower()] = cert_id
                 pdf = None
                 for attempt in range(2):   # one retry on transient failure
                     try:
@@ -748,13 +831,24 @@ def process_campaign(camp):
                 if pdf is None:
                     return {'email': to, 'name': name, 'subject': subject, 'status': 'failed',
                             'error': f'certificate not generated: {gen_error}'[:400], 'cert': '', 'mid': ''}
-                # Stamp the real recipient values onto the certificate.
+                # Stamp the real recipient values onto the certificate. The ID is
+                # rendered by the generator itself; {{qr}} is drawn as an image.
                 overlay = {}
                 for v in cert_vars:
+                    if cert_id and id_var and str(v.get('name')).lower() == id_var.lower():
+                        continue
                     src = mapping.get(v.get('name'))
                     rv = row.get(src) if src else ''
                     overlay[str(v.get('name')).lower()] = '' if rv is None else str(rv)
-                pdf = overlay_values(pdf, cert_els, overlay, design_w, design_h)
+                stamp_els = [e for e in cert_els
+                             if '{{qr}}' not in (e.get('content', '') or '').lower()]
+                pdf = overlay_values(pdf, stamp_els, overlay, design_w, design_h)
+                if cert_id:
+                    # The QR that makes it verifiable → /verify?id=<cert_id>.
+                    try:
+                        pdf = add_verify_qr(pdf, cert_id, design_w, design_h, cert_els)
+                    except Exception:  # noqa: BLE001
+                        pass
                 # Shrink the (image-heavy) PDF toward the size cap before attaching.
                 pdf = compress_pdf(pdf, target_kb=int(getattr(settings, 'CERT_MAX_KB', 600)))
                 fname = re.sub(r'[\\/:*?"<>|]+', '', render_tokens(fname_pat, merged)).strip() or 'certificate'
@@ -766,9 +860,14 @@ def process_campaign(camp):
             res = send_email(to, subject, body, from_email=source,
                              attachments=attachments, enabled=True, detailed=True)
             ok = res.get('ok')
+            if ok and cert_id:
+                # Sending IS issuing: the QR must verify from the moment the mail
+                # lands, so the record is written right after the send succeeds.
+                _record_campaign_certificate(cert_id, name, to, doc_key, doc_label,
+                                             cert_tid, cert_tpl_name, row, cid)
             return {'email': to, 'name': name, 'subject': subject,
                     'status': 'sent' if ok else 'failed', 'error': res.get('error') or '',
-                    'cert': cert_fname, 'mid': res.get('message_id') or ''}
+                    'cert': cert_id or cert_fname, 'mid': res.get('message_id') or ''}
 
         # Only the recipients not already handled by a previous (interrupted) run.
         pending = []

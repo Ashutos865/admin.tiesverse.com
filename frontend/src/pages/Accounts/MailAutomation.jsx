@@ -16,6 +16,15 @@ const usableCertVars = (t) => {
     return placed.length ? placed : nonGen;
 };
 
+// The four documents a verifiable certificate can be filed under — the same
+// four columns as the HR Certificates matrix.
+const CERT_DOC_TYPES = [
+    { key: 'offer_letter',    label: 'Offer Letter' },
+    { key: 'internship_cert', label: 'Internship Certificate' },
+    { key: 'lor',             label: 'Letter of Recommendation' },
+    { key: 'noc',             label: 'No Objection Certificate' },
+];
+
 // blob -> base64 (no data: prefix), for attaching generated certificate PDFs.
 const blobToBase64 = (blob) => new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -110,6 +119,10 @@ export default function MailAutomation() {
     const [certLoadingTpl, setCertLoadingTpl] = useState(false);
     const [certMapping, setCertMapping] = useState({});       // placeholder -> source key ('email' | variable | '')
     const [certFilename, setCertFilename] = useState('Certificate - {{name}}.pdf');
+    // Issue as verifiable certificates: unique ID + QR per PDF, recorded on the
+    // public verify page and ticked in the member's document matrix.
+    const [certVerifyQR, setCertVerifyQR] = useState(true);
+    const [certDocType, setCertDocType] = useState('');
     const [genProgress, setGenProgress] = useState(null);     // {done,total}
     // Drafts
     const [drafts, setDrafts] = useState([]);
@@ -339,7 +352,17 @@ export default function MailAutomation() {
 
     const doSend = async (testTo) => {
         if (!template) { showToast('Pick a template first', true); return; }
+        // SES only accepts verified senders — an unverified From is a guaranteed
+        // MessageRejected for every recipient, so stop before sending anything.
+        if (!senderVerified(fromEmail)) {
+            showToast(`"${fromEmail || 'empty'}" is not a verified sender — SES will reject every email. Use a @tiesverse.com address.`, true);
+            return;
+        }
         if (attachCert && !certTemplate) { showToast('Pick a certificate template (or turn off Attach certificate)', true); return; }
+        if (attachCert && certTemplate && certVerifyQR && !certDocType) {
+            showToast('Pick which document this certificate is (or turn off "Issue as verifiable certificates")', true);
+            return;
+        }
         const list = testTo ? [{ ...(recipients[0] || sampleRow(variables)), email: testTo }] : recipients;
         if (!list.length) { showToast('No recipients', true); return; }
         const attaching = attachCert && certTemplate;
@@ -359,7 +382,10 @@ export default function MailAutomation() {
                 name: testTo ? 'Test send' : `Campaign · ${template.name}`,
                 email_field: 'email', subject, recipients: recips,
                 from_email: fromEmail, from_name: fromName,
-                certificate: { template_id: certTemplateId, mapping: certMapping, filename_pattern: certFilename },
+                certificate: {
+                    template_id: certTemplateId, mapping: certMapping, filename_pattern: certFilename,
+                    verify_qr: certVerifyQR, doc_type: certVerifyQR ? certDocType : '',
+                },
             }).catch(() => ({ error: 'Failed' }));
             if (!res?.campaign_id) { setSending(false); showToast(res?.error || 'Send failed', true); return; }
 
@@ -387,7 +413,7 @@ export default function MailAutomation() {
         templateId, subject, fromName, fromEmail, source,
         csvHeaders, csvData, emailColumn, mapping, manualRows,
         sourceTable, sourceEvent,
-        attachCert, certTemplateId, certMapping, certFilename,
+        attachCert, certTemplateId, certMapping, certFilename, certVerifyQR, certDocType,
     });
 
     const applyDraft = (p = {}, id = null, name = '') => {
@@ -409,6 +435,8 @@ export default function MailAutomation() {
         setCertTemplateId(p.certTemplateId || '');
         setCertMapping(p.certMapping || {});
         setCertFilename(p.certFilename || 'Certificate - {{name}}.pdf');
+        setCertVerifyQR(p.certVerifyQR !== false);
+        setCertDocType(p.certDocType || '');
         setResults(null);
         setPreviewIdx(0);
         setCurrentDraftId(id);
@@ -658,6 +686,32 @@ export default function MailAutomation() {
                                             <div>
                                                 <Lbl>Attachment filename (personalizable)</Lbl>
                                                 <input value={certFilename} onChange={e => setCertFilename(e.target.value)} placeholder="Certificate - {{name}}.pdf" style={input} />
+                                            </div>
+
+                                            {/* Verification: without this the attachment is just a picture of a
+                                                certificate. With it, each one gets a unique ID + QR, appears on the
+                                                public verify page, and is ticked in the member's document matrix. */}
+                                            <div style={{ borderTop: '1px dashed var(--outline-variant,#e5e5e5)', paddingTop: 12 }}>
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, color: 'var(--text-main)', cursor: 'pointer' }}>
+                                                    <input type="checkbox" checked={certVerifyQR} onChange={e => setCertVerifyQR(e.target.checked)} />
+                                                    <span><strong>Issue as verifiable certificates</strong> — unique ID + QR on each, recorded on the public verify page</span>
+                                                </label>
+                                                {certVerifyQR ? (
+                                                    <div style={{ marginTop: 10 }}>
+                                                        <Lbl>Which document is this?</Lbl>
+                                                        <select value={certDocType} onChange={e => setCertDocType(e.target.value)} style={input}>
+                                                            <option value="">Select the document type…</option>
+                                                            {CERT_DOC_TYPES.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
+                                                        </select>
+                                                        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                                                            Stored under this type; recipients who are members get it ticked in their Certificates matrix.
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                                                        Off: the PDF is attached as-is — no ID, no QR, and scanning nothing means nothing to verify.
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {recipients.length > 60 && (
