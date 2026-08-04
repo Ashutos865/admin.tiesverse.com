@@ -653,9 +653,14 @@ def _record_campaign_certificate(cert_id, person_name, email, doc_key, doc_label
                     avatar = (pr.avatar_url if pr else '') or ''
             except Exception:  # noqa: BLE001
                 avatar = ''
+        # source_ref must be unique PER RECIPIENT: the store has a
+        # UNIQUE(source_type, source_ref, template_id) constraint, and a batch
+        # writing every recipient under the campaign's own ref meant only the
+        # first insert survived — 21 of a 22-send were silently dropped.
         record_certificate(
             cert_id, person_name or email, doc_label or 'Certificate',
-            source_type='campaign', source_ref=f'campaign:{campaign_id}',
+            source_type='campaign',
+            source_ref=f'campaign:{campaign_id}:{(email or "").strip().lower()}',
             person_email=email, template_id=str(template_id or ''),
             template_name=str(template_name or ''), position=position,
             extra={'doc_type': doc_label or 'Certificate', 'avatar_url': avatar},
