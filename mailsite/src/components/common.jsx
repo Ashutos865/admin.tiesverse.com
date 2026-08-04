@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Check, Loader2, WifiOff, X } from 'lucide-react';
 import { avatarColor, initials, nameOf } from '../lib/format.js';
 
-/* The wordmark. Height is set here and the width follows the artwork, so the
-   logo keeps its proportions wherever it appears. */
-export function Brand({ height = 26, className = '' }) {
+/* The wordmark. Sized by width so it fills the column it sits in — matching
+   the Compose button beneath it in the sidebar — with the height following the
+   artwork's own proportions rather than being fixed independently. */
+export function Brand({ width, className = '' }) {
   return (
     <img src="/logo.png" alt="TIES Mail" className={`brand-logo ${className}`}
-      style={{ height }} width="1102" height="284" />
+      style={width ? { width } : undefined} width="1102" height="284" />
   );
 }
 

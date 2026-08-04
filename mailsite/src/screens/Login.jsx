@@ -33,7 +33,7 @@ export default function Login({ onSignedIn }) {
     }}>
       <div style={{ width: '100%', maxWidth: 400 }}>
         <div style={{ display: 'grid', justifyItems: 'center', gap: 6, marginBottom: 22 }}>
-          <Brand height={34} />
+          <Brand width={190} />
           <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>
             Sign in to your Tiesverse mailbox
           </p>
