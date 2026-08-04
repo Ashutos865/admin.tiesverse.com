@@ -452,14 +452,17 @@ def add_verify_qr(pdf_bytes, cert_id, design_w, design_h, text_elements=None):
                 buf = BytesIO()
                 c = canvas.Canvas(buf, pagesize=(pw, ph))
                 if qr_el is not None:
-                    # square QR that fits the placed box, top-left anchored like text
+                    # square QR that fits the placed box, CENTERED inside it — a
+                    # wide box (the editor's default element shape) must not pin
+                    # the QR to its left edge.
                     ex = float(qr_el.get('x', 0)) * sx
                     ey = float(qr_el.get('y', 0)) * sy
                     ew = float(qr_el.get('width', 60)) * sx
                     eh = float(qr_el.get('height', 60)) * sy
                     size = max(24.0, min(ew, eh) if eh else ew)
-                    qx = ex
-                    qy = ph - ey - size          # PDF bottom-origin
+                    box_h = eh or size
+                    qx = ex + max(0.0, (ew - size) / 2.0)
+                    qy = ph - ey - box_h + max(0.0, (box_h - size) / 2.0)   # PDF bottom-origin
                     # White-cover the whole {{qr}} box first: the generator renders
                     # the token's placeholder (a "?") which would otherwise peek out
                     # beside the square QR. (The box sits on the white letter body.)
