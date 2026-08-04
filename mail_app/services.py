@@ -106,7 +106,7 @@ def _clean_recipients(value):
 
 def queue_mail_message(mailbox, *, to, subject, body_text, cc=None, bcc=None,
                        actor=None, in_reply_to='', thread_key='', send_at=None,
-                       attachments=None):
+                       attachments=None, body_html=''):
     """Validate and record an outbound message without sending it yet.
 
     Everything leaves through here: a normal send is simply one queued a few
@@ -143,7 +143,7 @@ def queue_mail_message(mailbox, *, to, subject, body_text, cc=None, bcc=None,
     msg = MailMessage.objects.create(
         mailbox=mailbox, direction='OUT',
         peer=to_list[0], to=to_list, cc=cc_list, bcc=bcc_list,
-        subject=subject, body_text=body_text,
+        subject=subject, body_text=body_text, body_html=body_html or '',
         snippet=body_text.strip()[:300],
         message_id=own_message_id, in_reply_to=in_reply_to or '',
         thread_key=thread_key or own_message_id,
@@ -203,10 +203,13 @@ def deliver(msg):
 
     # A message a person typed should look like a normal email, not a system
     # notice — no banner, no card, just the text plus a small signature.
+    # A message composed with formatting carries its own HTML; a plain one is
+    # built from the text.
     html_body, text_body = render_personal_email(
         msg.body_text,
         sender_name=(mailbox.display_name or '').strip(),
         sender_address=mailbox.address,
+        body_html=msg.body_html or '',
     )
 
     files = []

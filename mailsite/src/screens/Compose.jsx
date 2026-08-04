@@ -1,13 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clock, Loader2, Paperclip, Send, X } from 'lucide-react';
 import {
   createDraft, deleteAttachment, deleteDraft, sendMessage, updateDraft, uploadAttachment,
 } from '../api/mail.js';
 import { ConfirmDialog, ErrorNotice } from '../components/common.jsx';
+import RichText from '../components/RichText.jsx';
 import { addressOf, fileSize, nameOf } from '../lib/format.js';
 
 const MAX_TOTAL = 25 * 1024 * 1024;
 const AUTOSAVE_MS = 3000;
+
+const escapeHtml = (s) => String(s || '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/* Plain text becomes paragraphs, so a draft written before formatting existed
+   still opens as something editable rather than one unbroken line. */
+const textToHtml = (text) => String(text || '')
+  .split(/\n{2,}/)
+  .map((block) => `<p>${escapeHtml(block).replace(/\n/g, '<br>')}</p>`)
+  .join('') || '';
+
+/* The plain-text alternative that rides along in every email, for clients that
+   will not render HTML. */
+const htmlToText = (html) => String(html || '')
+  .replace(/<br\s*\/?>/gi, '\n')
+  .replace(/<\/(p|div|li|h[1-4]|blockquote)>/gi, '\n')
+  .replace(/<li[^>]*>/gi, '\u2022 ')
+  .replace(/<[^>]+>/g, '')
+  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+  .replace(/\n{3,}/g, '\n\n')
+  .trim();
 
 /* The composer. Opens for a new message, a reply, a forward, or to pick up a
    draft — all the same form, seeded differently. */
@@ -56,6 +79,15 @@ export default function Compose({ me, seed, onClose, onSent }) {
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
+  // Everyone this mailbox can mention: people already in the conversation.
+  const people = useMemo(() => {
+    const seen = new Map();
+    [...to, ...cc, ...(reply ? [addressOf(reply.peer)] : [])]
+      .filter(Boolean)
+      .forEach((addr) => { if (!seen.has(addr)) seen.set(addr, { email: addr, name: nameOf(addr) }); });
+    return [...seen.values()];
+  }, [to, cc, reply]);
+
   const fileRef = useRef(null);
   const dirty = useRef(false);
   const state = useRef({});
@@ -75,7 +107,7 @@ export default function Compose({ me, seed, onClose, onSent }) {
     if (saving.current) return saving.current;
     const payload = {
       mailbox: s.mailbox, to: s.to, cc: s.cc, bcc: s.bcc,
-      subject: s.subject, body_text: s.body,
+      subject: s.subject, body_text: htmlToText(s.body), body_html: s.body,
       in_reply_to: inReplyTo, thread_key: threadKey,
     };
     saving.current = (async () => {
@@ -132,7 +164,9 @@ export default function Compose({ me, seed, onClose, onSent }) {
     if (!subject.trim()) { setError('Add a subject so it is findable later.'); return; }
     setBusy(true);
     const res = await sendMessage({
-      mailbox, to, cc, bcc, subject, body,
+      mailbox, to, cc, bcc, subject,
+      body_html: body,
+      body: htmlToText(body),
       attachments: attachments.map((a) => a.id),
       in_reply_to: inReplyTo, thread_key: threadKey,
       draft: draftId || undefined,
@@ -150,7 +184,7 @@ export default function Compose({ me, seed, onClose, onSent }) {
 
   const attemptClose = async () => {
     // Anything written is kept as a draft; only an empty composer closes silently.
-    const hasContent = to.length || subject.trim() || body.trim() || attachments.length;
+    const hasContent = to.length || subject.trim() || htmlToText(body).trim() || attachments.length;
     if (!hasContent) { if (draftId) await deleteDraft(draftId); onClose?.(); return; }
     if (dirty.current) await save();
     onClose?.();
@@ -228,10 +262,9 @@ export default function Compose({ me, seed, onClose, onSent }) {
               placeholder="What is this about?" />
           </div>
 
-          <textarea className="field" rows={12} value={body}
-            onChange={(e) => { dirty.current = true; setBody(e.target.value); }}
+          <RichText value={body} people={people}
             placeholder="Write your message…"
-            style={{ border: 'none', boxShadow: 'none', padding: '6px 0', resize: 'vertical' }} />
+            onChange={(html) => { dirty.current = true; setBody(html); }} />
 
           {attachments.length > 0 && (
             <div>

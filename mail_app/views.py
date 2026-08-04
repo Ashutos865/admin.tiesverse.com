@@ -19,7 +19,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import bulk, services, storage
+from . import bulk, sanitize, services, storage
 from .models import (
     KIND_PERSONAL, KIND_SHARED, KIND_SYSTEM,
     Mailbox, MailboxGrant, MailMessage, MailAuditLog,
@@ -408,13 +408,22 @@ class MailSendView(APIView):
         if err:
             return err
 
+        # Whatever the composer sends is cleaned here, before it is stored or
+        # mailed: this HTML ends up rendering in other people's clients.
+        raw_html = request.data.get('body_html') or ''
+        safe_html = sanitize.clean_html(raw_html) if raw_html else ''
+        plain = request.data.get('body')
+        if safe_html and not plain:
+            plain = sanitize.html_to_text(safe_html)
+
         msg, error = services.queue_mail_message(
             box,
             to=request.data.get('to'),
             cc=request.data.get('cc'),
             bcc=request.data.get('bcc'),
             subject=request.data.get('subject'),
-            body_text=request.data.get('body'),
+            body_text=plain,
+            body_html=safe_html,
             actor=request.user if getattr(request.user, 'is_authenticated', False) else None,
             in_reply_to=request.data.get('in_reply_to', '') or '',
             thread_key=request.data.get('thread_key', '') or '',
@@ -641,6 +650,7 @@ class MailDraftListView(APIView):
             bcc=services._clean_recipients(request.data.get('bcc')),
             subject=(request.data.get('subject') or '')[:500],
             body_text=request.data.get('body_text') or request.data.get('body') or '',
+            body_html=sanitize.clean_html(request.data.get('body_html') or ''),
             in_reply_to=request.data.get('in_reply_to', '') or '',
             thread_key=request.data.get('thread_key', '') or '',
             created_by_user=request.user if getattr(request.user, 'is_authenticated', False) else None,
@@ -680,6 +690,8 @@ class MailDraftDetailView(APIView):
             draft.subject = (data.get('subject') or '')[:500]
         if 'body_text' in data or 'body' in data:
             draft.body_text = data.get('body_text') or data.get('body') or ''
+        if 'body_html' in data:
+            draft.body_html = sanitize.clean_html(data.get('body_html') or '')
         draft.save()
         return Response(MailDraftSerializer(draft).data)
 

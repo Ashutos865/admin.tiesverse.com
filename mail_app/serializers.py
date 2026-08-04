@@ -142,7 +142,7 @@ class MailDraftSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MailDraft
-        fields = ['id', 'mailbox', 'to', 'cc', 'bcc', 'subject', 'body_text',
+        fields = ['id', 'mailbox', 'to', 'cc', 'bcc', 'subject', 'body_text', 'body_html',
                   'in_reply_to', 'thread_key', 'attachments',
                   'created_at', 'updated_at']
         read_only_fields = ['id', 'attachments', 'created_at', 'updated_at']

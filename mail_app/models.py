@@ -277,6 +277,8 @@ class MailDraft(models.Model):
     bcc = models.JSONField(default=list, blank=True)
     subject = models.CharField(max_length=500, blank=True)
     body_text = models.TextField(blank=True)
+    # What the composer produced, so reopening a draft restores its formatting.
+    body_html = models.TextField(blank=True)
 
     # Set when the draft is a reply, so sending keeps it in the same thread.
     in_reply_to = models.CharField(max_length=500, blank=True)

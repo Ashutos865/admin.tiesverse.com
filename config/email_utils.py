@@ -134,7 +134,8 @@ def render_email(
     return html, _text_from_html(html)
 
 
-def render_personal_email(body_text: str, sender_name: str = '', sender_address: str = ''):
+def render_personal_email(body_text: str, sender_name: str = '', sender_address: str = '',
+                          body_html: str = ''):
     """Return (html, text) for a person-to-person message sent from a TIES Mail
     mailbox.
 
@@ -144,11 +145,19 @@ def render_personal_email(body_text: str, sender_name: str = '', sender_address:
     sender and the organisation.
     """
     body_text = body_text or ''
-    paragraphs = ''.join(
-        '<p style="margin:0 0 14px;font-size:15px;line-height:1.65;color:#1f2937;">'
-        f'{_escape(line)}</p>'
-        for line in body_text.split('\n') if line.strip()
-    ) or '<p style="margin:0;">&nbsp;</p>'
+    if body_html:
+        # Already formatted by the composer and cleaned by mail_app.sanitize.
+        # Wrapped rather than rebuilt, so the sender's own formatting survives.
+        paragraphs = (
+            '<div style="font-size:15px;line-height:1.65;color:#1f2937;">'
+            f'{body_html}</div>'
+        )
+    else:
+        paragraphs = ''.join(
+            '<p style="margin:0 0 14px;font-size:15px;line-height:1.65;color:#1f2937;">'
+            f'{_escape(line)}</p>'
+            for line in body_text.split('\n') if line.strip()
+        ) or '<p style="margin:0;">&nbsp;</p>'
 
     who = _escape(sender_name.strip()) if sender_name else ''
     addr = _escape(sender_address.strip()) if sender_address else ''
