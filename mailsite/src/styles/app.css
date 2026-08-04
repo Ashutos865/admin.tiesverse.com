@@ -74,13 +74,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   padding: 16px 16px 10px;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
-.brand {
-  display: inline-flex; align-items: baseline; gap: 6px;
-  font-weight: 700; font-size: 17px; letter-spacing: -.02em;
-}
-.brand-dot { color: var(--accent); }
-.brand-sep { color: var(--line); font-weight: 400; }
-.brand-mail { color: var(--ink); font-weight: 600; }
+.brand-logo { display: block; width: auto; }
 
 .sidebar-top { padding: 0 16px 12px; display: grid; gap: 8px; }
 

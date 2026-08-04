@@ -4,16 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Check, Loader2, WifiOff, X } from 'lucide-react';
 import { avatarColor, initials, nameOf } from '../lib/format.js';
 
-/* The wordmark. One component so swapping the text for the real logo asset is a
-   one-file change. */
-export function Brand({ compact = false }) {
-  if (compact) return <span className="brand"><span className="brand-dot">.</span>t</span>;
+/* The wordmark. Height is set here and the width follows the artwork, so the
+   logo keeps its proportions wherever it appears. */
+export function Brand({ height = 26, className = '' }) {
   return (
-    <span className="brand">
-      <span className="brand-dot">.</span>ties
-      <span className="brand-sep">|</span>
-      <span className="brand-mail">Mail</span>
-    </span>
+    <img src="/logo.png" alt="TIES Mail" className={`brand-logo ${className}`}
+      style={{ height }} width="1102" height="284" />
   );
 }
 
