@@ -1,0 +1,95 @@
+/* TIES Mail design tokens — see DESIGN.md for the reasoning behind each value.
+   Nothing in the app hardcodes a colour; if one is missing it gets added here. */
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-400.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-500.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-600.woff2') format('woff2');
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-700.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* surfaces */
+  --page: #f7f8fa;
+  --card: #ffffff;
+  --card-2: #fcfcfd;
+  --line: #e5e7eb;
+  --line-soft: #f1f2f4;
+
+  /* text */
+  --ink: #111827;
+  --ink-2: #374151;
+  --muted: #6b7280;
+  --muted-2: #9ca3af;
+
+  /* the one brand colour */
+  --accent: #fe7a00;
+  --accent-hover: #e86e00;
+  --accent-soft: rgba(254, 122, 0, .08);
+  --accent-line: rgba(254, 122, 0, .28);
+
+  /* meaning */
+  --ok: #067a50;
+  --ok-soft: rgba(6, 122, 80, .1);
+  --warn: #b45309;
+  --warn-soft: rgba(180, 83, 9, .1);
+  --danger: #c02626;
+  --danger-soft: rgba(192, 38, 38, .08);
+  --info: #2563eb;
+  --info-soft: rgba(37, 99, 235, .08);
+
+  /* shape + depth */
+  --r-card: 12px;
+  --r-control: 8px;
+  --r-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, .06);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, .08);
+  --shadow-lg: 0 16px 40px rgba(16, 24, 40, .14);
+
+  /* motion */
+  --t-fast: 120ms cubic-bezier(.2, 0, .2, 1);
+  --t-base: 160ms cubic-bezier(.2, 0, .2, 1);
+
+  /* layout — the pane widths from the design */
+  --w-sidebar: 264px;
+  --w-rail: 72px;
+  --w-list: 410px;
+  --w-context: 284px;
+  --h-topbar: 60px;
+}
+
+/* Category chips. One hue per team so a glance at the list tells you which
+   conversation belongs where; add a category by adding a line. */
+.chip-partnerships { --chip: #7c3aed; }
+.chip-media        { --chip: #2563eb; }
+.chip-careers      { --chip: #067a50; }
+.chip-support      { --chip: #b45309; }
+.chip-events       { --chip: #be185d; }
+.chip-default      { --chip: #6b7280; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
