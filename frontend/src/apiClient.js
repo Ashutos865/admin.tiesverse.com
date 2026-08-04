@@ -765,3 +765,4 @@ export const getFinanceTeam         = ()       => adminFetch('/api/finance/team'
 export const setFinanceTeam         = (member, action) => adminFetch('/api/finance/team', 'POST', { member, action });
 export const getCertDocTypes = () => adminFetch('/api/accounts/cert-doc-types');
 export const saveCertDocType = (d) => adminFetch('/api/accounts/cert-doc-types', 'POST', d);
+export const mailSsoTicket = () => adminFetch('/api/mail/sso-ticket', 'POST', {});

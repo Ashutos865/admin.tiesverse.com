@@ -237,6 +237,7 @@ def send_email(
     *,
     reply_to: str | None = None,
     cc: list[str] | None = None,
+    bcc: list[str] | None = None,
     headers: dict[str, str] | None = None,
     configuration_set: str | None = None,
 ):
@@ -287,6 +288,10 @@ def send_email(
         cc_list = [a for a in (cc or []) if a]
         if cc_list:
             msg['Cc'] = ', '.join(cc_list)
+        # Bcc reaches SES through Destinations only. Writing it as a header would
+        # show every blind recipient to everyone else — the one mistake blind
+        # copy exists to prevent.
+        bcc_list = [a for a in (bcc or []) if a]
         if reply_to:
             msg['Reply-To'] = reply_to
         for key, value in (headers or {}).items():
@@ -313,7 +318,7 @@ def send_email(
         )
         send_kwargs = {
             'Source': from_addr,
-            'Destinations': [to] + cc_list,
+            'Destinations': [to] + cc_list + bcc_list,
             'RawMessage': {'Data': msg.as_string()},
         }
         if configuration_set:

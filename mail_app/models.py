@@ -41,8 +41,13 @@ KIND_CHOICES = [
 DIRECTION_CHOICES = [('OUT', 'Sent'), ('IN', 'Received')]
 STATUS_CHOICES = [
     ('queued', 'Queued'),
+    # Claimed by whoever is about to hand it to SES. The queued→sending move is a
+    # compare-and-set, so the cron flusher and a browser pressing "send now" can
+    # race for the same row and only one of them wins.
+    ('sending', 'Sending'),
     ('sent', 'Sent'),
     ('failed', 'Failed'),
+    ('canceled', 'Canceled'),
     ('received', 'Received'),
 ]
 
@@ -153,6 +158,8 @@ class MailMessage(models.Model):
     peer = models.CharField(max_length=255, blank=True)      # the other party
     to = models.JSONField(default=list, blank=True)
     cc = models.JSONField(default=list, blank=True)
+    # Delivered to, never written into a header — that is what blind means.
+    bcc = models.JSONField(default=list, blank=True)
     subject = models.CharField(max_length=500, blank=True)
     body_text = models.TextField(blank=True)
     body_html = models.TextField(blank=True)
@@ -177,6 +184,14 @@ class MailMessage(models.Model):
     is_deleted = models.BooleanField(default=False)          # soft delete → Trash
     deleted_at = models.DateTimeField(null=True, blank=True)
 
+    starred = models.BooleanField(default=False)
+    # Set → hidden from Inbox until this moment passes, then it returns.
+    snoozed_until = models.DateTimeField(null=True, blank=True)
+    # When an outbound message should actually go. Set a few seconds ahead for a
+    # normal send (that gap is the undo window) or further out for a scheduled one.
+    send_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    has_attachments = models.BooleanField(default=False)
+
     spam_verdict = models.CharField(max_length=20, blank=True)
     virus_verdict = models.CharField(max_length=20, blank=True)
     s3_key = models.CharField(max_length=500, blank=True, db_index=True)
@@ -191,6 +206,8 @@ class MailMessage(models.Model):
             models.Index(fields=['mailbox', 'direction', '-created_at']),
             models.Index(fields=['thread_key']),
             models.Index(fields=['mailbox', 'is_deleted']),
+            models.Index(fields=['mailbox', 'starred']),
+            models.Index(fields=['status', 'send_at']),
         ]
 
     def __str__(self):
@@ -216,7 +233,11 @@ class MailAuditLog(models.Model):
         ('viewed_mailbox', 'Viewed mailbox'),
         ('read_message', 'Read message'),
         ('deleted_message', 'Deleted message'),
+        ('restored_message', 'Restored message'),
+        ('updated_avatar', 'Updated mailbox picture'),
         ('shared_login', 'Shared-mailbox login'),
+        ('sso_login', 'Signed in from the admin panel'),
+        ('sent_scheduled', 'Sent a scheduled message'),
     ]
 
     actor_user = models.ForeignKey(
@@ -239,3 +260,120 @@ class MailAuditLog(models.Model):
 
     def __str__(self):
         return f'{self.actor_name} {self.action}'
+
+
+class MailDraft(models.Model):
+    """An unsent message the composer keeps saving as it is typed.
+
+    Separate from MailMessage because a draft is not yet mail: it has no
+    Message-ID, no direction, and may have no recipients at all. One row per
+    composing session — the client holds the id and PATCHes it, so a long reply
+    does not leave a trail of near-identical rows behind.
+    """
+    mailbox = models.ForeignKey(Mailbox, on_delete=models.CASCADE, related_name='drafts')
+    to = models.JSONField(default=list, blank=True)
+    cc = models.JSONField(default=list, blank=True)
+    bcc = models.JSONField(default=list, blank=True)
+    subject = models.CharField(max_length=500, blank=True)
+    body_text = models.TextField(blank=True)
+
+    # Set when the draft is a reply, so sending keeps it in the same thread.
+    in_reply_to = models.CharField(max_length=500, blank=True)
+    thread_key = models.CharField(max_length=500, blank=True)
+
+    created_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        db_constraint=False, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'mail_drafts'
+        ordering = ['-updated_at']
+        indexes = [models.Index(fields=['mailbox', '-updated_at'])]
+
+    def __str__(self):
+        return f'draft: {self.subject[:50] or "(no subject)"}'
+
+
+class MailAttachment(models.Model):
+    """A file on a message or a draft, stored in R2 rather than the database.
+
+    It belongs to a draft while being composed and is re-parented to the message
+    on send, which is why both FKs are nullable. Bytes never live in this table —
+    only where to find them.
+    """
+    message = models.ForeignKey(MailMessage, on_delete=models.CASCADE, null=True, blank=True,
+                                related_name='attachments')
+    draft = models.ForeignKey(MailDraft, on_delete=models.CASCADE, null=True, blank=True,
+                              related_name='attachments')
+
+    filename = models.CharField(max_length=255)
+    size = models.PositiveIntegerField(default=0)
+    content_type = models.CharField(max_length=120, blank=True)
+    storage_key = models.CharField(max_length=500)
+
+    uploaded_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        db_constraint=False, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mail_attachments'
+        ordering = ['id']
+        indexes = [
+            models.Index(fields=['message']),
+            models.Index(fields=['draft']),
+        ]
+
+    def __str__(self):
+        return self.filename
+
+
+class MailNote(models.Model):
+    """An internal comment on a thread — visible to the team, never emailed.
+
+    Kept in its own table rather than as a flag on MailMessage so that no code
+    path which sends mail can ever reach one by accident.
+    """
+    mailbox = models.ForeignKey(Mailbox, on_delete=models.CASCADE, related_name='notes')
+    thread_key = models.CharField(max_length=500, db_index=True)
+
+    author_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        db_constraint=False, related_name='+',
+    )
+    author_name = models.CharField(max_length=255, blank=True)
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mail_notes'
+        ordering = ['created_at']
+        indexes = [models.Index(fields=['mailbox', 'thread_key', 'created_at'])]
+
+    def __str__(self):
+        return f'{self.author_name}: {self.body[:40]}'
+
+
+class MailSsoTicket(models.Model):
+    """A one-time code that carries a signed-in admin-panel user into TIES Mail.
+
+    A database row rather than a cache entry on purpose: the cache is per-process
+    unless Redis is configured, so under several gunicorn workers a cache-based
+    single-use check would let a replayed code through on a different worker.
+    """
+    user_id = models.IntegerField(db_index=True)
+    jti = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'mail_sso_tickets'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'sso {self.jti[:8]} for user {self.user_id}'

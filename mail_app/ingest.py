@@ -18,7 +18,8 @@ import boto3
 from django.conf import settings
 from django.utils import timezone
 
-from .models import MailMessage
+from . import storage
+from .models import MailAttachment, MailMessage
 from .services import resolve_recipient_mailbox
 
 BUCKET = getattr(settings, 'SES_INBOUND_BUCKET', '') or 'tiesverse-portal-mail'
@@ -31,7 +32,7 @@ SKIP_KEYS = {'AMAZON_SES_SETUP_NOTIFICATION'}
 def _client():
     return boto3.client(
         's3',
-        region_name=getattr(settings, 'AWS_SES_REGION', 'us-east-1'),
+        region_name=getattr(settings, 'AWS_SES_REGION', 'ap-south-1'),
         aws_access_key_id=getattr(settings, 'AWS_SES_ACCESS_KEY_ID', ''),
         aws_secret_access_key=getattr(settings, 'AWS_SES_SECRET_ACCESS_KEY', ''),
     )
@@ -52,7 +53,7 @@ def _body_parts(msg):
                 continue
             disp = (part.get_content_disposition() or '')
             if disp == 'attachment':
-                continue                      # attachments are out of scope in v1
+                continue                      # collected separately by _attachments()
             ctype = part.get_content_type()
             try:
                 payload = part.get_content()
@@ -88,6 +89,55 @@ def _thread_key_for(in_reply_to, references, fallback):
         if prior and prior.thread_key:
             return prior.thread_key
     return candidates[0] if candidates else fallback
+
+
+def _attachments(msg):
+    """Every attached file in a received message: [(filename, bytes, content_type)].
+
+    Inline images that carry a filename count too — a photo pasted into a mail is
+    still a file the recipient may want. A part that cannot be decoded is skipped
+    rather than allowed to lose the whole message.
+    """
+    out = []
+    if not msg.is_multipart():
+        return out
+    for part in msg.walk():
+        if part.is_multipart():
+            continue
+        disp = (part.get_content_disposition() or '')
+        filename = part.get_filename()
+        if disp != 'attachment' and not (filename and disp == 'inline'):
+            continue
+        try:
+            payload = part.get_payload(decode=True)
+        except Exception:  # noqa: BLE001
+            continue
+        if not payload or len(payload) > storage.MAX_FILE_BYTES:
+            continue
+        out.append((filename or 'attachment', payload, part.get_content_type()))
+    return out
+
+
+def _store_attachments(row, msg):
+    """Move a message's files into R2 and record them. Never raises: a file we
+    could not store must not cost us the message it came with."""
+    saved = 0
+    for filename, payload, ctype in _attachments(msg):
+        try:
+            safe = storage.safe_filename(filename)
+            key = storage.build_key(safe, inbound=True)
+            storage.put(key, payload, content_type=storage.guess_content_type(safe, ctype))
+            MailAttachment.objects.create(
+                message=row, filename=safe, size=len(payload),
+                content_type=storage.guess_content_type(safe, ctype), storage_key=key,
+            )
+            saved += 1
+        except Exception:  # noqa: BLE001
+            continue
+    if saved:
+        row.has_attachments = True
+        row.save(update_fields=['has_attachments'])
+    return saved
 
 
 def ingest_object(s3, key, *, delete=True):
@@ -149,9 +199,14 @@ def ingest_object(s3, key, *, delete=True):
         published_at=published or timezone.now(),
     )
 
+    saved = _store_attachments(row, msg)
+
     if delete:
         s3.delete_object(Bucket=BUCKET, Key=key)
-    return row, f'→ {mailbox.address}'
+    note = f'→ {mailbox.address}'
+    if saved:
+        note += f' ({saved} attachment{"s" if saved != 1 else ""})'
+    return row, note
 
 
 def ingest_all(*, delete=True, limit=200):

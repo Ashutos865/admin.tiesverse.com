@@ -4,6 +4,7 @@ import { ArrowLeft, HelpCircle, LogOut, Mail, Menu, Moon, Search, Sun } from 'lu
 import { AuthContext } from '../../context/AuthContext';
 import { ThemeContext } from '../../context/ThemeContext';
 import { useMe } from '../../context/MeContext';
+import { mailSsoTicket } from '../../apiClient';
 import NotificationsBell from './NotificationsBell.jsx';
 
 // Standalone webmail. Overridable so a dev build can point at a local instance.
@@ -18,6 +19,20 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
   const { mailAccess } = useMe();
   const hasMail = mailAccess === 'admin' || mailAccess === 'user';
   const navigate = useNavigate();
+
+  // Carry the signed-in session across to mail.tiesverse.com so nobody types
+  // their password twice. The tab is opened FIRST, synchronously — a window
+  // opened after an await is a popup as far as the browser is concerned, and
+  // gets blocked. If the ticket fails we simply land on the login page.
+  const openMail = async () => {
+    const tab = window.open('', '_blank');
+    const res = await mailSsoTicket().catch(() => null);
+    const url = res?.code
+      ? `${MAIL_SITE_URL}/#sso=${encodeURIComponent(res.code)}`
+      : MAIL_SITE_URL;
+    if (tab) tab.location = url;
+    else window.open(url, '_blank', 'noreferrer');
+  };
 
   const displayName = profile?.display_name || user?.username || 'Admin';
   const firstName = displayName.split(/\s+/)[0];
@@ -70,16 +85,14 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
           </button>
         )}
         {hasMail && (
-          <a
-            href={MAIL_SITE_URL}
-            target="_blank"
-            rel="noreferrer"
+          <button
+            onClick={openMail}
             style={navBtn}
             title="Open TIES Mail"
             aria-label="Open TIES Mail"
           >
             <Mail size={17} />
-          </a>
+          </button>
         )}
         <NotificationsBell />
         <button

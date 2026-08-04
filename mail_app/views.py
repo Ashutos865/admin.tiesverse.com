@@ -6,21 +6,29 @@ Two audiences:
   * superadmins    — the is_superuser ROLE: full administration + oversight of every
                      mailbox. Any cross-mailbox access writes a MailAuditLog row.
 """
+import uuid
+from datetime import timedelta
+
 from django.core import signing
-from django.db.models import Q
+from django.db.models import Count, Q
+from django.http import HttpResponse
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import permissions, status, viewsets
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import services
+from . import services, storage
 from .models import (
     KIND_PERSONAL, KIND_SHARED, KIND_SYSTEM,
     Mailbox, MailboxGrant, MailMessage, MailAuditLog,
+    MailAttachment, MailDraft, MailNote, MailSsoTicket,
 )
 from .serializers import (
     MailboxSerializer, MailboxGrantSerializer, MailAuditLogSerializer,
     MailMessageSerializer, MailMessageListSerializer,
+    MailAttachmentSerializer, MailDraftSerializer, MailNoteSerializer,
 )
 
 SHARED_TOKEN_SALT = 'mail_app.shared_login'
@@ -157,13 +165,24 @@ class MailMessageListView(APIView):
                            note=f'Opened {box.address}.')
 
         folder = (request.query_params.get('folder') or 'inbox').lower()
+        now = timezone.now()
         qs = MailMessage.objects.filter(mailbox=box)
         if folder == 'sent':
-            qs = qs.filter(direction='OUT', is_deleted=False)
+            qs = qs.filter(direction='OUT', is_deleted=False, status='sent')
         elif folder == 'trash':
             qs = qs.filter(is_deleted=True)
+        elif folder == 'starred':
+            qs = qs.filter(starred=True, is_deleted=False)
+        elif folder == 'snoozed':
+            qs = qs.filter(snoozed_until__gt=now, is_deleted=False)
+        elif folder == 'scheduled':
+            qs = qs.filter(direction='OUT', status='queued', is_deleted=False)
         else:
-            qs = qs.filter(direction='IN', is_deleted=False)
+            # Inbox hides what is snoozed until its time comes back around.
+            qs = qs.filter(direction='IN', is_deleted=False).filter(
+                Q(snoozed_until__isnull=True) | Q(snoozed_until__lte=now))
+            if (request.query_params.get('filter') or '').lower() == 'unread':
+                qs = qs.filter(read_at__isnull=True)
 
         search = (request.query_params.get('search') or '').strip()
         if search:
@@ -234,11 +253,129 @@ class MailMessageDetailView(APIView):
         msg.is_deleted = False
         msg.deleted_at = None
         msg.save(update_fields=['is_deleted', 'deleted_at'])
+        if (is_superadmin(request.user)
+                and not services.can_use_mailbox(request.user, msg.mailbox)):
+            services.audit(request.user, 'restored_message', mailbox=msg.mailbox, message=msg,
+                           note=f'Restored "{msg.subject[:80]}".')
         return Response(MailMessageSerializer(msg).data)
 
 
+class MailMessageFlagsView(APIView):
+    """POST {starred?, snoozed_until?, read?} — any subset. The small toggles."""
+    permission_classes = [MailPermission]
+
+    def post(self, request, pk):
+        msg = MailMessage.objects.filter(pk=pk).select_related('mailbox').first()
+        if not msg:
+            return Response({'error': 'Message not found.'}, status=404)
+        _, denied = _accessible_mailbox(request, msg.mailbox_id)
+        if denied:
+            return denied
+
+        fields = []
+        if 'starred' in request.data:
+            msg.starred = bool(request.data.get('starred'))
+            fields.append('starred')
+        if 'read' in request.data:
+            # Explicitly marking unread is a real action, not an absence of one.
+            msg.read_at = timezone.now() if request.data.get('read') else None
+            fields.append('read_at')
+        if 'snoozed_until' in request.data:
+            raw = request.data.get('snoozed_until')
+            if not raw:
+                msg.snoozed_until = None
+            else:
+                when = parse_datetime(str(raw))
+                if when is None:
+                    return Response({'error': 'Could not read that snooze time.'}, status=400)
+                if timezone.is_naive(when):
+                    when = timezone.make_aware(when)
+                msg.snoozed_until = when
+            fields.append('snoozed_until')
+
+        if not fields:
+            return Response({'error': 'Nothing to change.'}, status=400)
+        msg.save(update_fields=fields)
+        return Response(MailMessageSerializer(msg).data)
+
+
+class MailMessageCancelView(APIView):
+    """POST — undo a send that has not gone out yet.
+
+    The message returns as a draft rather than vanishing: someone who presses
+    Undo wants to keep writing, not to lose what they wrote.
+    """
+    permission_classes = [MailPermission]
+
+    def post(self, request, pk):
+        msg = MailMessage.objects.filter(pk=pk).select_related('mailbox').first()
+        if not msg:
+            return Response({'error': 'Message not found.'}, status=404)
+        _, denied = _accessible_mailbox(request, msg.mailbox_id)
+        if denied:
+            return denied
+
+        # Only a message still sitting in the queue can be stopped. Anything else
+        # is already with SES, and no API can recall an email that has left.
+        stopped = MailMessage.objects.filter(pk=pk, status='queued').update(status='canceled')
+        if not stopped:
+            msg.refresh_from_db()
+            return Response(
+                {'error': 'This message has already been sent and cannot be recalled.',
+                 'status': msg.status}, status=409)
+
+        msg.refresh_from_db()
+        draft = MailDraft.objects.create(
+            mailbox=msg.mailbox, to=msg.to, cc=msg.cc, bcc=msg.bcc,
+            subject=msg.subject, body_text=msg.body_text,
+            in_reply_to=msg.in_reply_to, thread_key=msg.thread_key,
+            created_by_user=request.user if getattr(request.user, 'is_authenticated', False) else None,
+        )
+        msg.attachments.update(message=None, draft=draft)
+        return Response({'ok': True, 'draft': MailDraftSerializer(draft).data})
+
+
+class MailMessageReleaseView(APIView):
+    """POST — send a queued message now, without waiting for the cron tick.
+
+    Called by the composer once its undo window closes, so an ordinary send is
+    immediate; the cron flusher remains the safety net for a closed tab.
+    """
+    permission_classes = [MailPermission]
+
+    def post(self, request, pk):
+        msg = MailMessage.objects.filter(pk=pk).select_related('mailbox').first()
+        if not msg:
+            return Response({'error': 'Message not found.'}, status=404)
+        _, denied = _accessible_mailbox(request, msg.mailbox_id)
+        if denied:
+            return denied
+
+        claimed = services.claim_for_sending(pk)
+        if claimed is None:
+            msg.refresh_from_db()
+            # Not an error: the cron worker simply got there first.
+            return Response(MailMessageSerializer(msg).data)
+        ok, error = services.deliver(claimed)
+        claimed.refresh_from_db()
+        if not ok:
+            return Response({'error': error,
+                             'message': MailMessageSerializer(claimed).data}, status=400)
+        return Response(MailMessageSerializer(claimed).data)
+
+
+# How long a sender has to change their mind. The composer shows an Undo toast
+# for the same duration and calls release/ when it closes.
+UNDO_WINDOW_SECONDS = 6
+
+
 class MailSendView(APIView):
-    """POST {mailbox, to, cc?, subject, body, in_reply_to?, thread_key?}"""
+    """POST {mailbox, to, cc?, bcc?, subject, body, attachments?, send_at?, draft?}
+
+    Always queues; nothing goes straight to SES. A normal send is queued a few
+    seconds out so it can be undone, and the composer releases it when that
+    window closes.
+    """
     permission_classes = [MailPermission]
 
     def post(self, request):
@@ -250,21 +387,81 @@ class MailSendView(APIView):
         if scoped is None and not services.can_use_mailbox(request.user, box):
             return Response({'error': 'You cannot send from this mailbox.'}, status=403)
 
-        msg, error = services.send_mail_message(
+        send_at = timezone.now() + timedelta(seconds=UNDO_WINDOW_SECONDS)
+        raw_when = request.data.get('send_at')
+        if raw_when:
+            when = parse_datetime(str(raw_when))
+            if when is None:
+                return Response({'error': 'Could not read that send time.'}, status=400)
+            if timezone.is_naive(when):
+                when = timezone.make_aware(when)
+            send_at = when
+
+        attachments, err = _collect_attachments(request, box)
+        if err:
+            return err
+
+        msg, error = services.queue_mail_message(
             box,
             to=request.data.get('to'),
             cc=request.data.get('cc'),
+            bcc=request.data.get('bcc'),
             subject=request.data.get('subject'),
             body_text=request.data.get('body'),
             actor=request.user if getattr(request.user, 'is_authenticated', False) else None,
             in_reply_to=request.data.get('in_reply_to', '') or '',
             thread_key=request.data.get('thread_key', '') or '',
+            send_at=send_at,
+            attachments=attachments,
         )
         if error:
             return Response({'error': error,
                              'message': MailMessageSerializer(msg).data if msg else None},
                             status=400)
+
+        # The draft has become a message; keeping it would show the same text in
+        # two places.
+        draft_id = request.data.get('draft')
+        if draft_id:
+            MailDraft.objects.filter(pk=draft_id, mailbox=box).delete()
+
         return Response(MailMessageSerializer(msg).data, status=201)
+
+
+def _collect_attachments(request, box):
+    """Resolve posted attachment ids to rows this caller may actually use.
+
+    Returns (list, error_response). An id belonging to someone else's draft is
+    treated as not found rather than forbidden — the API never confirms that a
+    file it will not show you exists.
+    """
+    ids = request.data.get('attachments') or []
+    if not isinstance(ids, (list, tuple)):
+        return [], Response({'error': 'attachments must be a list of ids.'}, status=400)
+    if not ids:
+        return [], None
+
+    rows = list(MailAttachment.objects.filter(pk__in=[i for i in ids if str(i).isdigit()]))
+    if len(rows) != len(ids):
+        return [], Response({'error': 'One of those attachments is no longer available.'},
+                            status=404)
+    for att in rows:
+        owning_box = None
+        if att.draft_id:
+            owning_box = MailDraft.objects.filter(pk=att.draft_id).values_list('mailbox_id', flat=True).first()
+        elif att.message_id:
+            owning_box = MailMessage.objects.filter(pk=att.message_id).values_list('mailbox_id', flat=True).first()
+        if owning_box is not None and owning_box != box.id:
+            return [], Response({'error': 'One of those attachments is no longer available.'},
+                                status=404)
+
+    total = sum(a.size or 0 for a in rows)
+    if total > storage.MAX_TOTAL_BYTES:
+        mb = storage.MAX_TOTAL_BYTES // (1024 * 1024)
+        return [], Response(
+            {'error': f'Attachments total {total // (1024*1024)} MB — the limit is {mb} MB.'},
+            status=400)
+    return rows, None
 
 
 # ── shared-mailbox password sign-in ──────────────────────────────────────────
@@ -411,3 +608,313 @@ class MailAuditLogView(APIView):
         if mailbox_id:
             qs = qs.filter(mailbox_id=mailbox_id)
         return Response(MailAuditLogSerializer(qs.select_related('mailbox')[:200], many=True).data)
+
+
+# ── drafts ───────────────────────────────────────────────────────────────────
+
+class MailDraftListView(APIView):
+    """GET ?mailbox= — this mailbox's drafts. POST — start one."""
+    permission_classes = [MailPermission]
+
+    def get(self, request):
+        box, denied = _accessible_mailbox(request, request.query_params.get('mailbox'))
+        if denied:
+            return denied
+        rows = MailDraft.objects.filter(mailbox=box).prefetch_related('attachments')[:200]
+        return Response({'drafts': MailDraftSerializer(rows, many=True).data})
+
+    def post(self, request):
+        box, denied = _accessible_mailbox(request, request.data.get('mailbox'))
+        if denied:
+            return denied
+        draft = MailDraft.objects.create(
+            mailbox=box,
+            to=services._clean_recipients(request.data.get('to')),
+            cc=services._clean_recipients(request.data.get('cc')),
+            bcc=services._clean_recipients(request.data.get('bcc')),
+            subject=(request.data.get('subject') or '')[:500],
+            body_text=request.data.get('body_text') or request.data.get('body') or '',
+            in_reply_to=request.data.get('in_reply_to', '') or '',
+            thread_key=request.data.get('thread_key', '') or '',
+            created_by_user=request.user if getattr(request.user, 'is_authenticated', False) else None,
+        )
+        return Response(MailDraftSerializer(draft).data, status=201)
+
+
+class MailDraftDetailView(APIView):
+    """GET / PATCH (the autosave target) / DELETE one draft."""
+    permission_classes = [MailPermission]
+
+    def _get(self, request, pk):
+        draft = MailDraft.objects.filter(pk=pk).select_related('mailbox').first()
+        if not draft:
+            return None, Response({'error': 'Draft not found.'}, status=404)
+        _, denied = _accessible_mailbox(request, draft.mailbox_id)
+        if denied:
+            return None, denied
+        return draft, None
+
+    def get(self, request, pk):
+        draft, denied = self._get(request, pk)
+        return denied or Response(MailDraftSerializer(draft).data)
+
+    def patch(self, request, pk):
+        draft, denied = self._get(request, pk)
+        if denied:
+            return denied
+        data = request.data
+        if 'to' in data:
+            draft.to = services._clean_recipients(data.get('to'))
+        if 'cc' in data:
+            draft.cc = services._clean_recipients(data.get('cc'))
+        if 'bcc' in data:
+            draft.bcc = services._clean_recipients(data.get('bcc'))
+        if 'subject' in data:
+            draft.subject = (data.get('subject') or '')[:500]
+        if 'body_text' in data or 'body' in data:
+            draft.body_text = data.get('body_text') or data.get('body') or ''
+        draft.save()
+        return Response(MailDraftSerializer(draft).data)
+
+    def delete(self, request, pk):
+        draft, denied = self._get(request, pk)
+        if denied:
+            return denied
+        # Files uploaded to a draft nobody sent are of no use to anyone.
+        for att in draft.attachments.all():
+            storage.delete(att.storage_key)
+        draft.delete()
+        return Response({'ok': True})
+
+
+# ── attachments ──────────────────────────────────────────────────────────────
+
+class MailAttachmentUploadView(APIView):
+    """POST multipart {file, draft?} — store a file and return its id."""
+    permission_classes = [MailPermission]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        upload = request.FILES.get('file')
+        if not upload:
+            return Response({'error': 'No file was uploaded.'}, status=400)
+        if upload.size > storage.MAX_FILE_BYTES:
+            mb = storage.MAX_FILE_BYTES // (1024 * 1024)
+            return Response({'error': f'"{upload.name}" is larger than {mb} MB.'}, status=400)
+
+        draft = None
+        draft_id = request.data.get('draft')
+        if draft_id:
+            draft = MailDraft.objects.filter(pk=draft_id).select_related('mailbox').first()
+            if not draft:
+                return Response({'error': 'Draft not found.'}, status=404)
+            _, denied = _accessible_mailbox(request, draft.mailbox_id)
+            if denied:
+                return denied
+            used = sum(a.size or 0 for a in draft.attachments.all())
+            if used + upload.size > storage.MAX_TOTAL_BYTES:
+                mb = storage.MAX_TOTAL_BYTES // (1024 * 1024)
+                return Response(
+                    {'error': f'That would take this message past the {mb} MB attachment limit.'},
+                    status=400)
+
+        filename = storage.safe_filename(upload.name)
+        content_type = storage.guess_content_type(filename, getattr(upload, 'content_type', ''))
+        key = storage.build_key(filename)
+        try:
+            storage.put(key, upload.read(), content_type=content_type)
+        except Exception as exc:  # noqa: BLE001
+            return Response({'error': f'Could not store that file: {exc}'[:300]}, status=502)
+
+        att = MailAttachment.objects.create(
+            draft=draft, filename=filename, size=upload.size, content_type=content_type,
+            storage_key=key,
+            uploaded_by_user=request.user if getattr(request.user, 'is_authenticated', False) else None,
+        )
+        return Response(MailAttachmentSerializer(att).data, status=201)
+
+
+class MailAttachmentDetailView(APIView):
+    """GET — download the file. DELETE — remove one still on a draft."""
+    permission_classes = [MailPermission]
+
+    def _get(self, request, pk):
+        att = MailAttachment.objects.filter(pk=pk).first()
+        if not att:
+            return None, Response({'error': 'Attachment not found.'}, status=404)
+        box_id = None
+        if att.message_id:
+            box_id = MailMessage.objects.filter(pk=att.message_id).values_list('mailbox_id', flat=True).first()
+        elif att.draft_id:
+            box_id = MailDraft.objects.filter(pk=att.draft_id).values_list('mailbox_id', flat=True).first()
+        if box_id is None:
+            return None, Response({'error': 'Attachment not found.'}, status=404)
+        _, denied = _accessible_mailbox(request, box_id)
+        if denied:
+            return None, denied
+        return att, None
+
+    def get(self, request, pk):
+        att, denied = self._get(request, pk)
+        if denied:
+            return denied
+        try:
+            data = storage.get(att.storage_key)
+        except Exception:  # noqa: BLE001
+            return Response({'error': 'That file could not be retrieved.'}, status=502)
+        resp = HttpResponse(data, content_type=att.content_type or 'application/octet-stream')
+        resp['Content-Disposition'] = f'attachment; filename="{att.filename}"'
+        resp['Content-Length'] = str(len(data))
+        return resp
+
+    def delete(self, request, pk):
+        att, denied = self._get(request, pk)
+        if denied:
+            return denied
+        if att.message_id:
+            return Response({'error': 'This file is part of a sent message.'}, status=400)
+        storage.delete(att.storage_key)
+        att.delete()
+        return Response({'ok': True})
+
+
+# ── internal notes ───────────────────────────────────────────────────────────
+
+class MailNoteView(APIView):
+    """GET ?mailbox=&thread_key= / POST — comments the team sees and nobody emails."""
+    permission_classes = [MailPermission]
+
+    def get(self, request):
+        box, denied = _accessible_mailbox(request, request.query_params.get('mailbox'))
+        if denied:
+            return denied
+        thread_key = (request.query_params.get('thread_key') or '').strip()
+        if not thread_key:
+            return Response({'error': 'thread_key is required.'}, status=400)
+        rows = MailNote.objects.filter(mailbox=box, thread_key=thread_key)
+        return Response({'notes': MailNoteSerializer(rows, many=True).data})
+
+    def post(self, request):
+        box, denied = _accessible_mailbox(request, request.data.get('mailbox'))
+        if denied:
+            return denied
+        thread_key = (request.data.get('thread_key') or '').strip()
+        body = (request.data.get('body') or '').strip()
+        if not thread_key:
+            return Response({'error': 'thread_key is required.'}, status=400)
+        if not body:
+            return Response({'error': 'Write something first.'}, status=400)
+
+        author = 'Team'
+        if getattr(request.user, 'is_authenticated', False):
+            author = request.user.get_full_name() or request.user.username
+        elif mailbox_from_shared_token(request) is not None:
+            author = box.display_name or box.address
+
+        note = MailNote.objects.create(
+            mailbox=box, thread_key=thread_key, body=body, author_name=author,
+            author_user=request.user if getattr(request.user, 'is_authenticated', False) else None,
+        )
+        return Response(MailNoteSerializer(note).data, status=201)
+
+
+# ── counts ───────────────────────────────────────────────────────────────────
+
+class MailCountsView(APIView):
+    """GET — every badge the sidebar and dashboard need, in one call.
+
+    One request rather than one per folder per mailbox: the sidebar shows six
+    numbers for each box, and asking separately would make opening the app a
+    burst of near-identical queries.
+    """
+    permission_classes = [MailPermission]
+
+    def get(self, request):
+        scoped = mailbox_from_shared_token(request)
+        if scoped is not None:
+            boxes = [scoped]
+        else:
+            boxes = list(services.mailboxes_for_user(request.user))
+        now = timezone.now()
+
+        out = {}
+        total_unread = 0
+        for box in boxes:
+            unread = MailMessage.objects.filter(
+                mailbox=box, direction='IN', read_at__isnull=True, is_deleted=False,
+            ).filter(Q(snoozed_until__isnull=True) | Q(snoozed_until__lte=now)).count()
+            out[str(box.id)] = {
+                'inbox_unread': unread,
+                'starred': MailMessage.objects.filter(mailbox=box, starred=True, is_deleted=False).count(),
+                'snoozed': MailMessage.objects.filter(mailbox=box, snoozed_until__gt=now, is_deleted=False).count(),
+                'drafts': MailDraft.objects.filter(mailbox=box).count(),
+                'scheduled': MailMessage.objects.filter(
+                    mailbox=box, direction='OUT', status='queued', is_deleted=False).count(),
+                'sent_today': services.sends_today(box),
+                'daily_send_limit': box.daily_send_limit,
+            }
+            total_unread += unread
+
+        return Response({'total_unread': total_unread, 'mailboxes': out})
+
+
+# ── single sign-on from the admin panel ──────────────────────────────────────
+
+SSO_SALT = 'mail_app.sso'
+SSO_TICKET_SECONDS = 60
+
+
+class MailSsoTicketView(APIView):
+    """POST — mint a one-time code for the signed-in panel user.
+
+    The code is minted on click, not on page load, so a minute of life is ample
+    and a stale link in someone's history is worthless.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        jti = uuid.uuid4().hex
+        MailSsoTicket.objects.create(
+            user_id=request.user.id, jti=jti,
+            expires_at=timezone.now() + timedelta(seconds=SSO_TICKET_SECONDS),
+        )
+        code = signing.dumps({'uid': request.user.id, 'jti': jti}, salt=SSO_SALT)
+        return Response({'code': code, 'expires_in': SSO_TICKET_SECONDS})
+
+
+class MailSsoRedeemView(APIView):
+    """POST {code} — exchange a ticket for real tokens. Works once."""
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'login'
+
+    def post(self, request):
+        code = (request.data.get('code') or '').strip()
+        if not code:
+            return Response({'error': 'No sign-in code was provided.'}, status=400)
+        try:
+            data = signing.loads(code, salt=SSO_SALT, max_age=SSO_TICKET_SECONDS)
+        except Exception:  # noqa: BLE001 — expired or tampered; say the same thing either way
+            return Response({'error': 'This sign-in link has expired. Please sign in.'}, status=400)
+
+        # Burning the ticket is a single conditional UPDATE: two requests racing
+        # with the same code cannot both see it unused.
+        burned = MailSsoTicket.objects.filter(
+            jti=data.get('jti'), used_at__isnull=True,
+        ).update(used_at=timezone.now())
+        if not burned:
+            return Response({'error': 'This sign-in link has already been used.'}, status=400)
+
+        from django.contrib.auth import get_user_model
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        user = get_user_model().objects.filter(pk=data.get('uid'), is_active=True).first()
+        if not user:
+            return Response({'error': 'That account is no longer active.'}, status=400)
+
+        refresh = RefreshToken.for_user(user)
+        services.audit(user, 'sso_login', note='Signed in from the admin panel.')
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': {'name': user.get_full_name() or user.username, 'email': user.email},
+        })

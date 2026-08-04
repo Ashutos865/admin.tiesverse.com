@@ -87,7 +87,7 @@ def sends_today(mailbox):
     since = timezone.now() - timedelta(days=1)
     return MailMessage.objects.filter(
         mailbox=mailbox, direction='OUT', created_at__gte=since,
-    ).exclude(status='failed').count()
+    ).exclude(status__in=['failed', 'canceled']).count()
 
 
 def _clean_recipients(value):
@@ -104,20 +104,25 @@ def _clean_recipients(value):
     return out
 
 
-def send_mail_message(mailbox, *, to, subject, body_text, cc=None, actor=None,
-                      in_reply_to='', thread_key=''):
-    """Send from `mailbox` and record it. Returns (message, error_string).
+def queue_mail_message(mailbox, *, to, subject, body_text, cc=None, bcc=None,
+                       actor=None, in_reply_to='', thread_key='', send_at=None,
+                       attachments=None):
+    """Validate and record an outbound message without sending it yet.
 
-    The caller is responsible for permission checks; this enforces the mailbox's
-    own limits (active, daily cap) and validates recipients.
+    Everything leaves through here: a normal send is simply one queued a few
+    seconds ahead, and that gap is what makes Undo possible. Returns
+    (message, error_string).
+
+    The caller checks permissions; this enforces the mailbox's own limits and
+    validates recipients, so a bad address fails while the composer is still
+    open rather than silently in a worker minutes later.
     """
-    from config.email_utils import render_personal_email, send_email
-
     if not mailbox or not mailbox.usable:
         return None, 'This mailbox is not active.'
 
     to_list = _clean_recipients(to)
     cc_list = _clean_recipients(cc)
+    bcc_list = _clean_recipients(bcc)
     if not to_list:
         return None, 'Enter at least one valid recipient email address.'
     subject = (subject or '').strip()
@@ -132,46 +137,154 @@ def send_mail_message(mailbox, *, to, subject, body_text, cc=None, actor=None,
     # Our own RFC 5322 Message-ID — SES's returned MessageId is a different thing
     # and cannot be used for In-Reply-To/References threading.
     own_message_id = f'<{uuid.uuid4().hex}@{MAIL_DOMAIN}>'
-    headers = {'Message-ID': own_message_id}
-    if in_reply_to:
-        headers['In-Reply-To'] = in_reply_to
-        headers['References'] = in_reply_to
 
-    # A message a person typed should look like a normal email, not a system
-    # notice — no banner, no card, just the text plus a small signature.
-    html_body, text_body = render_personal_email(
-        body_text,
-        sender_name=(mailbox.display_name or '').strip(),
-        sender_address=mailbox.address,
-    )
-
+    # Bcc recipients are stored on the row (we must deliver to them) but never
+    # written into a header — that is the whole point of blind copy.
     msg = MailMessage.objects.create(
         mailbox=mailbox, direction='OUT',
-        peer=to_list[0], to=to_list, cc=cc_list,
-        subject=subject, body_text=body_text, body_html=html_body,
+        peer=to_list[0], to=to_list, cc=cc_list, bcc=bcc_list,
+        subject=subject, body_text=body_text,
         snippet=body_text.strip()[:300],
         message_id=own_message_id, in_reply_to=in_reply_to or '',
         thread_key=thread_key or own_message_id,
         status='queued',
+        send_at=send_at or timezone.now(),
         sent_by_user=actor if (actor and getattr(actor, 'is_authenticated', False)) else None,
         read_at=timezone.now(),          # our own sent mail is not "unread"
         published_at=timezone.now(),
     )
+    if attachments:
+        for att in attachments:
+            att.message = msg
+            att.draft = None
+            att.save(update_fields=['message', 'draft'])
+        msg.has_attachments = True
+        msg.save(update_fields=['has_attachments'])
+
+    return msg, ''
+
+
+def claim_for_sending(message_id):
+    """Take exclusive ownership of a queued message, or return None.
+
+    This single compare-and-set is what stops a message going out twice when the
+    cron flusher and a browser pressing "send now" reach for the same row at the
+    same moment: whoever changes `queued` to `sending` first owns it, and the
+    loser gets None.
+    """
+    claimed = MailMessage.objects.filter(
+        pk=message_id, status='queued').update(status='sending')
+    if not claimed:
+        return None
+    return MailMessage.objects.filter(pk=message_id).first()
+
+
+def deliver(msg):
+    """Hand a claimed message to SES. Returns (ok, error_string).
+
+    Assumes the caller already won `claim_for_sending`.
+    """
+    from config.email_utils import render_personal_email, send_email
+
+    mailbox = msg.mailbox
+    to_list = list(msg.to or [])
+    cc_list = list(msg.cc or [])
+    bcc_list = list(msg.bcc or [])
+    if not to_list:
+        msg.status = 'failed'
+        msg.error = 'No recipients.'
+        msg.save(update_fields=['status', 'error'])
+        return False, msg.error
+
+    headers = {'Message-ID': msg.message_id}
+    if msg.in_reply_to:
+        headers['In-Reply-To'] = msg.in_reply_to
+        headers['References'] = msg.in_reply_to
+
+    # A message a person typed should look like a normal email, not a system
+    # notice — no banner, no card, just the text plus a small signature.
+    html_body, text_body = render_personal_email(
+        msg.body_text,
+        sender_name=(mailbox.display_name or '').strip(),
+        sender_address=mailbox.address,
+    )
+
+    files = []
+    for att in msg.attachments.all():
+        try:
+            from . import storage
+            data = storage.get(att.storage_key)
+        except Exception as exc:  # noqa: BLE001
+            msg.status = 'failed'
+            msg.error = f'Could not read attachment “{att.filename}”: {exc}'[:500]
+            msg.save(update_fields=['status', 'error'])
+            return False, msg.error
+        subtype = (att.content_type or '').rsplit('/', 1)[-1] or 'octet-stream'
+        files.append((att.filename, data, subtype))
 
     result = send_email(
-        to=to_list[0], subject=subject, html_body=html_body, text_body=text_body,
+        to=to_list[0], subject=msg.subject, html_body=html_body, text_body=text_body,
         from_email=mailbox.from_header, enabled=True, detailed=True,
-        reply_to=mailbox.address, cc=cc_list + to_list[1:],
+        reply_to=mailbox.address, cc=cc_list + to_list[1:], bcc=bcc_list,
+        attachments=files or None,
         headers=headers, configuration_set=CONFIGURATION_SET,
     )
 
     if result.get('ok'):
         msg.status = 'sent'
         msg.ses_message_id = result.get('message_id', '') or ''
-        msg.save(update_fields=['status', 'ses_message_id'])
-        return msg, ''
+        msg.body_html = html_body
+        msg.save(update_fields=['status', 'ses_message_id', 'body_html'])
+        return True, ''
 
     msg.status = 'failed'
     msg.error = result.get('error', '') or 'Send failed.'
     msg.save(update_fields=['status', 'error'])
-    return msg, msg.error
+    return False, msg.error
+
+
+def send_mail_message(mailbox, *, to, subject, body_text, cc=None, actor=None,
+                      in_reply_to='', thread_key='', **extra):
+    """Queue and send immediately. Returns (message, error_string).
+
+    The straight-through path, kept because other code and tests call it; the
+    API uses queue + claim + deliver so it can offer Undo.
+    """
+    msg, err = queue_mail_message(
+        mailbox, to=to, subject=subject, body_text=body_text, cc=cc, actor=actor,
+        in_reply_to=in_reply_to, thread_key=thread_key, **extra)
+    if err:
+        return None, err
+    claimed = claim_for_sending(msg.pk)
+    if claimed is None:
+        return msg, ''       # something else already sent it
+    ok, err = deliver(claimed)
+    return claimed, ('' if ok else err)
+
+
+def flush_due_messages(limit=100):
+    """Send every queued message whose time has come. Returns (sent, failed).
+
+    Called by the cron command. Failures are isolated per message so one bad
+    address cannot stop the queue.
+    """
+    now = timezone.now()
+    due = list(MailMessage.objects.filter(
+        status='queued', send_at__lte=now, direction='OUT',
+    ).order_by('send_at')[:limit])
+
+    sent = failed = 0
+    for row in due:
+        claimed = claim_for_sending(row.pk)
+        if claimed is None:
+            continue
+        try:
+            ok, _ = deliver(claimed)
+        except Exception as exc:  # noqa: BLE001
+            claimed.status = 'failed'
+            claimed.error = str(exc)[:500]
+            claimed.save(update_fields=['status', 'error'])
+            ok = False
+        sent += 1 if ok else 0
+        failed += 0 if ok else 1
+    return sent, failed
