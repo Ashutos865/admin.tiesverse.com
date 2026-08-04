@@ -12,6 +12,7 @@ import Home from './screens/Home.jsx';
 import Mailbox from './screens/Mailbox.jsx';
 import Compose from './screens/Compose.jsx';
 import Admin from './screens/Admin.jsx';
+import Automation from './screens/Automation.jsx';
 import './styles/tokens.css';
 import './styles/app.css';
 
@@ -143,6 +144,7 @@ function Root() {
             onEditDraft={(d) => setCompose({ draft: d })} />
         )} />
         <Route path="/admin/*" element={<Admin me={me} />} />
+        <Route path="/bulk" element={<Automation me={me} />} />
         <Route path="/soon/:feature" element={<ComingSoon />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

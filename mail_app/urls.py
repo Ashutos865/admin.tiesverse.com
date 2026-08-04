@@ -3,6 +3,7 @@ from rest_framework.routers import SimpleRouter
 
 from .views import (
     MailAttachmentDetailView, MailAttachmentUploadView, MailAuditLogView,
+    MailBulkJobActionView, MailBulkJobDetailView, MailBulkJobListView,
     MailboxAdminViewSet, MailboxAvatarView, MailboxGrantView, MailboxPasswordView,
     MailCountsView, MailDraftDetailView, MailDraftListView,
     MailMessageCancelView, MailMessageDetailView, MailMessageFlagsView,
@@ -35,6 +36,11 @@ urlpatterns = [
 
     # internal comments on a thread — never emailed
     path('notes/', MailNoteView.as_view(), name='mail-notes'),
+
+    # bulk sends — one personal message each, not one mail to a crowd
+    path('bulk/', MailBulkJobListView.as_view(), name='mail-bulk'),
+    path('bulk/<int:pk>/', MailBulkJobDetailView.as_view(), name='mail-bulk-detail'),
+    path('bulk/<int:pk>/<str:action>/', MailBulkJobActionView.as_view(), name='mail-bulk-action'),
 
     # team sign-in with a shared-mailbox password (no portal account needed)
     path('shared-login/', SharedMailboxLoginView.as_view(), name='mail-shared-login'),

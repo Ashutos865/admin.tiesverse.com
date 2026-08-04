@@ -1,7 +1,7 @@
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import {
-  Bell, Clock, FileText, Files, Home, Inbox, LogOut, Megaphone, PenSquare,
-  Search, Send, Settings, Star, Users, CheckSquare, Contact,
+  Clock, Contact, FileText, Files, Home, Inbox, LogOut, Megaphone, PenSquare,
+  Search, Send, Settings, Star, Trash2, Users, CheckSquare,
 } from 'lucide-react';
 import { Avatar, Brand } from './common.jsx';
 import { signOut } from '../auth.js';
@@ -14,6 +14,7 @@ export const FOLDERS = [
   { key: 'drafts', label: 'Drafts', icon: FileText, count: 'drafts' },
   { key: 'scheduled', label: 'Scheduled', icon: Clock, count: 'scheduled' },
   { key: 'sent', label: 'Sent', icon: Send },
+  { key: 'trash', label: 'Trash', icon: Trash2 },
 ];
 
 /* Present in the design and deliberately not wired yet — they route to a page
@@ -22,7 +23,6 @@ const UTILITY = [
   { key: 'tasks', label: 'Tasks', icon: CheckSquare },
   { key: 'contacts', label: 'Contacts', icon: Contact },
   { key: 'files', label: 'Files', icon: Files },
-  { key: 'announcements', label: 'Announcements', icon: Megaphone },
 ];
 
 export default function Sidebar({ me, counts, activeMailbox, onCompose, onSearch }) {
@@ -124,6 +124,10 @@ export default function Sidebar({ me, counts, activeMailbox, onCompose, onSearch
               <span className="label">{u.label}</span>
             </NavLink>
           ))}
+          <NavLink to="/bulk" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <Megaphone size={16} />
+            <span className="label">Bulk send</span>
+          </NavLink>
           {me?.is_superadmin && (
             <NavLink to="/admin" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <Settings size={16} />

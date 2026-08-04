@@ -238,6 +238,7 @@ class MailAuditLog(models.Model):
         ('shared_login', 'Shared-mailbox login'),
         ('sso_login', 'Signed in from the admin panel'),
         ('sent_scheduled', 'Sent a scheduled message'),
+        ('bulk_started', 'Started a bulk send'),
     ]
 
     actor_user = models.ForeignKey(
@@ -308,6 +309,10 @@ class MailAttachment(models.Model):
                                 related_name='attachments')
     draft = models.ForeignKey(MailDraft, on_delete=models.CASCADE, null=True, blank=True,
                               related_name='attachments')
+    # A bulk job's files are uploaded once and referenced by every message it
+    # sends, rather than copied per recipient.
+    bulk_job = models.ForeignKey('MailBulkJob', on_delete=models.CASCADE, null=True, blank=True,
+                                 related_name='attachments')
 
     filename = models.CharField(max_length=255)
     size = models.PositiveIntegerField(default=0)
@@ -326,6 +331,7 @@ class MailAttachment(models.Model):
         indexes = [
             models.Index(fields=['message']),
             models.Index(fields=['draft']),
+            models.Index(fields=['bulk_job']),
         ]
 
     def __str__(self):
@@ -377,3 +383,63 @@ class MailSsoTicket(models.Model):
 
     def __str__(self):
         return f'sso {self.jti[:8]} for user {self.user_id}'
+
+
+class MailBulkJob(models.Model):
+    """A one-to-many send from a mailbox: the same message to many people, each
+    addressed personally.
+
+    Deliberately not a MailMessage with many recipients — every person gets
+    their own message so a reply comes back as a normal conversation, and so one
+    bad address cannot fail the whole run.
+
+    Progress lives on the row rather than in memory, so a restart resumes where
+    it stopped instead of starting again and sending twice.
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('queued', 'Queued'),
+        ('running', 'Running'),
+        ('paused', 'Paused'),        # daily cap reached; resumes on its own
+        ('done', 'Finished'),
+        ('canceled', 'Canceled'),
+        ('failed', 'Failed'),
+    ]
+
+    mailbox = models.ForeignKey(Mailbox, on_delete=models.CASCADE, related_name='bulk_jobs')
+    name = models.CharField(max_length=200, blank=True)
+    subject = models.CharField(max_length=500)
+    body_text = models.TextField(blank=True)
+
+    # [{'email': 'a@x.com', 'name': 'Aarav', ...}] — extra keys become {{tokens}}.
+    recipients = models.JSONField(default=list, blank=True)
+
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft')
+    # How far the worker has got. The resume point, and why a restart is safe.
+    cursor = models.PositiveIntegerField(default=0)
+    sent_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True)
+
+    created_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        db_constraint=False, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'mail_bulk_jobs'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', 'created_at']),
+            models.Index(fields=['mailbox', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.name or self.subject[:40]} ({self.status})'
+
+    @property
+    def total(self):
+        return len(self.recipients or [])

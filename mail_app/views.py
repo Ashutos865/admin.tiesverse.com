@@ -19,16 +19,17 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import services, storage
+from . import bulk, services, storage
 from .models import (
     KIND_PERSONAL, KIND_SHARED, KIND_SYSTEM,
     Mailbox, MailboxGrant, MailMessage, MailAuditLog,
-    MailAttachment, MailDraft, MailNote, MailSsoTicket,
+    MailAttachment, MailBulkJob, MailDraft, MailNote, MailSsoTicket,
 )
 from .serializers import (
     MailboxSerializer, MailboxGrantSerializer, MailAuditLogSerializer,
     MailMessageSerializer, MailMessageListSerializer,
-    MailAttachmentSerializer, MailDraftSerializer, MailNoteSerializer,
+    MailAttachmentSerializer, MailBulkJobSerializer, MailDraftSerializer,
+    MailNoteSerializer,
 )
 
 SHARED_TOKEN_SALT = 'mail_app.shared_login'
@@ -113,13 +114,19 @@ class MyMailboxesView(APIView):
             return Response({
                 'mode': 'shared_token',
                 'is_superadmin': False,
-                'mailboxes': [MailboxSerializer(scoped).data],
+                'user': {'name': scoped.display_name or scoped.address, 'email': scoped.address},
+                'mailboxes': [MailboxSerializer(scoped, context={'request': request}).data],
             })
         boxes = services.mailboxes_for_user(request.user)
+        user = request.user
         return Response({
             'mode': 'portal',
-            'is_superadmin': is_superadmin(request.user),
-            'mailboxes': MailboxSerializer(boxes, many=True).data,
+            'is_superadmin': is_superadmin(user),
+            'user': {
+                'name': user.get_full_name() or user.username,
+                'email': user.email or '',
+            },
+            'mailboxes': MailboxSerializer(boxes, many=True, context={'request': request}).data,
         })
 
 
@@ -918,3 +925,137 @@ class MailSsoRedeemView(APIView):
             'refresh': str(refresh),
             'user': {'name': user.get_full_name() or user.username, 'email': user.email},
         })
+
+
+# ── bulk sends ───────────────────────────────────────────────────────────────
+
+class MailBulkJobListView(APIView):
+    """GET ?mailbox= — this mailbox's bulk sends. POST — create one as a draft.
+
+    Only someone who may send from the mailbox may set up a bulk send from it;
+    superadmin oversight is read access, not permission to mail as somebody.
+    """
+    permission_classes = [MailPermission]
+
+    def get(self, request):
+        box, denied = _accessible_mailbox(request, request.query_params.get('mailbox'))
+        if denied:
+            return denied
+        rows = MailBulkJob.objects.filter(mailbox=box).prefetch_related('attachments')[:100]
+        return Response({'jobs': MailBulkJobSerializer(rows, many=True).data})
+
+    def post(self, request):
+        box, denied = _accessible_mailbox(request, request.data.get('mailbox'))
+        if denied:
+            return denied
+        scoped = mailbox_from_shared_token(request)
+        if scoped is None and not services.can_use_mailbox(request.user, box):
+            return Response({'error': 'You cannot send from this mailbox.'}, status=403)
+
+        subject = (request.data.get('subject') or '').strip()
+        if not subject:
+            return Response({'error': 'Give the message a subject.'}, status=400)
+
+        rows, skipped = bulk.clean_recipients(request.data.get('recipients'))
+        if not rows:
+            return Response({'error': 'Add at least one valid recipient.'}, status=400)
+
+        job = MailBulkJob.objects.create(
+            mailbox=box,
+            name=(request.data.get('name') or '')[:200],
+            subject=subject[:500],
+            body_text=request.data.get('body_text') or request.data.get('body') or '',
+            recipients=rows,
+            created_by_user=request.user if getattr(request.user, 'is_authenticated', False) else None,
+        )
+        for att_id in (request.data.get('attachments') or []):
+            MailAttachment.objects.filter(pk=att_id, message__isnull=True).update(
+                bulk_job=job, draft=None)
+        data = MailBulkJobSerializer(job).data
+        data['skipped'] = skipped
+        return Response(data, status=201)
+
+
+class MailBulkJobDetailView(APIView):
+    """GET progress · PATCH a draft · DELETE it."""
+    permission_classes = [MailPermission]
+
+    def _get(self, request, pk):
+        job = MailBulkJob.objects.filter(pk=pk).select_related('mailbox').first()
+        if not job:
+            return None, Response({'error': 'That send was not found.'}, status=404)
+        _, denied = _accessible_mailbox(request, job.mailbox_id)
+        if denied:
+            return None, denied
+        return job, None
+
+    def get(self, request, pk):
+        job, denied = self._get(request, pk)
+        return denied or Response(MailBulkJobSerializer(job).data)
+
+    def patch(self, request, pk):
+        job, denied = self._get(request, pk)
+        if denied:
+            return denied
+        if job.status != 'draft':
+            return Response({'error': 'This send has already started and cannot be edited.'},
+                            status=409)
+        for field in ('name', 'subject', 'body_text'):
+            if field in request.data:
+                setattr(job, field, request.data.get(field) or '')
+        if 'recipients' in request.data:
+            job.recipients, _ = bulk.clean_recipients(request.data.get('recipients'))
+        job.save()
+        return Response(MailBulkJobSerializer(job).data)
+
+    def delete(self, request, pk):
+        job, denied = self._get(request, pk)
+        if denied:
+            return denied
+        if job.status == 'running':
+            return Response({'error': 'Stop the send before deleting it.'}, status=409)
+        for att in job.attachments.all():
+            storage.delete(att.storage_key)
+        job.delete()
+        return Response({'ok': True})
+
+
+class MailBulkJobActionView(APIView):
+    """POST — start, pause or cancel a bulk send."""
+    permission_classes = [MailPermission]
+
+    def post(self, request, pk, action):
+        job = MailBulkJob.objects.filter(pk=pk).select_related('mailbox').first()
+        if not job:
+            return Response({'error': 'That send was not found.'}, status=404)
+        box, denied = _accessible_mailbox(request, job.mailbox_id)
+        if denied:
+            return denied
+        scoped = mailbox_from_shared_token(request)
+        if scoped is None and not services.can_use_mailbox(request.user, box):
+            return Response({'error': 'You cannot send from this mailbox.'}, status=403)
+
+        if action == 'start':
+            if job.status in ('running', 'queued'):
+                return Response(MailBulkJobSerializer(job).data)
+            if job.status == 'done':
+                return Response({'error': 'This send has already finished.'}, status=409)
+            job.status = 'queued'
+            job.last_error = ''
+            job.save(update_fields=['status', 'last_error'])
+            services.audit(request.user, 'bulk_started', mailbox=box,
+                           note=f'Started “{job.name or job.subject[:60]}” to {job.total} recipients.')
+        elif action == 'pause':
+            if job.status not in ('queued', 'running'):
+                return Response({'error': 'That send is not running.'}, status=409)
+            job.status = 'paused'
+            job.save(update_fields=['status'])
+        elif action == 'cancel':
+            # The worker checks this between recipients, so it stops after the
+            # one in flight rather than abandoning a half-sent message.
+            job.status = 'canceled'
+            job.save(update_fields=['status'])
+        else:
+            return Response({'error': 'Unknown action.'}, status=400)
+
+        return Response(MailBulkJobSerializer(job).data)

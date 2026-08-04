@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from .models import (
     Mailbox, MailboxGrant, MailMessage, MailAuditLog,
-    MailAttachment, MailDraft, MailNote,
+    MailAttachment, MailBulkJob, MailDraft, MailNote,
 )
 
 
@@ -24,6 +24,7 @@ class MailboxSerializer(serializers.ModelSerializer):
     owner_name = serializers.SerializerMethodField()
     grant_count = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
+    can_send = serializers.SerializerMethodField()
 
     class Meta:
         model = Mailbox
@@ -31,7 +32,7 @@ class MailboxSerializer(serializers.ModelSerializer):
             'id', 'kind', 'address', 'display_name', 'avatar_url',
             'member', 'user', 'owner_name',
             'is_active', 'is_archived', 'daily_send_limit',
-            'has_access_password', 'grant_count', 'unread_count',
+            'has_access_password', 'grant_count', 'unread_count', 'can_send',
             'created_at', 'updated_at',
         ]
         # `user` IS writable: a superadmin picks which portal account owns the box.
@@ -39,6 +40,20 @@ class MailboxSerializer(serializers.ModelSerializer):
 
     def validate_address(self, value):
         return (value or '').strip().lower()
+
+    def get_can_send(self, obj):
+        """Whether THIS caller may send from the box, as opposed to merely read
+        it. A superadmin overseeing someone else's mailbox gets False — they can
+        look, but sending as another person is never allowed."""
+        request = self.context.get('request')
+        if request is None:
+            return True                      # no caller context: don't hide the option
+        from . import services
+        from .views import mailbox_from_shared_token
+        scoped = mailbox_from_shared_token(request)
+        if scoped is not None:
+            return scoped.id == obj.id
+        return services.can_use_mailbox(request.user, obj)
 
     def get_owner_name(self, obj):
         if obj.member_id:
@@ -138,3 +153,23 @@ class MailNoteSerializer(serializers.ModelSerializer):
         model = MailNote
         fields = ['id', 'mailbox', 'thread_key', 'author_name', 'body', 'created_at']
         read_only_fields = ['id', 'author_name', 'created_at']
+
+
+class MailBulkJobSerializer(serializers.ModelSerializer):
+    attachments = MailAttachmentSerializer(many=True, read_only=True)
+    total = serializers.IntegerField(read_only=True)
+    # Recipient rows can be long; the list view sends a count, not the payload.
+    recipient_preview = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MailBulkJob
+        fields = ['id', 'mailbox', 'name', 'subject', 'body_text',
+                  'status', 'cursor', 'total', 'sent_count', 'failed_count',
+                  'last_error', 'attachments', 'recipient_preview',
+                  'created_at', 'updated_at', 'finished_at']
+        read_only_fields = ['id', 'status', 'cursor', 'total', 'sent_count',
+                            'failed_count', 'last_error', 'attachments',
+                            'created_at', 'updated_at', 'finished_at']
+
+    def get_recipient_preview(self, obj):
+        return [r.get('email') for r in (obj.recipients or [])[:5]]

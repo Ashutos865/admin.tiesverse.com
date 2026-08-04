@@ -58,3 +58,13 @@ export const adminGrant = (id, user) => post(`/api/mail/admin/mailboxes/${id}/gr
 export const adminRevoke = (id, user) => del(`/api/mail/admin/mailboxes/${id}/grants/?user=${user}`);
 export const adminAudit = (mailbox) =>
   get(`/api/mail/admin/audit/${mailbox ? `?mailbox=${mailbox}` : ''}`);
+
+// Portal accounts, for the mailbox-access picker. Superadmin-only server side.
+export const adminListUsers = () => get('/api/accounts/users');
+
+// bulk sends — one personal message per recipient
+export const listBulkJobs = (mailbox) => get(`/api/mail/bulk/?mailbox=${mailbox}`);
+export const createBulkJob = (payload) => post('/api/mail/bulk', payload);
+export const getBulkJob = (id) => get(`/api/mail/bulk/${id}`);
+export const deleteBulkJob = (id) => del(`/api/mail/bulk/${id}`);
+export const bulkAction = (id, action) => post(`/api/mail/bulk/${id}/${action}`, {});

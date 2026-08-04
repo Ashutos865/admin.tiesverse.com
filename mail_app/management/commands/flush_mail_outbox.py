@@ -15,7 +15,7 @@ from datetime import timedelta
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from mail_app import services, storage
+from mail_app import bulk, services, storage
 from mail_app.models import MailAttachment
 
 # How long an uploaded file may sit unattached before it is assumed abandoned.
@@ -28,6 +28,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--limit', type=int, default=100,
                             help='Maximum messages to send in one run.')
+        parser.add_argument('--bulk-batch', type=int, default=25,
+                            help='How many bulk recipients to handle per run.')
         parser.add_argument('--no-sweep', action='store_true',
                             help='Skip the orphaned-attachment cleanup.')
 
@@ -36,6 +38,16 @@ class Command(BaseCommand):
         if sent or failed:
             self.stdout.write(f'sent {sent}, failed {failed}')
 
+        # One bulk job per run, capped, so a large send shares the minute with
+        # ordinary mail instead of blocking it.
+        job = bulk.claim_next_job()
+        if job is not None:
+            result = bulk.run_job(job, limit=opts['bulk_batch'])
+            self.stdout.write(
+                f'bulk #{job.id} “{job.name or job.subject[:40]}”: '
+                f'{result["sent"]} sent, {result["failed"]} failed, now {result["status"]} '
+                f'({job.cursor}/{job.total})')
+
         if opts['no_sweep']:
             return
 
@@ -43,7 +55,8 @@ class Command(BaseCommand):
         # somebody closed. The row is cheap; the object in R2 is not.
         cutoff = timezone.now() - timedelta(days=ORPHAN_AFTER_DAYS)
         orphans = MailAttachment.objects.filter(
-            message__isnull=True, draft__isnull=True, created_at__lt=cutoff,
+            message__isnull=True, draft__isnull=True, bulk_job__isnull=True,
+            created_at__lt=cutoff,
         )[:200]
         removed = 0
         for att in list(orphans):

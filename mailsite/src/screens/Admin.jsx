@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Archive, Check, Key, Loader2, Plus, Shield, UserMinus, UserPlus, Users, X,
+  Archive, Check, Key, Loader2, Plus, Search, Shield, UserMinus, UserPlus, Users, X,
 } from 'lucide-react';
 import {
   adminArchiveMailbox, adminAudit, adminCreateMailbox, adminGrant, adminListGrants,
-  adminListMailboxes, adminRevoke, adminSetPassword,
+  adminListMailboxes, adminListUsers, adminRevoke, adminSetPassword,
 } from '../api/mail.js';
-import { EmptyState, ErrorNotice, useDelayedFlag } from '../components/common.jsx';
-import { fullDate, relative } from '../lib/format.js';
+import { Avatar, EmptyState, ErrorNotice, useDelayedFlag } from '../components/common.jsx';
+import { relative } from '../lib/format.js';
+
+/* These endpoints return a bare array; a paginated one would wrap it in
+   `results`. Accept either rather than guessing wrong on a future change. */
+const asList = (res) => (Array.isArray(res) ? res : res?.results || []);
 
 /* Mailbox administration, for superadmins only.
  *
@@ -29,13 +33,13 @@ export default function Admin({ me }) {
   const load = useCallback(async () => {
     const res = await adminListMailboxes();
     if (res.error) { setError(res.error); setBoxes([]); return; }
-    setBoxes(res.results || res || []);
+    setBoxes(asList(res));
   }, []);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     if (tab !== 'audit') return;
-    adminAudit().then((res) => setAudit(res.error ? [] : (res.results || res.logs || res || [])));
+    adminAudit().then((res) => setAudit(res.error ? [] : asList(res)));
   }, [tab]);
 
   if (!me?.is_superadmin) {
@@ -175,8 +179,22 @@ function CreateMailbox({ onClose, onCreated }) {
   const [address, setAddress] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [kind, setKind] = useState('PERSONAL');
+  const [owner, setOwner] = useState('');
+  const [users, setUsers] = useState([]);
+  const [ownerQuery, setOwnerQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    adminListUsers().then((res) => setUsers(res.error ? [] : asList(res)));
+  }, []);
+
+  const label = (u) => (`${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username);
+  const term = ownerQuery.trim().toLowerCase();
+  const matches = users
+    .filter((u) => !term || `${label(u)} ${u.email} ${u.username}`.toLowerCase().includes(term))
+    .slice(0, 6);
+  const chosen = users.find((u) => String(u.id) === String(owner));
 
   const submit = async () => {
     setBusy(true);
@@ -186,6 +204,8 @@ function CreateMailbox({ onClose, onCreated }) {
       address: `${local}@mail.tiesverse.com`,
       display_name: displayName.trim(),
       kind,
+      // A personal box needs its owner now: without one nobody can open it.
+      ...(kind === 'PERSONAL' && owner ? { user: owner } : {}),
     });
     setBusy(false);
     if (res.error) { setError(res.error); return; }
@@ -224,12 +244,50 @@ function CreateMailbox({ onClose, onCreated }) {
               <option value="SHARED">Team — several members</option>
             </select>
           </label>
+
+          {kind === 'PERSONAL' ? (
+            <div style={{ display: 'grid', gap: 6 }}>
+              <span className="eyebrow">Belongs to</span>
+              {chosen ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                  <Avatar name={label(chosen)} email={chosen.email} size={28} />
+                  <span style={{ flex: 1, fontSize: 13 }}>{label(chosen)}</span>
+                  <button className="btn btn-sm" onClick={() => { setOwner(''); setOwnerQuery(''); }}>
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <span className="search-field">
+                    <Search size={15} />
+                    <input value={ownerQuery} onChange={(e) => setOwnerQuery(e.target.value)}
+                      placeholder="Search by name or email…" />
+                  </span>
+                  {matches.map((u) => (
+                    <button key={u.id} className="nav-item" onClick={() => setOwner(u.id)}
+                      style={{ height: 'auto', padding: '6px 8px' }}>
+                      <Avatar name={label(u)} email={u.email} size={24} />
+                      <span className="label truncate" style={{ fontSize: 13 }}>
+                        {label(u)} <span style={{ color: 'var(--muted)' }}>{u.email}</span>
+                      </span>
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+          ) : (
+            <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
+              You will choose who can open this team mailbox once it exists.
+            </p>
+          )}
+
           <ErrorNotice>{error}</ErrorNotice>
         </div>
         <div className="modal-foot">
           <span style={{ flex: 1 }} />
           <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={submit} disabled={busy || !address.trim()}>
+          <button className="btn btn-primary" onClick={submit}
+            disabled={busy || !address.trim() || (kind === 'PERSONAL' && !owner)}>
             {busy ? <Loader2 size={15} className="spin" /> : <Check size={15} />} Create
           </button>
         </div>
@@ -240,51 +298,113 @@ function CreateMailbox({ onClose, onCreated }) {
 
 function GrantsModal({ box, onClose }) {
   const [grants, setGrants] = useState(null);
-  const [userId, setUserId] = useState('');
+  const [users, setUsers] = useState([]);
+  const [query, setQuery] = useState('');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(null);
 
   const load = useCallback(async () => {
     const res = await adminListGrants(box.id);
-    setGrants(res.error ? [] : (res.grants || res.results || res || []));
+    setGrants(res.error ? [] : asList(res));
   }, [box.id]);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    adminListUsers().then((res) => setUsers(res.error ? [] : asList(res)));
+  }, []);
+
+  const granted = new Set((grants || []).map((g) => String(g.user)));
+  const term = query.trim().toLowerCase();
+  const candidates = users
+    .filter((u) => !granted.has(String(u.id)))
+    .filter((u) => !term
+      || `${u.username} ${u.email} ${u.first_name || ''} ${u.last_name || ''}`
+        .toLowerCase().includes(term))
+    .slice(0, 8);
+
+  const label = (u) => {
+    const full = `${u.first_name || ''} ${u.last_name || ''}`.trim();
+    return full || u.username;
+  };
+
+  const add = async (user) => {
+    setBusy(user.id);
+    const res = await adminGrant(box.id, user.id);
+    setBusy(null);
+    if (res.error) setError(res.error);
+    else { setError(''); setQuery(''); load(); }
+  };
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal modal-sm" role="dialog" aria-modal="true">
         <div className="modal-head">
-          <span style={{ flex: 1 }}>Who can open {box.address}</span>
-          <button className="icon-btn" style={{ width: 32, height: 32 }} onClick={onClose}>
+          <span style={{ flex: 1 }}>Who can open this mailbox</span>
+          <button className="icon-btn" style={{ width: 32, height: 32 }} onClick={onClose}
+            aria-label="Close">
             <X size={16} />
           </button>
         </div>
         <div className="modal-body">
+          <p style={{ margin: 0, fontSize: 12.5, color: 'var(--muted)' }}>
+            Anyone listed here can read and send from <strong>{box.address}</strong>.
+          </p>
+
           {grants === null ? <p className="muted">Loading…</p>
-            : !grants.length ? <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+            : !grants.length ? (
+              <p className="muted" style={{ margin: 0, fontSize: 13 }}>
                 Nobody yet — this mailbox can only be opened with its password.
               </p>
-            : grants.map((g) => (
-              <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ flex: 1, fontSize: 13 }}>{g.user_name || `User ${g.user}`}</span>
-                <button className="btn btn-sm btn-danger"
-                  onClick={async () => { await adminRevoke(box.id, g.user); load(); }}>
-                  <UserMinus size={13} /> Remove
-                </button>
+            ) : (
+              <div style={{ display: 'grid', gap: 6 }}>
+                {grants.map((g) => (
+                  <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                    <Avatar name={g.user_name} email={g.user_name} size={28} />
+                    <span style={{ flex: 1, fontSize: 13 }} className="truncate">
+                      {g.user_name || `User ${g.user}`}
+                    </span>
+                    <button className="btn btn-sm btn-danger"
+                      onClick={async () => { await adminRevoke(box.id, g.user); load(); }}>
+                      <UserMinus size={13} /> Remove
+                    </button>
+                  </div>
+                ))}
               </div>
+            )}
+
+          <div style={{ paddingTop: 10, borderTop: '1px solid var(--line-soft)', display: 'grid', gap: 8 }}>
+            <span className="eyebrow">Give access to</span>
+            <span className="search-field">
+              <Search size={15} />
+              <input value={query} onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by name or email…" />
+            </span>
+            {term && !candidates.length && (
+              <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
+                Nobody matches — or they already have access.
+              </p>
+            )}
+            {candidates.map((u) => (
+              <button key={u.id} onClick={() => add(u)} disabled={busy === u.id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 9, padding: '7px 8px',
+                  borderRadius: 'var(--r-control)', textAlign: 'left',
+                }}
+                className="nav-item">
+                <Avatar name={label(u)} email={u.email} size={26} />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 13, fontWeight: 600 }} className="truncate">
+                    {label(u)}
+                  </span>
+                  <span style={{ display: 'block', fontSize: 11.5, color: 'var(--muted)' }} className="truncate">
+                    {u.email || u.username}
+                  </span>
+                </span>
+                {busy === u.id ? <Loader2 size={14} className="spin" /> : <UserPlus size={14} />}
+              </button>
             ))}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingTop: 6,
-                        borderTop: '1px solid var(--line-soft)' }}>
-            <input className="field" value={userId} onChange={(e) => setUserId(e.target.value)}
-              placeholder="Portal user ID" style={{ flex: 1 }} />
-            <button className="btn btn-sm btn-primary" disabled={!userId.trim()}
-              onClick={async () => {
-                const res = await adminGrant(box.id, userId.trim());
-                if (res.error) setError(res.error);
-                else { setUserId(''); setError(''); load(); }
-              }}>
-              <UserPlus size={13} /> Add
-            </button>
           </div>
+
           <ErrorNotice>{error}</ErrorNotice>
         </div>
       </div>

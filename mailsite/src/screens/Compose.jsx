@@ -66,20 +66,31 @@ export default function Compose({ me, seed, onClose, onSent }) {
 
   /* Autosave. One draft row is created on first save and PATCHed after that, so
      a long reply does not leave a trail of near-identical drafts behind. */
+  const saving = useRef(null);
   const save = useCallback(async () => {
     const s = state.current;
     if (!s.mailbox) return null;
+    // One save in flight at a time. Two overlapping calls would both see an
+    // empty draftId and create two rows for one message.
+    if (saving.current) return saving.current;
     const payload = {
       mailbox: s.mailbox, to: s.to, cc: s.cc, bcc: s.bcc,
       subject: s.subject, body_text: s.body,
       in_reply_to: inReplyTo, thread_key: threadKey,
     };
-    const res = s.draftId ? await updateDraft(s.draftId, payload) : await createDraft(payload);
-    if (res.error) return null;
-    if (!s.draftId) setDraftId(res.id);
-    setSavedAt(new Date());
-    dirty.current = false;
-    return res.id || s.draftId;
+    saving.current = (async () => {
+      const res = s.draftId ? await updateDraft(s.draftId, payload) : await createDraft(payload);
+      if (res.error) return null;
+      if (!s.draftId) { setDraftId(res.id); state.current.draftId = res.id; }
+      setSavedAt(new Date());
+      dirty.current = false;
+      return res.id || s.draftId;
+    })();
+    try {
+      return await saving.current;
+    } finally {
+      saving.current = null;
+    }
   }, [inReplyTo, threadKey]);
 
   useEffect(() => {
@@ -145,14 +156,18 @@ export default function Compose({ me, seed, onClose, onSent }) {
     onClose?.();
   };
 
+  // Handlers are held in a ref so the listener is registered once. Without
+  // this the effect had no dependency array and re-bound on every keystroke.
+  const actions = useRef({});
+  actions.current = { attemptClose, doSend };
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'Escape') attemptClose();
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') doSend();
+      if (e.key === 'Escape') actions.current.attemptClose();
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') actions.current.doSend();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  });
+  }, []);
 
   const totalSize = attachments.reduce((n, a) => n + (a.size || 0), 0);
   const activeBox = boxes.find((b) => String(b.id) === String(mailbox));

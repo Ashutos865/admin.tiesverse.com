@@ -44,7 +44,7 @@ export default function Home({ me, counts, onCompose }) {
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  const firstName = (me?.user?.name || primary?.display_name || '').split(' ')[0] || 'there';
+  const firstName = String(me?.user?.name || primary?.display_name || '').split(' ')[0] || 'there';
 
   return (
     <div style={{ overflowY: 'auto', padding: '22px 24px 40px' }}>
