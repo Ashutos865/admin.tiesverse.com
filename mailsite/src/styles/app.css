@@ -77,9 +77,8 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .sidebar-head > a { display: block; }
 .brand-logo { display: block; height: auto; max-width: 100%; }
 
-/* Sized against the column rather than filling it: at full width the artwork's
-   proportions made a 60px-tall block that crowded the header. */
-.sidebar-head .brand-logo { width: 76%; }
+/* Aligned to the same left edge as the Compose button beneath it. */
+.sidebar-head .brand-logo { width: 86%; }
 
 .sidebar-top { padding: 0 16px 12px; display: grid; gap: 8px; }
 

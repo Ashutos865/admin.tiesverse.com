@@ -4,13 +4,14 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Check, Loader2, WifiOff, X } from 'lucide-react';
 import { avatarColor, initials, nameOf } from '../lib/format.js';
 
-/* The wordmark. Sized by width so it fills the column it sits in — matching
-   the Compose button beneath it in the sidebar — with the height following the
-   artwork's own proportions rather than being fixed independently. */
+/* The wordmark. The PNG is cropped to the artwork with an even hairline of
+   padding, so its box is the logo — the original canvas carried 36% empty
+   space, unevenly distributed, and the browser was aligning that rather than
+   the mark itself. Sized by width; height follows the proportions. */
 export function Brand({ width, className = '' }) {
   return (
     <img src="/logo.png" alt="TIES Mail" className={`brand-logo ${className}`}
-      style={width ? { width } : undefined} width="1102" height="284" />
+      style={width ? { width } : undefined} width="968" height="195" />
   );
 }
 
