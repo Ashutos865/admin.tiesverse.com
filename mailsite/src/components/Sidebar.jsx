@@ -45,14 +45,14 @@ export default function Sidebar({ me, counts, activeMailbox, onCompose, onSearch
 
       <div className="sidebar-top">
         <button className="compose-btn" onClick={onCompose}>
-          <PenSquare size={16} />
-          Compose
-          <span className="kbd">⌘N</span>
+          <span className="tile"><PenSquare size={16} /></span>
+          <span className="label">Compose</span>
+          <span className="kbd">⌘ N</span>
         </button>
         <button className="search-field" onClick={onSearch} style={{ textAlign: 'left' }}>
           <Search size={15} />
-          <span style={{ flex: 1, fontSize: 13, color: 'var(--muted-2)' }}>Search</span>
-          <span className="kbd">⌘K</span>
+          <span style={{ flex: 1, fontSize: 14, color: 'var(--muted-2)' }}>Search</span>
+          <span className="kbd">⌘ K</span>
         </button>
       </div>
 

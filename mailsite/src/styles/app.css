@@ -71,38 +71,80 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   overflow: hidden;
 }
 .sidebar-head {
-  padding: 16px 16px 12px;
+  padding: 20px 16px 0;
   display: block;
 }
 .sidebar-head > a { display: block; }
 .brand-logo { display: block; height: auto; max-width: 100%; }
 
 /* Aligned to the same left edge as the Compose button beneath it. */
-.sidebar-head .brand-logo { width: 86%; }
+.sidebar-head .brand-logo { width: 72%; }
 
-.sidebar-top { padding: 0 16px 12px; display: grid; gap: 8px; }
+.sidebar-top { padding: 22px 16px 14px; display: grid; gap: 12px; }
 
+/* Compose. A near-black pill carrying its own icon tile and shortcut chip —
+   the two inner pieces are what stop a solid dark block from reading flat. */
 .compose-btn {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--ink); color: #fff;
-  border-radius: var(--r-control);
-  padding: 0 12px; height: 40px;
-  font-size: 14px; font-weight: 600;
-  transition: background var(--t-fast);
+  display: flex; align-items: center; gap: 10px;
+  background: #1c1f24; color: #fff;
+  border-radius: 16px;
+  padding: 0 8px; height: 50px;
+  font-size: 15px; font-weight: 600; letter-spacing: -.01em;
+  box-shadow: 0 6px 16px rgba(16, 24, 40, .18), 0 1px 2px rgba(16, 24, 40, .12);
+  transition: background var(--t-fast), box-shadow var(--t-base), transform var(--t-fast);
 }
-.compose-btn:hover { background: #000; }
-.compose-btn .kbd { margin-left: auto; opacity: .55; font-size: 11px; font-weight: 500; }
+.compose-btn:hover {
+  background: #111418;
+  box-shadow: 0 10px 22px rgba(16, 24, 40, .24), 0 1px 2px rgba(16, 24, 40, .12);
+}
+.compose-btn:active { transform: translateY(1px); }
+/* Lifted a shade off the button so the icon sits on its own surface. */
+.compose-btn .tile {
+  width: 34px; height: 34px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .09);
+  border: 1px solid rgba(255, 255, 255, .07);
+}
+.compose-btn .label { flex: 1; text-align: left; }
+.compose-btn .kbd {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 26px; padding: 0 9px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .07);
+  border: 1px solid rgba(255, 255, 255, .09);
+  font-size: 11.5px; font-weight: 500; color: rgba(255, 255, 255, .72);
+  letter-spacing: .02em;
+}
 
+/* Search. The quiet counterpart to Compose: same rounding language, one step
+   softer, so the pair reads as a set rather than two unrelated controls. */
 .search-field {
-  display: flex; align-items: center; gap: 8px;
-  height: 36px; padding: 0 10px;
+  display: flex; align-items: center; gap: 10px;
+  height: 42px; padding: 0 13px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.search-field:hover { border-color: #dcdfe4; }
+.search-field:focus-within {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.search-field input { font-size: 14px; }
+.search-field .kbd {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 24px; padding: 0 8px;
+  border-radius: 7px;
   background: var(--card-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-control);
-  color: var(--muted);
-  transition: border-color var(--t-fast);
+  font-size: 11.5px; font-weight: 500; color: var(--muted-2);
 }
-.search-field:focus-within { border-color: var(--accent-line); }
 .search-field input {
   flex: 1; min-width: 0; border: none; background: none; font-size: 13px;
 }
