@@ -105,7 +105,7 @@ function Root() {
   if (!ready) {
     return (
       <div style={{ height: '100%', display: 'grid', placeItems: 'center', gap: 10 }}>
-        <Brand width={170} />
+        <Brand width={140} />
         <Loader2 size={18} className="spin" style={{ color: 'var(--muted-2)' }} />
       </div>
     );
