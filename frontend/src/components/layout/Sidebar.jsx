@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
-import { NavLink, Link } from 'react-router-dom';
+import { useState, useEffect, useRef, useContext } from 'react';
+import { NavLink, Link, useNavigate } from 'react-router-dom';
 import {
   Award,
   ChevronLeft,
+  Moon,
   Search,
+  Sun,
   BriefcaseBusiness,
   Building2,
   CalendarDays,
@@ -46,6 +48,8 @@ import {
 } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionContext';
 import { useMe } from '../../context/MeContext';
+import { AuthContext } from '../../context/AuthContext';
+import { ThemeContext } from '../../context/ThemeContext';
 
 // The main dashboard "home" — where `/` redirects (see App.jsx).
 export const HOME_PATH = '/tiesverse/dashboard';
@@ -307,6 +311,72 @@ function SidebarBrand() {
   );
 }
 
+/* Who is signed in, pinned to the bottom of the card.
+   It lives here rather than in the topbar because this is the one place that
+   never scrolls away, and because the topbar had it reduced to a bare avatar
+   with no name — a row of unlabelled circles reads as decoration. */
+function ProfileCard({ collapsed, onNavigate }) {
+  const { user, profile, logoutUser } = useContext(AuthContext);
+  const { theme, toggleTheme } = useContext(ThemeContext);
+  const { member } = useMe();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const box = useRef(null);
+
+  // Any click elsewhere, or Escape, puts the menu away.
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => { if (!box.current?.contains(e.target)) setOpen(false); };
+    const key = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away);
+    window.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      window.removeEventListener('keydown', key);
+    };
+  }, [open]);
+
+  const displayName = profile?.display_name || user?.username || 'Admin';
+  const role = (member?.role_offered || '').trim();
+  const initials = displayName.split(/\s+/).filter(Boolean).slice(0, 2)
+    .map((p) => p[0]?.toUpperCase()).join('') || 'TV';
+
+  const go = (path) => { setOpen(false); onNavigate?.(); navigate(path); };
+
+  return (
+    <div className="pnav-profile-wrap" ref={box}>
+      {open && (
+        <div className="pnav-profile-pop" role="menu">
+          <button type="button" onClick={() => go('/accounts/settings')}>
+            <UserCheck size={15} /> Account settings
+          </button>
+          <button type="button" onClick={() => { toggleTheme(); setOpen(false); }}>
+            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+            {theme === 'dark' ? 'Light appearance' : 'Dark appearance'}
+          </button>
+          <span className="pnav-pop-div" />
+          <button type="button" className="is-danger" onClick={logoutUser}>
+            <LogOut size={15} /> Log out
+          </button>
+        </div>
+      )}
+      <button type="button" className={`pnav-profile ${open ? 'is-open' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu" aria-expanded={open}
+        title={collapsed ? `${displayName}${role ? ` · ${role}` : ''}` : 'Account'}>
+        {profile?.avatar_url
+          ? <img className="pnav-avatar" src={profile.avatar_url} alt="" />
+          : <span className="pnav-avatar pnav-avatar-fallback">{initials}</span>}
+        <span className="pnav-profile-info">
+          <span className="pnav-profile-name">{displayName}</span>
+          {role && <span className="pnav-profile-role">{role}</span>}
+        </span>
+        <ChevronDown size={15} className="pnav-profile-chev" />
+      </button>
+    </div>
+  );
+}
+
 const Sidebar = ({ activePortal, isOpen, onClose, onOpenPalette }) => {
   const { hasAnyPermission, isSuperuser } = usePermissions();
   const { isMember, isLead, isAdvisory, isDeveloper, scope, articleAccess, nimbleAccess, mailAccess, contentAccess, financeAccess } = useMe();
@@ -535,6 +605,8 @@ const Sidebar = ({ activePortal, isOpen, onClose, onOpenPalette }) => {
             );
           })}
         </nav>
+
+        <ProfileCard collapsed={collapsed} onNavigate={onClose} />
       </aside>
     </>
   );

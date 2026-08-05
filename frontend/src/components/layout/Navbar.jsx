@@ -1,6 +1,6 @@
 import { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, HelpCircle, LogOut, Mail, Menu, Moon, Search, Sun } from 'lucide-react';
+import { ArrowLeft, HelpCircle, Mail, Menu, Moon, Search, Sun } from 'lucide-react';
 import { AuthContext } from '../../context/AuthContext';
 import { ThemeContext } from '../../context/ThemeContext';
 import { useMe } from '../../context/MeContext';
@@ -13,7 +13,7 @@ const MAIL_SITE_URL = import.meta.env.VITE_MAIL_URL || 'https://mail.tiesverse.c
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '');
 
 const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
-  const { user, profile, logoutUser } = useContext(AuthContext);
+  const { user, profile } = useContext(AuthContext);
   const { theme, toggleTheme } = useContext(ThemeContext);
   // Only people a superadmin has given a mailbox see the Mail shortcut.
   const { mailAccess } = useMe();
@@ -38,12 +38,6 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
   const firstName = displayName.split(/\s+/)[0];
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const initials = displayName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('');
 
   return (
     <header className="portal-topbar">
@@ -103,6 +97,8 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
         >
           <HelpCircle size={19} />
         </button>
+        {/* Theme, profile and log out live in the sidebar's profile card now —
+            one account menu, in the place that never scrolls away. */}
         <button
           type="button"
           onClick={toggleTheme}
@@ -110,20 +106,6 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
           title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
         >
           {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
-        </button>
-        <button
-          type="button"
-          className="portal-user-avatar"
-          onClick={() => navigate('/accounts/settings')}
-          aria-label="Profile and settings"
-          title={`${displayName} · Profile & settings`}
-        >
-          {profile?.avatar_url
-            ? <img src={profile.avatar_url} alt={displayName} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
-            : (initials || 'TV')}
-        </button>
-        <button type="button" onClick={logoutUser} aria-label="Log out" title="Log out">
-          <LogOut size={18} />
         </button>
       </div>
     </header>

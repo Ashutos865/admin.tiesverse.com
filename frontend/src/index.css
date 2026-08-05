@@ -119,7 +119,7 @@
   --surface-container: #eceef0;
   --surface-container-high: #e6e8ea;
   --outline-variant: #d8dce2;
-  --bg-color: #faf2e8;
+  --bg-color: #ffffff;
   --surface: #ffffff;
   --surface-hover: #f6ede1;
   --text-main: #191c1e;
@@ -699,15 +699,12 @@ tr:hover td {
    Canvas: warm organic ground.  Shell: strong glass.  Cards: lighter glass.
    ========================================================================== */
 
-/* Canvas — warm ground + soft light blooms (light) */
+/* Canvas — plain white (light). The warm orange blooms that used to wash over
+   this are gone: the page is meant to read as the same white as the topbar,
+   and any tint under a white sidebar card shows up as a dirty edge. */
 :root.light .admin-shell,
 :root.light .admin-page {
-  background:
-    radial-gradient(38% 30% at 92% 6%, rgba(254, 122, 0, 0.13), transparent 60%),
-    radial-gradient(36% 34% at 6% 96%, rgba(255, 160, 74, 0.15), transparent 60%),
-    radial-gradient(30% 26% at 64% 70%, rgba(255, 202, 142, 0.11), transparent 66%),
-    radial-gradient(28% 24% at 30% 22%, rgba(255, 236, 214, 0.6), transparent 64%),
-    var(--bg-color);
+  background: var(--bg-color);
 }
 /* Canvas — warm charcoal + deep-orange embers (dark) */
 :root.dark .admin-shell,
@@ -732,6 +729,14 @@ tr:hover td {
   box-shadow:
     0 30px 60px -24px rgba(20, 20, 25, 0.18),
     0 4px 10px rgba(20, 20, 25, 0.05);
+}
+/* The page is white and so is the card, so the shadow alone no longer draws
+   the edge — a hairline does the work instead. */
+:root.light .portal-sidebar {
+  border: 1px solid var(--pnav-line);
+  box-shadow:
+    0 18px 40px -22px rgba(20, 20, 25, 0.14),
+    0 2px 6px rgba(20, 20, 25, 0.04);
 }
 :root.dark .portal-sidebar {
   box-shadow:
@@ -1149,6 +1154,118 @@ tr:hover td {
 .pnav-flyout-item > svg { flex: none; opacity: 0.85; }
 .pnav-flyout-item:hover { background: var(--pnav-hover); color: var(--text-main); }
 .pnav-flyout-item.is-active { background: var(--pnav-pill); color: var(--text-main); font-weight: 600; }
+
+/* ── profile card (pinned to the bottom of the sidebar) ──────────────────── */
+
+/* Outside the scrolling nav, so it stays put however long the portal list is. */
+.pnav-profile-wrap { position: relative; flex: none; margin-top: 12px; }
+
+.pnav-profile {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px;
+  border: 1px solid var(--pnav-line);
+  border-radius: 18px;
+  background: transparent;
+  color: var(--text-main);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.pnav-profile:hover { background: var(--pnav-hover); border-color: var(--pnav-line-strong); }
+.pnav-profile.is-open { background: var(--pnav-hover); }
+
+.pnav-avatar {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 12px;
+  object-fit: cover;
+  display: block;
+}
+.pnav-avatar-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--accent-grad);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.pnav-profile-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.pnav-profile-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pnav-profile-role {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pnav-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pnav-profile-chev { flex: none; color: var(--text-muted); transition: transform 150ms ease; }
+.pnav-profile.is-open .pnav-profile-chev { transform: rotate(180deg); }
+
+/* Collapsed: the avatar alone, centred on the rail. */
+.portal-sidebar.is-collapsed .pnav-profile {
+  justify-content: center;
+  padding: 5px;
+  border-color: transparent;
+}
+.portal-sidebar.is-collapsed .pnav-profile-info,
+.portal-sidebar.is-collapsed .pnav-profile-chev { display: none; }
+
+/* The menu opens upward — there is nothing below it. */
+.pnav-profile-pop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--pnav-card);
+  box-shadow:
+    0 30px 55px -12px rgba(20, 20, 25, 0.28),
+    0 0 0 1px rgba(20, 20, 25, 0.06);
+}
+.portal-sidebar.is-collapsed .pnav-profile-pop { right: auto; min-width: 196px; }
+.pnav-profile-pop button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-main);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  white-space: nowrap;
+}
+.pnav-profile-pop button > svg { flex: none; opacity: 0.7; }
+.pnav-profile-pop button:hover { background: var(--pnav-hover); }
+.pnav-profile-pop button.is-danger { color: #f24b3c; }
+.pnav-profile-pop button.is-danger > svg { opacity: 0.85; }
+.pnav-pop-div { height: 1px; margin: 4px 2px; background: var(--pnav-line); }
 
 .portal-sidebar-status {
   display: flex;
