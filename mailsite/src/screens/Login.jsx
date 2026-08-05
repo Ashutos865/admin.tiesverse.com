@@ -3,10 +3,11 @@ import { Eye, EyeOff, Loader2, Lock, User } from 'lucide-react';
 import { signIn } from '../auth.js';
 import { Brand, ErrorNotice } from '../components/common.jsx';
 
-/* A two-panel sign-in: the form on the left, the Elephanta Trimurti on the
-   right. The artwork is the same plate the website's brand page uses, so the
-   two properties read as one house. Below 900px the art panel is dropped
-   rather than shrunk — a letterboxed sliver of a cave is worse than none. */
+/* A two-panel sign-in card floating on the page: the form on the left, the
+   Elephanta Trimurti on the right. The artwork is the same plate the website's
+   brand page uses, so the two properties read as one house. Below 900px the art
+   panel is dropped rather than shrunk — a letterboxed sliver of a cave is worse
+   than none. */
 export default function Login({ onSignedIn }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -25,7 +26,8 @@ export default function Login({ onSignedIn }) {
   };
 
   return (
-    <div className="login">
+    <div className="login-page">
+     <div className="login">
       <div className="login-form-pane">
         <form className="login-form" onSubmit={submit}>
           <Brand width={132} className="login-brand" />
@@ -72,7 +74,7 @@ export default function Login({ onSignedIn }) {
       </div>
 
       <div className="login-art" aria-hidden="true">
-        <img src="/login-art.webp" alt="" width="992" height="1600" />
+        <img src="/login-art.webp" alt="" width="1237" height="1400" />
         <div className="login-art-copy">
           <h2>Our mail keeps<br />the whole team<br />moving.</h2>
           <p>
@@ -81,6 +83,7 @@ export default function Login({ onSignedIn }) {
           </p>
         </div>
       </div>
+     </div>
     </div>
   );
 }
