@@ -234,6 +234,55 @@ def verified_sender_domains():
     return domains
 
 
+def _attachment_part(filename: str, data: bytes, subtype: str = ''):
+    """Build one attachment part with its REAL content type.
+
+    Callers pass either a bare subtype ('pdf') or a full type ('image/jpeg').
+    Both used to be forced through MIMEApplication, which turned image/jpeg into
+    "application/jpeg" and text/plain into "application/plain" — types that do
+    not exist. Mail filters read a malformed Content-Type as a sign the sender
+    is not a real mail client, and receivers cannot preview the file inline.
+
+    A full type from the caller wins — the browser knows what it read off the
+    file. Otherwise the extension decides, because a caller may pass only a bare
+    subtype or nothing at all. (The extension is not consulted first: Windows
+    registers .zip as the legacy "application/x-zip-compressed", so trusting the
+    OS over an explicit "application/zip" would downgrade it.)
+    """
+    import mimetypes
+    from email.mime.application import MIMEApplication
+    from email.mime.audio import MIMEAudio
+    from email.mime.image import MIMEImage
+
+    raw = (subtype or '').strip().lower()
+    ctype = raw if '/' in raw else ''
+    if not ctype:
+        ctype = mimetypes.guess_type(filename or '')[0] or ''
+    if not ctype and raw:
+        ctype = f'application/{raw}'
+    if not ctype or '/' not in ctype:
+        ctype = 'application/octet-stream'
+
+    main, sub = ctype.split('/', 1)
+    try:
+        if main == 'image':
+            part = MIMEImage(data, _subtype=sub)
+        elif main == 'audio':
+            part = MIMEAudio(data, _subtype=sub)
+        elif main == 'text':
+            # Text parts must declare a charset or non-ASCII filenames and
+            # contents arrive mangled.
+            from email.mime.text import MIMEText as _MT
+            part = _MT(data.decode('utf-8', 'replace'), _subtype=sub, _charset='utf-8')
+        else:
+            part = MIMEApplication(data, _subtype=sub)
+    except Exception:  # noqa: BLE001 — a bad guess must never lose the file
+        part = MIMEApplication(data, _subtype='octet-stream')
+
+    part.add_header('Content-Disposition', 'attachment', filename=filename)
+    return part
+
+
 def send_email(
     to: str,
     subject: str,
@@ -290,10 +339,16 @@ def send_email(
         from email.mime.text import MIMEText
         from email.mime.application import MIMEApplication
 
+        from email.utils import formatdate
+
         msg = MIMEMultipart('mixed')
         msg['Subject'] = subject
         msg['From'] = from_addr
         msg['To'] = to
+        # RFC 5322 requires Date. Without it a message reads as machine-generated
+        # to filters, and some clients show the delivery time instead of the
+        # send time. SES does add one, but only after its own checks have run.
+        msg['Date'] = formatdate(localtime=True)
         cc_list = [a for a in (cc or []) if a]
         if cc_list:
             msg['Cc'] = ', '.join(cc_list)
@@ -315,8 +370,7 @@ def send_email(
         msg.attach(alt)
 
         for filename, data, subtype in (attachments or []):
-            part = MIMEApplication(data, _subtype=subtype)
-            part.add_header('Content-Disposition', 'attachment', filename=filename)
+            part = _attachment_part(filename, data, subtype)
             msg.attach(part)
 
         client = boto3.client(
