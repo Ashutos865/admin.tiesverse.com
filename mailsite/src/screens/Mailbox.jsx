@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft, Clock, CornerUpLeft, CornerUpRight, Inbox, MoreHorizontal, PanelRight,
-  Paperclip, Reply, RotateCcw, Search, Send, Star, Trash2,
+  ArrowLeft, CheckSquare, Clock, CornerUpLeft, CornerUpRight, Inbox, MailOpen,
+  MoreHorizontal, PanelRight, Paperclip, Reply, RotateCcw, Search, Send, Star, Trash2,
 } from 'lucide-react';
 import {
   addNote, cancelSend, deleteDraft, downloadAttachment, getThread, listDrafts,
   listMessages, listNotes, restoreMessage, setFlags, trashMessage,
 } from '../api/mail.js';
 import {
-  Avatar, Chip, EmptyState, ErrorNotice, ListSkeleton, useDelayedFlag,
+  Avatar, Chip, EmptyState, ErrorNotice, ListSkeleton, Toast, useDelayedFlag,
 } from '../components/common.jsx';
+import ContextMenu, { useContextMenu } from '../components/ContextMenu.jsx';
+import TaskModal from '../components/TaskModal.jsx';
 import {
   addressOf, categoryClass, fileSize, fullDate, nameOf, relative, shortDate,
 } from '../lib/format.js';
@@ -35,7 +37,10 @@ export default function Mailbox({ me, counts, refreshCounts, onCompose, onEditDr
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState('all');
   const [showContext, setShowContext] = useState(false);
+  const [taskFor, setTaskFor] = useState(null);   // message being turned into a task
+  const [toast, setToast] = useState('');
   const showSkeleton = useDelayedFlag(loading);
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const load = useCallback(async () => {
     if (!mailboxId) return;
@@ -71,6 +76,58 @@ export default function Mailbox({ me, counts, refreshCounts, onCompose, onEditDr
     const res = await setFlags(row.id, flags);
     if (res.error) { load(); }
     else refreshCounts?.();
+  };
+
+  const onTrash = async (row) => {
+    setRows((prev) => prev?.filter((r) => r.id !== row.id));
+    const res = await trashMessage(row.id);
+    if (res.error) { setToast(res.error); load(); return; }
+    refreshCounts?.();
+    setToast('Moved to Trash.');
+  };
+
+  /* The right-click menu. Drafts have no message to act on yet, so they get the
+     one thing that does apply. */
+  const menuFor = (row) => {
+    if (folder === 'drafts') {
+      return [
+        { key: 'edit', label: 'Continue writing', icon: <Reply size={15} />,
+          onSelect: () => onEditDraft?.(row) },
+        { key: 'del', label: 'Discard draft', icon: <Trash2 size={15} />, danger: true,
+          onSelect: async () => {
+            setRows((prev) => prev?.filter((r) => r.id !== row.id));
+            await deleteDraft(row.id);
+            refreshCounts?.();
+            setToast('Draft discarded.');
+          } },
+      ];
+    }
+    const read = row.is_read;
+    return [
+      { key: 'task', label: 'Make this a task', icon: <CheckSquare size={15} />,
+        onSelect: () => setTaskFor(row) },
+      { separator: true },
+      { key: 'open', label: 'Open', icon: <MailOpen size={15} />, onSelect: () => openRow(row) },
+      { key: 'reply', label: 'Reply', icon: <Reply size={15} />,
+        onSelect: () => onCompose?.({ reply: row }) },
+      { key: 'star', label: row.starred ? 'Remove star' : 'Star',
+        icon: <Star size={15} fill={row.starred ? 'currentColor' : 'none'} />,
+        onSelect: () => onFlag(row, { starred: !row.starred }) },
+      { key: 'read', label: read ? 'Mark as unread' : 'Mark as read',
+        icon: <MailOpen size={15} />,
+        onSelect: () => onFlag(row, { read: !read }) },
+      { separator: true },
+      folder === 'trash'
+        ? { key: 'restore', label: 'Restore', icon: <RotateCcw size={15} />,
+            onSelect: async () => {
+              setRows((prev) => prev?.filter((r) => r.id !== row.id));
+              await restoreMessage(row.id);
+              refreshCounts?.();
+              setToast('Restored.');
+            } }
+        : { key: 'trash', label: 'Move to Trash', icon: <Trash2 size={15} />, danger: true,
+            onSelect: () => onTrash(row) },
+    ];
   };
 
   if (!box) {
@@ -126,7 +183,8 @@ export default function Mailbox({ me, counts, refreshCounts, onCompose, onEditDr
                     <MessageRow row={row} folder={folder}
                       selected={String(row.id) === String(messageId)}
                       onOpen={() => openRow(row)}
-                      onStar={(v) => onFlag(row, { starred: v })} />
+                      onStar={(v) => onFlag(row, { starred: v })}
+                      onMenu={(e) => openMenu(e, menuFor(row))} />
                   </li>
                 ))}
               </ul>
@@ -140,6 +198,7 @@ export default function Mailbox({ me, counts, refreshCounts, onCompose, onEditDr
             onBack={() => navigate(`/m/${mailboxId}/${folder}`)}
             onChanged={() => { load(); refreshCounts?.(); }}
             onCompose={onCompose}
+            onMakeTask={(m) => setTaskFor(m)}
             onToggleContext={() => setShowContext((v) => !v)}
             contextOpen={showContext} />
         ) : (
@@ -157,11 +216,21 @@ export default function Mailbox({ me, counts, refreshCounts, onCompose, onEditDr
               Details about a conversation appear here.
             </div>}
       </aside>
+
+      <ContextMenu menu={menu} onClose={closeMenu} />
+      {taskFor && (
+        <TaskModal message={taskFor} onClose={() => setTaskFor(null)}
+          onCreated={(task) => {
+            setTaskFor(null);
+            setToast(`Task created for ${task.assigned_to_name || 'you'}.`);
+          }} />
+      )}
+      <Toast message={toast} onDone={() => setToast('')} />
     </div>
   );
 }
 
-function MessageRow({ row, folder, selected, onOpen, onStar }) {
+function MessageRow({ row, folder, selected, onOpen, onStar, onMenu }) {
   const unread = folder === 'inbox' && !row.is_read;
   const who = folder === 'sent' || folder === 'scheduled' || folder === 'drafts'
     ? (row.to?.[0] || 'No recipient')
@@ -171,7 +240,19 @@ function MessageRow({ row, folder, selected, onOpen, onStar }) {
   return (
     <div className={`msg-row ${unread ? 'unread' : ''} ${selected ? 'selected' : ''}`}
       role="button" tabIndex={0} onClick={onOpen}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
+      onContextMenu={onMenu}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); }
+        // The context-menu key (and Shift+F10) must reach the same menu a
+        // right-click does, opened at the row rather than at the pointer.
+        if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+          const b = e.currentTarget.getBoundingClientRect();
+          onMenu?.({
+            preventDefault: () => {}, stopPropagation: () => {},
+            clientX: b.left + 40, clientY: b.top + b.height - 6,
+          });
+        }
+      }}
       aria-label={`Open: ${row.subject || 'message'}`}>
       <Avatar name={nameOf(who)} email={addressOf(who)} size={36} />
       <span className="msg-main">
@@ -202,7 +283,8 @@ function MessageRow({ row, folder, selected, onOpen, onStar }) {
   );
 }
 
-function Thread({ id, box, folder, onBack, onChanged, onCompose, onToggleContext, contextOpen }) {
+function Thread({ id, box, folder, onBack, onChanged, onCompose, onMakeTask,
+                 onToggleContext, contextOpen }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -269,6 +351,10 @@ function Thread({ id, box, folder, onBack, onChanged, onCompose, onToggleContext
           </h1>
         </div>
         <div className="thread-toolbar">
+          <button className="icon-btn" aria-label="Make this a task"
+            title="Make this a task" onClick={() => onMakeTask?.(message)}>
+            <CheckSquare size={17} />
+          </button>
           <button className={`icon-btn ${message.starred ? 'on' : ''}`} aria-label="Star"
             onClick={async () => { await setFlags(id, { starred: !message.starred }); load(); onChanged?.(); }}>
             <Star size={17} fill={message.starred ? 'currentColor' : 'none'} />

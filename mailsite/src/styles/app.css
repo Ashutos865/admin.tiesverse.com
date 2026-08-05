@@ -878,3 +878,83 @@ textarea.field { height: auto; padding: 10px 11px; resize: vertical; line-height
   .login-form-pane { padding: 28px 20px; align-content: center; }
   .login-heading h1 { font-size: 26px; }
 }
+
+/* ── right-click menu ─────────────────────────────────────────────────────── */
+
+/* Fixed, because it is positioned from the pointer in viewport coordinates.
+   Above the modal overlay's z-index so a menu opened over one still shows. */
+.ctx-menu {
+  position: fixed;
+  z-index: 90;
+  min-width: 208px;
+  padding: 5px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  animation: ctxIn 90ms cubic-bezier(.2, 0, .2, 1);
+}
+@keyframes ctxIn { from { opacity: 0; transform: scale(.97) } to { opacity: 1; transform: none } }
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  text-align: left;
+}
+.ctx-item > svg { flex: none; color: var(--muted); }
+/* Hover and keyboard focus land on the same class, so the two never disagree
+   about which row is "next". */
+.ctx-item.active:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
+.ctx-item.active:not(:disabled) > svg { color: var(--accent); }
+.ctx-item.danger.active { background: var(--danger-soft); color: var(--danger); }
+.ctx-item.danger.active > svg { color: var(--danger); }
+.ctx-item:disabled { opacity: .45; cursor: default; }
+.ctx-label { flex: 1; }
+.ctx-hint { font-size: 11.5px; color: var(--muted-2); }
+.ctx-sep { height: 1px; margin: 4px 6px; background: var(--line-soft); }
+
+/* ── make-a-task modal ────────────────────────────────────────────────────── */
+
+/* A segmented control: the whole set of choices is visible at once, so picking
+   a priority is one click rather than open-then-choose. */
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg-btn {
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.seg-btn:hover { border-color: #dcdfe4; color: var(--ink-2); }
+.seg-btn.on {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+/* When there is nobody else to assign to, the name is shown as plain text
+   rather than a select with a single option. */
+.task-self {
+  display: flex; align-items: center;
+  height: 38px; padding: 0 11px;
+  border: 1px solid var(--line-soft); border-radius: var(--r-control);
+  background: var(--card-2);
+  font-size: 13.5px; color: var(--ink-2);
+}
+.task-src {
+  margin: 0;
+  padding: 9px 11px;
+  border-left: 2px solid var(--accent-line);
+  background: var(--card-2);
+  border-radius: 0 6px 6px 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}

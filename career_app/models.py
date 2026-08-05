@@ -670,6 +670,18 @@ class Task(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     completion_note = models.TextField(blank=True)
 
+    # Where this task came from, when it was made out of an email in TIES Mail.
+    # A real FK: mail_app and career_app share turso_db. SET_NULL because
+    # deleting the mail must not take the work item with it — the task outlives
+    # the message it came from. Kept alongside the address/subject so the task
+    # still says where it came from once the message is gone.
+    source_mail_message = models.ForeignKey(
+        'mail_app.MailMessage', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='tasks',
+    )
+    source_mail_subject = models.CharField(max_length=500, blank=True)
+    source_mail_from = models.CharField(max_length=255, blank=True)
+
     class Meta:
         db_table = 'tasks'
         ordering = ['-created_at']

@@ -239,6 +239,7 @@ class MailAuditLog(models.Model):
         ('sso_login', 'Signed in from the admin panel'),
         ('sent_scheduled', 'Sent a scheduled message'),
         ('bulk_started', 'Started a bulk send'),
+        ('created_task', 'Turned a message into a task'),
     ]
 
     actor_user = models.ForeignKey(

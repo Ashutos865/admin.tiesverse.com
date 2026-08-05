@@ -43,6 +43,12 @@ export const listNotes = (mailbox, threadKey) =>
 export const addNote = (mailbox, threadKey, body) =>
   post('/api/mail/notes', { mailbox, thread_key: threadKey, body });
 
+// an email that needs doing → a task on someone's board
+export const listMessageTasks = (id) => get(`/api/mail/messages/${id}/task`);
+export const createMessageTask = (id, payload) =>
+  post(`/api/mail/messages/${id}/task`, payload);
+export const getAssignable = () => get('/api/mail/assignable');
+
 // mailbox identity
 export const updateMailbox = (id, payload) => patch(`/api/mail/mailboxes/${id}/avatar`, payload);
 

@@ -73,6 +73,12 @@ export default function MyTasksNotes() {
                   <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: '#6b6b6b' }}>{t.priority}</span>
                 </div>
                 <div style={{ fontSize: 14.5, fontWeight: 700, lineHeight: 1.3 }}>{t.title}</div>
+                {t.source_mail_subject && (
+                  <div title={`From the email "${t.source_mail_subject}"${t.source_mail_from ? ` — ${t.source_mail_from}` : ''}`}
+                    style={{ fontSize: 10.5, color: '#6b6b6b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    ✉ {t.source_mail_from || t.source_mail_subject}
+                  </div>
+                )}
                 {(t.progress > 0 || t.estimated_hours) && (
                   <div>
                     <div style={{ height: 5, borderRadius: 999, background: 'rgba(0,0,0,.12)', overflow: 'hidden' }}>

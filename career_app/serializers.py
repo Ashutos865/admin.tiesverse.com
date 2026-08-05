@@ -173,7 +173,10 @@ class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = '__all__'
-        read_only_fields = ['created_at', 'completed_at']
+        # The mail link is stamped by the mail app when a message becomes a
+        # task; it is provenance, so nothing editing a task may rewrite it.
+        read_only_fields = ['created_at', 'completed_at', 'source_mail_message',
+                            'source_mail_subject', 'source_mail_from']
 
     def get_actual_hours(self, obj):
         mins = sum(s.duration_minutes for s in obj.work_sessions.all())

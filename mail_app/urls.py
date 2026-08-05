@@ -11,6 +11,7 @@ from .views import (
     MailSsoRedeemView, MailSsoTicketView,
     MyMailboxesView, SharedMailboxLoginView,
 )
+from .tasks_api import MailAssignableView, MailMessageTaskView
 
 # trailing_slash=True to match the admin's apiClient (withSlash appends a slash).
 router = SimpleRouter(trailing_slash=True)
@@ -36,6 +37,10 @@ urlpatterns = [
 
     # internal comments on a thread — never emailed
     path('notes/', MailNoteView.as_view(), name='mail-notes'),
+
+    # an email that needs doing → a task on someone's board
+    path('messages/<int:pk>/task/', MailMessageTaskView.as_view(), name='mail-message-task'),
+    path('assignable/', MailAssignableView.as_view(), name='mail-assignable'),
 
     # bulk sends — one personal message each, not one mail to a crowd
     path('bulk/', MailBulkJobListView.as_view(), name='mail-bulk'),

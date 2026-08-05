@@ -427,6 +427,17 @@ function TaskCard({ task, onEdit, onDelete, onMove, dragging, onDragStart, onDra
                 )}
             </div>
             <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600, color: 'var(--text-main)', lineHeight: 1.4 }}>{task.title}</p>
+            {task.source_mail_subject && (
+                // Made from an email in TIES Mail — say where it came from, so
+                // the task is traceable back to the conversation that caused it.
+                <p title={`From the email "${task.source_mail_subject}"${task.source_mail_from ? ` — ${task.source_mail_from}` : ''}`}
+                    style={{ margin: '0 0 8px', fontSize: 10.5, color: 'var(--text-muted)', display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <span aria-hidden="true">✉</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {task.source_mail_from || task.source_mail_subject}
+                    </span>
+                </p>
+            )}
             {(task.assigned_to_name || task.assigned_to_department) && (
                 <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--text-muted)' }}>
                     → {task.assigned_to_name || task.assigned_to_department}
