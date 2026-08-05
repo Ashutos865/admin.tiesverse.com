@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { Eye, EyeOff, Loader2, Lock, Mail, User } from 'lucide-react';
-import { signIn, signInShared } from '../auth.js';
+import { Eye, EyeOff, Loader2, Lock, User } from 'lucide-react';
+import { signIn } from '../auth.js';
 import { Brand, ErrorNotice } from '../components/common.jsx';
 
-/* Two ways to sign in, because two kinds of people arrive here: someone with a
-   portal account, and a team who only ever share a mailbox password. */
+/* A two-panel sign-in: the form on the left, the Elephanta Trimurti on the
+   right. The artwork is the same plate the website's brand page uses, so the
+   two properties read as one house. Below 900px the art panel is dropped
+   rather than shrunk — a letterboxed sliver of a cave is worse than none. */
 export default function Login({ onSignedIn }) {
-  const [tab, setTab] = useState('account');
   const [username, setUsername] = useState('');
-  const [address, setAddress] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -18,87 +18,68 @@ export default function Login({ onSignedIn }) {
     e.preventDefault();
     setBusy(true);
     setError('');
-    const res = tab === 'account'
-      ? await signIn(username.trim(), password)
-      : await signInShared(address.trim(), password);
+    const res = await signIn(username.trim(), password);
     setBusy(false);
     if (res.error) { setError(res.error); return; }
     onSignedIn();
   };
 
   return (
-    <div style={{
-      minHeight: '100%', display: 'grid', placeItems: 'center',
-      padding: 24, background: 'var(--page)',
-    }}>
-      <div style={{ width: '100%', maxWidth: 400 }}>
-        <div style={{ display: 'grid', justifyItems: 'center', gap: 6, marginBottom: 22 }}>
-          <Brand width={150} />
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>
-            Sign in to your Tiesverse mailbox
-          </p>
-        </div>
+    <div className="login">
+      <div className="login-form-pane">
+        <form className="login-form" onSubmit={submit}>
+          <Brand width={132} className="login-brand" />
 
-        <form className="card" style={{ padding: 20, display: 'grid', gap: 14 }} onSubmit={submit}>
-          <div className="tabs" style={{ background: 'var(--card-2)', padding: 3, borderRadius: 'var(--r-control)' }}>
-            <button type="button" className={`tab ${tab === 'account' ? 'active' : ''}`}
-              style={{ flex: 1 }} onClick={() => { setTab('account'); setError(''); }}>
-              My account
-            </button>
-            <button type="button" className={`tab ${tab === 'shared' ? 'active' : ''}`}
-              style={{ flex: 1 }} onClick={() => { setTab('shared'); setError(''); }}>
-              Team mailbox
-            </button>
+          <div className="login-heading">
+            <h1>Sign in</h1>
+            <p>Use your Tiesverse account to continue.</p>
           </div>
 
-          {tab === 'account' ? (
-            <label style={{ display: 'grid', gap: 6 }}>
-              <span className="eyebrow">Work email or Crew ID</span>
-              <span className="search-field" style={{ height: 40 }}>
-                <User size={15} />
-                <input value={username} onChange={(e) => setUsername(e.target.value)}
-                  placeholder="you@tiesverse.com" autoComplete="username" autoFocus />
-              </span>
-            </label>
-          ) : (
-            <label style={{ display: 'grid', gap: 6 }}>
-              <span className="eyebrow">Mailbox address</span>
-              <span className="search-field" style={{ height: 40 }}>
-                <Mail size={15} />
-                <input value={address} onChange={(e) => setAddress(e.target.value)}
-                  placeholder="team@mail.tiesverse.com" autoComplete="off" autoFocus />
-              </span>
-            </label>
-          )}
+          <label className="login-field">
+            <span>Email or Crew ID</span>
+            <span className="login-input">
+              <User size={16} aria-hidden="true" />
+              <input value={username} onChange={(e) => setUsername(e.target.value)}
+                placeholder="you@tiesverse.com" autoComplete="username"
+                autoFocus spellCheck="false" />
+            </span>
+          </label>
 
-          <label style={{ display: 'grid', gap: 6 }}>
-            <span className="eyebrow">Password</span>
-            <span className="search-field" style={{ height: 40 }}>
-              <Lock size={15} />
+          <label className="login-field">
+            <span>Password</span>
+            <span className="login-input">
+              <Lock size={16} aria-hidden="true" />
               <input type={showPw ? 'text' : 'password'} value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password" />
-              <button type="button" onClick={() => setShowPw((v) => !v)}
-                aria-label={showPw ? 'Hide password' : 'Show password'}
-                style={{ color: 'var(--muted-2)', display: 'grid', placeItems: 'center' }}>
-                {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                placeholder="Enter your password" autoComplete="current-password" />
+              <button type="button" className="login-eye" onClick={() => setShowPw((v) => !v)}
+                aria-label={showPw ? 'Hide password' : 'Show password'}>
+                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </span>
           </label>
 
           <ErrorNotice>{error}</ErrorNotice>
 
-          <button type="submit" className="btn btn-primary" style={{ height: 40 }}
-            disabled={busy || !password || !(tab === 'account' ? username : address)}>
-            {busy ? <><Loader2 size={15} className="spin" /> Signing in…</> : 'Sign in'}
+          <button type="submit" className="login-submit" disabled={busy || !password || !username}>
+            {busy ? <><Loader2 size={16} className="spin" /> Signing in…</> : 'Sign in'}
           </button>
 
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--muted-2)', textAlign: 'center' }}>
-            {tab === 'account'
-              ? 'The same account you use for the admin panel.'
-              : 'Signs you into that one mailbox only.'}
+          <p className="login-help">
+            <a href="https://admin.tiesverse.com/forgot-password">Forgot password?</a>
           </p>
         </form>
+      </div>
+
+      <div className="login-art" aria-hidden="true">
+        <img src="/login-art.webp" alt="" width="992" height="1600" />
+        <div className="login-art-copy">
+          <h2>Our mail keeps<br />the whole team<br />moving.</h2>
+          <p>
+            Assign conversations, turn emails into tasks, and schedule
+            follow-ups—without losing context.
+          </p>
+        </div>
       </div>
     </div>
   );

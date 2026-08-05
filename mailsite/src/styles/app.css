@@ -708,3 +708,173 @@ textarea.field { height: auto; padding: 10px 11px; resize: vertical; line-height
   margin: 0 0 10px; padding-left: 12px;
   border-left: 3px solid var(--line); color: var(--muted);
 }
+
+/* ── sign in ──────────────────────────────────────────────────────────── */
+
+/* Two panes of equal weight: form left, artwork right. The art is decorative,
+   so below 900px it is dropped entirely and the form centres on its own —
+   a sliver of a cave carries none of the image's meaning. */
+.login {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 100%;
+  background: var(--card);
+}
+/* The form sits a little above centre — optically centred rather than
+   mathematically, which reads as balanced once the eye weighs the logo. */
+.login-form-pane {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  padding: 40px 32px 72px;
+  min-width: 0;
+  overflow-y: auto;
+}
+.login-form {
+  width: 100%;
+  max-width: 336px;
+  display: grid;
+  gap: 17px;
+}
+.login-brand { margin-bottom: 20px; }
+
+.login-heading h1 {
+  margin: 0 0 6px;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: var(--ink);
+}
+.login-heading p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.login-field { display: grid; gap: 7px; }
+.login-field > span:first-child {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.login-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--muted-2);
+  transition: border-color var(--t-base), box-shadow var(--t-base);
+}
+.login-input:hover { border-color: #dcdfe4; }
+.login-input:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.login-input input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  outline: none;
+  /* 16px stops iOS zooming the page on focus. */
+  font-size: 16px;
+  color: var(--ink);
+}
+.login-input input::placeholder { color: var(--muted-2); font-size: 14px; }
+.login-eye {
+  display: grid;
+  place-items: center;
+  color: var(--muted-2);
+  transition: color var(--t-fast);
+}
+.login-eye:hover { color: var(--ink-2); }
+
+.login-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 46px;
+  margin-top: 2px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14.5px;
+  font-weight: 600;
+  transition: background var(--t-base), opacity var(--t-base);
+}
+.login-submit:hover:not(:disabled) { background: var(--accent-hover); }
+.login-submit:disabled { opacity: .55; cursor: not-allowed; }
+
+.login-help {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.login-help a { color: var(--accent); font-weight: 500; }
+.login-help a:hover { text-decoration: underline; }
+
+/* The art pane. The image is cropped to the Trimurti already, so it only ever
+   needs to cover; the gradient keeps the copy legible over the bright stone. */
+.login-art {
+  position: relative;
+  overflow: hidden;
+  background: #2a1405;
+}
+.login-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+.login-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(20, 9, 2, .34) 0%, rgba(20, 9, 2, 0) 38%),
+    linear-gradient(0deg, rgba(20, 9, 2, .72) 0%, rgba(20, 9, 2, 0) 46%);
+}
+/* The headline sits top-left; the blurb anchors the bottom. */
+.login-art-copy {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: clamp(32px, 4vw, 56px);
+  color: #fff;
+  display: grid;
+  gap: 16px;
+  align-content: space-between;
+}
+.login-art-copy h2 {
+  margin: 0;
+  font-size: clamp(30px, 3vw, 42px);
+  line-height: 1.14;
+  font-weight: 700;
+  letter-spacing: -.022em;
+  text-shadow: 0 2px 18px rgba(20, 9, 2, .45);
+}
+.login-art-copy p {
+  margin: 0;
+  max-width: 42ch;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, .9);
+  text-shadow: 0 1px 10px rgba(20, 9, 2, .5);
+}
+
+@media (max-width: 900px) {
+  .login { grid-template-columns: 1fr; }
+  .login-art { display: none; }
+}
+@media (max-width: 480px) {
+  .login-form-pane { padding: 28px 20px; align-content: center; }
+  .login-heading h1 { font-size: 26px; }
+}
