@@ -95,6 +95,7 @@ const AdminLayout = () => {
         activePortal={activePortal}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        onOpenPalette={() => setPaletteOpen(true)}
       />
       <div className="admin-main">
         <Navbar

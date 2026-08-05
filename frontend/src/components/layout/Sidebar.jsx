@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { NavLink, Link } from 'react-router-dom';
 import {
   Award,
+  ChevronLeft,
+  Search,
   BriefcaseBusiness,
   Building2,
   CalendarDays,
@@ -44,7 +46,6 @@ import {
 } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionContext';
 import { useMe } from '../../context/MeContext';
-import Wordmark from '../Wordmark';
 
 // The main dashboard "home" — where `/` redirects (see App.jsx).
 export const HOME_PATH = '/tiesverse/dashboard';
@@ -291,7 +292,22 @@ export const portals = [
   },
 ];
 
-const Sidebar = ({ activePortal, isOpen, onClose }) => {
+/* The brand lockup: ".ties" in the saffron gradient, a hairline rule, then "HQ".
+   Kept local to the sidebar rather than folded into <Wordmark>, which is the
+   full ".tiesverse" mark used on login and signup and must not change. */
+function SidebarBrand() {
+  return (
+    <span className="pnav-brand" aria-label="Tiesverse HQ">
+      <span className="pnav-brand-ties">.ties</span>
+      <span className="pnav-brand-extra">
+        <span className="pnav-brand-sep" aria-hidden="true" />
+        <span className="pnav-brand-hq">HQ</span>
+      </span>
+    </span>
+  );
+}
+
+const Sidebar = ({ activePortal, isOpen, onClose, onOpenPalette }) => {
   const { hasAnyPermission, isSuperuser } = usePermissions();
   const { isMember, isLead, isAdvisory, isDeveloper, scope, articleAccess, nimbleAccess, mailAccess, contentAccess, financeAccess } = useMe();
   // Content writers/leads (or superusers) may see Articles & Reports.
@@ -309,6 +325,34 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
   const [expandedKey, setExpandedKey] = useState(activePortal);
   // When navigation changes the active portal, open that folder.
   useEffect(() => { setExpandedKey(activePortal); }, [activePortal]);
+
+  /* Collapsed to an icon rail. Remembered, because it is a workspace
+     preference rather than a per-visit choice. Never applied on mobile, where
+     the sidebar is a drawer and a rail would leave nothing to tap. */
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem('tv-sidebar-collapsed') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('tv-sidebar-collapsed', collapsed ? '1' : '0'); } catch { /* private mode */ }
+  }, [collapsed]);
+
+  /* While collapsed a portal's links appear in a flyout on hover, since the
+     inline tree has nowhere to live. Positioned in fixed coordinates from the
+     hovered row so it cannot be clipped by the sidebar's own overflow. */
+  const [flyout, setFlyout] = useState(null);   // { key, top }
+  const closeTimer = useRef(null);
+  const openFlyout = (key, el) => {
+    if (!collapsed) return;
+    clearTimeout(closeTimer.current);
+    const r = el.getBoundingClientRect();
+    setFlyout({ key, top: r.top });
+  };
+  const scheduleCloseFlyout = () => {
+    clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setFlyout(null), 140);
+  };
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
+  useEffect(() => { if (!collapsed) setFlyout(null); }, [collapsed]);
 
   const isPortalVisible = (portal) => {
     if (portal.everyone) return true;   // open to every authenticated member (e.g. Learn Portal)
@@ -350,16 +394,27 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
           onClick={onClose}
         />
       )}
-      <aside className={`portal-sidebar ${isOpen ? 'is-open' : ''}`}>
+      <aside className={`portal-sidebar ${isOpen ? 'is-open' : ''} ${collapsed ? 'is-collapsed' : ''}`}>
         <div className="portal-sidebar-brand">
           <Link
             to={HOME_PATH}
             onClick={onClose}
             aria-label="Go to dashboard (home)"
-            style={{ display: 'inline-flex', textDecoration: 'none', cursor: 'pointer' }}
+            className="pnav-brand-link"
           >
-            <Wordmark size={24} />
+            <SidebarBrand />
           </Link>
+          {/* Collapse on desktop; the same corner closes the drawer on mobile,
+              so one control does the job the layout calls for at that width. */}
+          <button
+            type="button"
+            className="pnav-collapse"
+            onClick={() => setCollapsed((v) => !v)}
+            aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+            title={collapsed ? 'Expand' : 'Collapse'}
+          >
+            <ChevronLeft size={16} strokeWidth={2.2} />
+          </button>
           <button
             type="button"
             className="portal-sidebar-close"
@@ -370,40 +425,66 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
           </button>
         </div>
 
+        {/* Opens the ⌘K palette — the search that already exists, rather than a
+            second one that would search the same pages differently. */}
+        <button type="button" className="pnav-search" onClick={onOpenPalette}
+          aria-label="Search (Command K)">
+          <Search size={16} strokeWidth={2} />
+          <span className="pnav-search-txt">Search</span>
+          <span className="pnav-kbd">⌘</span>
+          <span className="pnav-kbd">K</span>
+        </button>
+
         <nav className="portal-sidebar-nav custom-scrollbar" aria-label="Main navigation">
+          <span className="pnav-section-label">Main</span>
           {/* Persistent Home — always one click back to the main dashboard. */}
-          <div className="portal-nav-section">
-            <NavLink
-              to={HOME_PATH}
-              onClick={onClose}
-              className={({ isActive }) => `portal-nav-header ${isActive ? 'is-active' : ''}`}
-              style={{ textDecoration: 'none' }}
-            >
-              <Home size={17} strokeWidth={1.9} />
-              <span>Home</span>
-            </NavLink>
-          </div>
+          <NavLink
+            to={HOME_PATH}
+            onClick={onClose}
+            className={({ isActive }) => `portal-nav-header ${isActive ? 'is-active' : ''}`}
+            title="Home"
+          >
+            <Home size={18} strokeWidth={1.9} />
+            <span className="pnav-lbl">Home</span>
+          </NavLink>
+
           {portals.filter(isPortalVisible).map((portal) => {
             const PortalIcon = portal.icon;
             const isOnPortal = activePortal === portal.key;   // current page belongs here
-            const isExpanded = expandedKey === portal.key;    // folder open state (user-controlled)
+            const isExpanded = !collapsed && expandedKey === portal.key;
             const visibleLinks = portal.links.filter(isLinkVisible);
+            // A portal with one link is a destination, not a folder — going
+            // through a chevron to reach a single page is a wasted click.
+            const single = visibleLinks.length === 1 ? visibleLinks[0] : null;
 
             return (
-              <div key={portal.key} className="portal-nav-section">
-                <button
-                  type="button"
-                  className={`portal-nav-header ${isOnPortal ? 'is-active' : ''}`}
-                  onClick={() => setExpandedKey((k) => (k === portal.key ? null : portal.key))}
-                  aria-expanded={isExpanded}
-                >
-                  <PortalIcon size={17} strokeWidth={1.9} />
-                  <span>{portal.label}</span>
-                  <ChevronDown
-                    size={13}
-                    className={`portal-nav-chevron ${isExpanded ? 'is-open' : ''}`}
-                  />
-                </button>
+              <div key={portal.key} className="portal-nav-section"
+                onMouseEnter={(e) => visibleLinks.length > 1
+                  && openFlyout(portal.key, e.currentTarget)}
+                onMouseLeave={scheduleCloseFlyout}>
+                {single ? (
+                  <NavLink
+                    to={single.path}
+                    onClick={onClose}
+                    className={({ isActive }) => `portal-nav-header ${isActive || isOnPortal ? 'is-active' : ''}`}
+                    title={portal.label}
+                  >
+                    <PortalIcon size={18} strokeWidth={1.9} />
+                    <span className="pnav-lbl">{portal.label}</span>
+                  </NavLink>
+                ) : (
+                  <button
+                    type="button"
+                    className={`portal-nav-header ${isOnPortal ? 'is-active' : ''} ${isExpanded ? 'is-expanded' : ''}`}
+                    onClick={() => setExpandedKey((k) => (k === portal.key ? null : portal.key))}
+                    aria-expanded={isExpanded}
+                    title={portal.label}
+                  >
+                    <PortalIcon size={18} strokeWidth={1.9} />
+                    <span className="pnav-lbl">{portal.label}</span>
+                    <ChevronDown size={14} className="portal-nav-chevron" />
+                  </button>
+                )}
 
                 {isExpanded && (
                   <div className="portal-nav-links">
@@ -418,7 +499,32 @@ const Sidebar = ({ activePortal, isOpen, onClose }) => {
                             `portal-sidebar-link ${linkActive ? 'is-active' : ''}`
                           }
                         >
-                          <LinkIcon size={16} strokeWidth={1.8} />
+                          <span className="pnav-link-inner">
+                            <LinkIcon size={15} strokeWidth={1.8} />
+                            <span>{link.name}</span>
+                          </span>
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Collapsed: the same links, hung beside the rail. */}
+                {collapsed && flyout?.key === portal.key && visibleLinks.length > 1 && (
+                  <div className="pnav-flyout" style={{ top: flyout.top }}
+                    onMouseEnter={() => clearTimeout(closeTimer.current)}
+                    onMouseLeave={scheduleCloseFlyout}>
+                    <span className="pnav-flyout-head">{portal.label}</span>
+                    {visibleLinks.map((link) => {
+                      const LinkIcon = link.icon;
+                      return (
+                        <NavLink
+                          to={link.path}
+                          key={link.path}
+                          onClick={() => { setFlyout(null); onClose?.(); }}
+                          className={({ isActive: a }) => `pnav-flyout-item ${a ? 'is-active' : ''}`}
+                        >
+                          <LinkIcon size={15} strokeWidth={1.8} />
                           <span>{link.name}</span>
                         </NavLink>
                       );

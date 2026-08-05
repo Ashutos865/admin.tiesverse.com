@@ -22,8 +22,21 @@
   --text-main: #f4f0e9;
   --text-muted: #a99f8e;
   --border: #3a3227;
-  --sidebar-width: 260px;
+  --sidebar-width: 288px;
+  --sidebar-width-collapsed: 88px;
   --navbar-height: 64px;
+
+  /* Sidebar card (dark is the base palette; :root.light overrides below). */
+  --pnav-card: #1a1a1c;
+  --pnav-hover: #242426;
+  --pnav-pill: #28282b;
+  --pnav-line: #2c2c2f;
+  --pnav-line-strong: #333336;
+  --pnav-faint: #48484c;
+  --pnav-kbd-bg: #252527;
+  --pnav-collapse-bg: rgba(255, 255, 255, 0.07);
+  --pnav-collapse-bg-hover: rgba(255, 255, 255, 0.14);
+  --pnav-collapse-border: rgba(255, 255, 255, 0.16);
   --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --radius: 14px;
   --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', 'Segoe UI', system-ui, sans-serif;
@@ -47,6 +60,19 @@
 }
 
 :root.light {
+  /* Sidebar card, light. The page behind it is warm off-white, so the card is
+     pure white and the greys sit a step cooler to keep the edge readable. */
+  --pnav-card: #ffffff;
+  --pnav-hover: #f6f6f7;
+  --pnav-pill: #f2f2f3;
+  --pnav-line: #e6e6e9;
+  --pnav-line-strong: #dcdcdf;
+  --pnav-faint: #c2c2c6;
+  --pnav-kbd-bg: #f1f1f2;
+  --pnav-collapse-bg: rgba(255, 255, 255, 0.4);
+  --pnav-collapse-bg-hover: rgba(255, 255, 255, 0.62);
+  --pnav-collapse-border: rgba(255, 255, 255, 0.65);
+
   --primary: #fe7a00;
   --primary-hover: #e96d00;
   --primary-container: #ef6f00;
@@ -662,12 +688,23 @@ tr:hover td {
 }
 
 /* Shell — strong (regular) glass, both themes */
+/* The sidebar is deliberately NOT glass: it is a solid floating card, and a
+   translucent one would let the page's warm gradient bleed through and muddy
+   the hairline tree. This rule exists only to out-rank the shared glass block
+   that would otherwise apply. */
 :root:where(.light, .dark) .portal-sidebar {
-  background: var(--lg-glass-strong);
-  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
-  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
-  border-right: 1px solid var(--lg-border);
-  box-shadow: inset -1px 0 0 var(--lg-highlight), var(--lg-shadow-2);
+  background: var(--pnav-card);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-right: 0;
+  box-shadow:
+    0 30px 60px -24px rgba(20, 20, 25, 0.18),
+    0 4px 10px rgba(20, 20, 25, 0.05);
+}
+:root.dark .portal-sidebar {
+  box-shadow:
+    0 30px 60px -24px rgba(0, 0, 0, 0.65),
+    0 4px 10px rgba(0, 0, 0, 0.3);
 }
 :root:where(.light, .dark) .portal-topbar {
   background: var(--lg-glass-strong);
@@ -714,6 +751,13 @@ tr:hover td {
   filter: brightness(1.04);
 }
 
+/* ============================================================================
+   SIDEBAR — a floating card, not a panel welded to the window edge.
+   Ported from the Tiesverse admin sidebar design: 40px radius, soft drop
+   shadow, 292px expanded / 92px collapsed, pill nav rows and a hairline tree
+   with curved elbows joining each child to its parent.
+   ========================================================================== */
+
 .portal-sidebar {
   position: relative;
   z-index: 50;
@@ -721,152 +765,358 @@ tr:hover td {
   width: var(--sidebar-width);
   flex: 0 0 var(--sidebar-width);
   flex-direction: column;
-  border-right: 1px solid var(--outline-variant);
-  background: var(--surface-container-lowest);
-  box-shadow: 2px 0 12px rgba(15, 23, 42, 0.025);
-  transition: transform 240ms ease;
+  /* The card floats: margin on every side, and the page shows around it.
+     Height is capped to the viewport minus those margins, because the shell is
+     100vh with overflow hidden — without this the bottom edge is cut off. */
+  margin: 14px 0 14px 14px;
+  height: calc(100vh - 28px);
+  max-height: calc(100vh - 28px);
+  padding: 22px 16px 18px;
+  border-radius: 34px;
+  background: var(--pnav-card);
+  box-shadow:
+    0 30px 60px -24px rgba(20, 20, 25, 0.18),
+    0 4px 10px rgba(20, 20, 25, 0.05);
+  transition: width 300ms cubic-bezier(.4, 0, .2, 1),
+              flex-basis 300ms cubic-bezier(.4, 0, .2, 1),
+              transform 240ms ease;
 }
+.portal-sidebar.is-collapsed {
+  width: var(--sidebar-width-collapsed);
+  flex-basis: var(--sidebar-width-collapsed);
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+/* ── brand ───────────────────────────────────────────────────────────────── */
 
 .portal-sidebar-brand {
   display: flex;
-  min-height: 96px;
   align-items: center;
   justify-content: space-between;
-  padding: 22px 24px;
-  border-bottom: 1px solid var(--outline-variant);
+  gap: 10px;
+  min-height: 34px;
+  padding: 2px 2px 16px;
+  border: 0;
 }
+.pnav-brand-link { display: inline-flex; text-decoration: none; min-width: 0; }
 
-.portal-sidebar-brand > div {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.portal-sidebar-brand strong {
-  font-family: 'Hanken Grotesk', sans-serif;
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: -0.025em;
-}
-
-.portal-sidebar-brand span {
-  color: var(--text-muted);
-  font-family: 'Hanken Grotesk', sans-serif;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-
+/* Closing is a drawer action; on desktop the sidebar is always present. */
 .portal-sidebar-close {
   display: none;
   border: 0;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
+  place-items: center;
 }
+
+.pnav-brand {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 11px;
+  min-width: 0;
+  transition: gap 320ms cubic-bezier(.4, 0, .2, 1);
+}
+/* The saffron gradient is painted through the glyphs themselves. */
+.pnav-brand-ties {
+  flex: none;
+  font-family: 'Poppins', 'Hanken Grotesk', system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 25px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  background: linear-gradient(135deg, #f9ac54 0%, #ef7a2b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  transform: translateY(3px);
+}
+/* Everything after ".ties" collapses away to nothing, so the mark shortens
+   rather than being cropped mid-word by the narrower rail. */
+.pnav-brand-extra {
+  display: flex;
+  align-items: flex-end;
+  gap: 11px;
+  flex: none;
+  overflow: hidden;
+  max-width: 90px;
+  opacity: 1;
+  transition: max-width 320ms cubic-bezier(.4, 0, .2, 1), opacity 200ms ease;
+}
+.pnav-brand-sep {
+  width: 2px;
+  height: 17px;
+  flex: none;
+  background: var(--text-main);
+  border-radius: 1px;
+}
+.pnav-brand-hq {
+  font-family: 'Poppins', 'Hanken Grotesk', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+.portal-sidebar.is-collapsed .pnav-brand-extra { max-width: 0; opacity: 0; }
+.portal-sidebar.is-collapsed .pnav-brand { gap: 0; }
+
+/* The collapse control. Glass, so it reads as sitting above the card. */
+.pnav-collapse {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--pnav-collapse-border);
+  background: var(--pnav-collapse-bg);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  backdrop-filter: blur(14px) saturate(180%);
+  color: var(--text-muted);
+  cursor: pointer;
+  box-shadow: 0 8px 22px -6px rgba(20, 20, 30, 0.25), 0 2px 6px rgba(20, 20, 30, 0.08);
+  transition: transform 300ms cubic-bezier(.4, 0, .2, 1), background 150ms ease;
+}
+.pnav-collapse:hover { background: var(--pnav-collapse-bg-hover); color: var(--text-main); }
+/* Collapsed, it rotates and steps outside the card — the only affordance left
+   to reopen with, so it must not be hidden by the narrower rail. */
+.portal-sidebar.is-collapsed .pnav-collapse {
+  position: absolute;
+  right: -16px;
+  top: 20px;
+  transform: rotate(180deg);
+  z-index: 2;
+}
+
+/* ── search (opens the ⌘K palette) ───────────────────────────────────────── */
+
+.pnav-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 11px 12px;
+  margin-bottom: 16px;
+  flex: none;
+  border: 1px solid var(--pnav-line);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.pnav-search:hover { border-color: var(--pnav-line-strong); background: var(--pnav-hover); }
+.pnav-search-txt {
+  flex: 1;
+  text-align: left;
+  font-size: 13.5px;
+  color: var(--pnav-faint);
+  white-space: nowrap;
+}
+.pnav-kbd {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--pnav-kbd-bg);
+  color: var(--text-muted);
+}
+.portal-sidebar.is-collapsed .pnav-search { justify-content: center; padding: 11px; }
+.portal-sidebar.is-collapsed .pnav-search-txt,
+.portal-sidebar.is-collapsed .pnav-kbd { display: none; }
+
+/* ── nav ─────────────────────────────────────────────────────────────────── */
+
+.pnav-section-label {
+  display: block;
+  flex: none;
+  padding: 0 12px 9px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pnav-faint);
+}
+.portal-sidebar.is-collapsed .pnav-section-label { text-align: center; padding: 0 0 9px; }
 
 .portal-sidebar-nav {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  min-height: 0;
   overflow-y: auto;
-  padding: 16px 12px;
+  /* Visible so a flyout can hang outside the rail; the scroll axis is y only. */
+  overflow-x: visible;
+  padding: 0;
 }
 
-/* Accordion portal sections */
-.portal-nav-section {
-  display: flex;
-  flex-direction: column;
-}
+.portal-nav-section { position: relative; display: flex; flex-direction: column; flex: none; }
 
 .portal-nav-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 42px;
+  gap: 12px;
   width: 100%;
-  padding: 0 12px;
+  min-height: 0;
+  padding: 10px 12px;
+  flex: none;
   border: 0;
-  border-radius: 9px;
+  border-radius: 16px;
   background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-family: 'Hanken Grotesk', sans-serif;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-align: left;
-  transition: background 160ms ease, color 160ms ease;
-}
-
-.portal-nav-header:hover {
-  background: var(--surface-container-low);
   color: var(--text-main);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-align: left;
+  text-decoration: none;
+  transition: background 150ms ease;
 }
-
+.portal-nav-header:hover { background: var(--pnav-hover); color: var(--text-main); }
 .portal-nav-header.is-active {
-  color: var(--primary);
+  background: var(--pnav-pill);
+  color: var(--text-main);
+  font-weight: 600;
 }
-
-.portal-nav-header > span {
-  flex: 1;
-}
+.portal-nav-header > svg { flex: none; opacity: 0.9; }
+.pnav-lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .portal-nav-chevron {
   flex-shrink: 0;
-  transition: transform 220ms ease;
+  color: var(--text-muted);
+  transition: transform 200ms ease;
 }
+.portal-nav-header.is-expanded .portal-nav-chevron { transform: rotate(180deg); }
 
-.portal-nav-chevron.is-open {
-  transform: rotate(180deg);
-}
+.portal-sidebar.is-collapsed .portal-nav-header { justify-content: center; padding: 11px; }
+.portal-sidebar.is-collapsed .pnav-lbl,
+.portal-sidebar.is-collapsed .portal-nav-chevron { display: none; }
 
+/* The tree. A hairline runs down the group and each child hangs off it on a
+   rounded elbow, so the relationship is drawn rather than implied by indent. */
 .portal-nav-links {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 4px 0 6px 14px;
+  margin: 2px 0 4px 30px;
+  padding: 0;
 }
-
+.portal-nav-links::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 16px;
+  width: 1.5px;
+  background: var(--pnav-line-strong);
+}
 .portal-sidebar-link {
   position: relative;
   display: flex;
-  min-height: 40px;
   align-items: center;
-  gap: 12px;
-  padding: 0 12px;
-  border-radius: 8px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 0;
   color: var(--text-muted);
-  font-family: 'Hanken Grotesk', sans-serif;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.015em;
-  transition: background 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-decoration: none;
+  transition: color 150ms ease;
 }
-
-.portal-sidebar-link:hover {
-  background: var(--surface-container-low);
-  color: var(--text-main);
-  transform: translateX(2px);
-}
-
-.portal-sidebar-link.is-active {
-  background: var(--accent-grad);
-  color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), var(--lg-glow);
-}
-
-.portal-sidebar-link.is-active::before {
-  position: absolute;
-  left: -14px;
-  width: 3px;
-  height: 20px;
-  border-radius: 0 4px 4px 0;
-  background: var(--primary);
+.portal-sidebar-link::before {
   content: '';
+  position: absolute;
+  left: 0;
+  top: calc(50% - 12px);
+  width: 12px;
+  height: 12px;
+  border-left: 1.5px solid var(--pnav-line-strong);
+  border-bottom: 1.5px solid var(--pnav-line-strong);
+  border-bottom-left-radius: 12px;
 }
+.pnav-link-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 19px;
+  padding: 6px 11px;
+  border-radius: 10px;
+  color: inherit;
+  transition: background 150ms ease, color 150ms ease;
+}
+.pnav-link-inner > svg { flex: none; opacity: 0.85; }
+.portal-sidebar-link:hover { transform: none; }
+.portal-sidebar-link:hover .pnav-link-inner { background: var(--pnav-hover); color: var(--text-main); }
+.portal-sidebar-link.is-active {
+  background: transparent;
+  color: var(--text-main);
+  box-shadow: none;
+}
+.portal-sidebar-link.is-active .pnav-link-inner {
+  background: var(--pnav-pill);
+  color: var(--text-main);
+  font-weight: 600;
+}
+.portal-sidebar-link.is-active::after { content: none; }
+
+.portal-sidebar.is-collapsed .portal-nav-links { display: none; }
+
+/* Collapsed: the group's links hang beside the rail on hover. Fixed, so the
+   sidebar's own scrolling cannot clip them. */
+.pnav-flyout {
+  position: fixed;
+  left: calc(var(--sidebar-width-collapsed) + 20px);
+  min-width: 208px;
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px;
+  border-radius: 18px;
+  background: var(--pnav-card);
+  box-shadow:
+    0 30px 55px -12px rgba(20, 20, 25, 0.28),
+    0 0 0 1px rgba(20, 20, 25, 0.04);
+}
+.pnav-flyout-head {
+  padding: 4px 10px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pnav-faint);
+}
+.pnav-flyout-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 11px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 150ms ease, color 150ms ease;
+}
+.pnav-flyout-item > svg { flex: none; opacity: 0.85; }
+.pnav-flyout-item:hover { background: var(--pnav-hover); color: var(--text-main); }
+.pnav-flyout-item.is-active { background: var(--pnav-pill); color: var(--text-main); font-weight: 600; }
 
 .portal-sidebar-status {
   display: flex;
@@ -1049,17 +1299,41 @@ tr:hover td {
 }
 
 @media (max-width: 767px) {
-  .portal-sidebar {
+  /* A drawer, not a floating card: it slides from the edge and owns the full
+     height, so the margin and outer radius are dropped. Collapse is ignored —
+     an icon rail inside a drawer you opened on purpose helps nobody. */
+  .portal-sidebar,
+  .portal-sidebar.is-collapsed {
     position: fixed;
     top: 0;
     bottom: 0;
     left: 0;
+    width: var(--sidebar-width);
+    flex-basis: var(--sidebar-width);
+    margin: 0;
+    height: auto;
+    max-height: none;
+    padding: 20px 16px 18px;
+    border-radius: 0 26px 26px 0;
     transform: translateX(-100%);
   }
 
   .portal-sidebar.is-open {
     transform: translateX(0);
   }
+
+  /* Collapse is desktop-only; the drawer always shows full labels. */
+  .pnav-collapse { display: none; }
+  .portal-sidebar.is-collapsed .pnav-brand-extra { max-width: 90px; opacity: 1; }
+  .portal-sidebar.is-collapsed .pnav-lbl,
+  .portal-sidebar.is-collapsed .portal-nav-chevron { display: block; }
+  .portal-sidebar.is-collapsed .pnav-lbl { flex: 1; }
+  .portal-sidebar.is-collapsed .portal-nav-links { display: flex; }
+  .portal-sidebar.is-collapsed .portal-nav-header { justify-content: flex-start; padding: 10px 12px; }
+  .portal-sidebar.is-collapsed .pnav-search { justify-content: flex-start; padding: 11px 12px; }
+  .portal-sidebar.is-collapsed .pnav-search-txt { display: block; }
+  .portal-sidebar.is-collapsed .pnav-kbd { display: none; }
+  .pnav-flyout { display: none; }
 
   .portal-sidebar.is-open + * {
     pointer-events: none;
