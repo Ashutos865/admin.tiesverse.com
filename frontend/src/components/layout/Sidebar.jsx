@@ -77,6 +77,10 @@ export const portals = [
     icon: BookOpen,
     firstPath: '/learn/dashboard',
     everyone: true,                    // Learn Portal is open to every authenticated member
+    // Kept out of the sidebar for now. The pages and their routes still work —
+    // this only stops the portal being listed, so anyone holding a /learn link
+    // (or reaching it from the palette) still gets there.
+    hidden: true,
     links: [
       { name: 'Dashboard',       path: '/learn/dashboard',    icon: LayoutDashboard, perms: [] },
       { name: 'Program',         path: '/learn/program',      icon: CalendarDays,    perms: [] },
@@ -92,6 +96,7 @@ export const portals = [
     icon: BookOpen,
     firstPath: '/docs',
     everyone: true,                    // knowledge base is readable by every member
+    hidden: true,                      // see the note on Learn Portal above
     links: [
       { name: 'Knowledge Base', path: '/docs', icon: BookOpen, perms: [] },
     ],
@@ -425,7 +430,11 @@ const Sidebar = ({ activePortal, isOpen, onClose, onOpenPalette }) => {
   useEffect(() => { if (!collapsed) setFlyout(null); }, [collapsed]);
 
   const isPortalVisible = (portal) => {
-    if (portal.everyone) return true;   // open to every authenticated member (e.g. Learn Portal)
+    // `hidden` is a listing decision, not a permission one: the portal is simply
+    // not shown in the nav. Access is unchanged — its routes and the command
+    // palette still work for anyone who could reach them before.
+    if (portal.hidden) return false;
+    if (portal.everyone) return true;   // open to every authenticated member
     if (portal.developerOnly) return isDeveloper;
     if (portal.memberOnly) return isMember;
     if (portal.contentAccess) return hasArticleAccess;

@@ -18,7 +18,11 @@ const AdminLayout = () => {
   // Mirror the Sidebar's role gating so the palette only surfaces reachable pages.
   const commands = useMemo(() => {
     const portalVisible = (p) => {
-      if (p.everyone) return true;   // open to every authenticated member (Learn Portal, TIES Docs)
+      // Hidden portals stay out of the palette too, so a page that is not in
+      // the nav does not resurface in search. Their routes still resolve for
+      // anyone with a direct link.
+      if (p.hidden) return false;
+      if (p.everyone) return true;   // open to every authenticated member
       if (p.developerOnly) return isDeveloper;
       if (p.memberOnly) return isMember;
       if (p.advisoryOnly) return isSuperuser || isAdvisory;
