@@ -276,3 +276,254 @@
 @media (prefers-reduced-motion: reduce) {
   .login-card { animation: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   HQ SIGN IN — the two-panel card, matching TIES Mail.
+
+   Namespaced `hq-` throughout on purpose: this stylesheet is shared with
+   ForgotPassword and ResetPassword, which still use the frosted-glass
+   `.login-card` / `.login-shell` above. Re-defining those would have
+   silently broken both pages.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Overrides the warm gradient the shared .login-page sets, and drops its
+   fixed grain overlay — the card is meant to sit on plain white. */
+.hq-login-page {
+  background: #ffffff;
+  padding: 32px;
+  overflow-y: auto;
+}
+.hq-login-page::after { content: none; }
+
+/* Not equal panes: the artwork takes the larger share (≈42/58), which is what
+   keeps the shrine readable at card size. */
+.hq-login {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 42fr) minmax(0, 58fr);
+  width: 100%;
+  max-width: 920px;
+  height: min(604px, calc(100vh - 96px));
+  background: #ffffff;
+  border: 1px solid #e6e6e9;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, .04),
+    0 12px 32px -8px rgba(16, 24, 40, .12),
+    0 40px 72px -24px rgba(16, 24, 40, .18);
+}
+
+/* Optically centred rather than mathematically — the extra bottom padding is
+   what makes it read as balanced once the eye weighs the logo. */
+.hq-login-form-pane {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  padding: 36px 32px 44px;
+  min-width: 0;
+  overflow-y: auto;
+}
+.hq-login-form {
+  width: 100%;
+  max-width: 336px;
+  display: grid;
+  gap: 15px;
+}
+
+/* Sized by width; the height follows the mark's own proportions. */
+.hq-login-brand {
+  width: 132px;
+  height: auto;
+  display: block;
+  margin-bottom: 14px;
+}
+
+.hq-login-heading h1 {
+  margin: 0 0 6px;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: #111827;
+}
+.hq-login-heading p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #6b7280;
+}
+
+.hq-login-field { display: grid; gap: 7px; }
+.hq-login-field > span:first-child {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #374151;
+}
+.hq-login-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #9ca3af;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.hq-login-input:hover { border-color: #dcdfe4; }
+.hq-login-input:focus-within {
+  border-color: #fe7a00;
+  box-shadow: 0 0 0 3px rgba(254, 122, 0, .08);
+}
+.hq-login-input > svg { flex: none; color: #9ca3af; transition: color 160ms ease; }
+.hq-login-input:focus-within > svg { color: #fe7a00; }
+/* index.css styles every input globally — cream fill, its own border and a
+   focus ring. Inside this card the wrapper draws all of that, so the input
+   itself must be stripped bare or the two stack into a double outline.
+   The :not() chain mirrors that global selector's specificity so this wins on
+   the cascade rather than by !important. */
+.hq-login-input input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="submit"]):not([type="button"]),
+.hq-login-input input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="submit"]):not([type="button"]):focus {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  outline: 0;
+  box-shadow: none;
+  /* 16px stops iOS zooming the page on focus. */
+  font-size: 16px;
+  font-family: inherit;
+  color: #111827;
+}
+.hq-login-input input::placeholder { color: #9ca3af; font-size: 14px; }
+.hq-login-eye {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: #9ca3af;
+  transition: color 120ms ease;
+}
+.hq-login-eye:hover { color: #374151; }
+
+.hq-login-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 46px;
+  margin-top: 2px;
+  border: 0;
+  border-radius: 10px;
+  background: #fe7a00;
+  color: #fff;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 160ms ease, opacity 160ms ease;
+}
+.hq-login-submit:hover:not(:disabled) { background: #e86e00; }
+.hq-login-submit:disabled { opacity: .55; cursor: not-allowed; }
+.hq-login-spinner { animation: hq-login-spin 1s linear infinite; }
+@keyframes hq-login-spin { to { transform: rotate(360deg); } }
+
+.hq-login-help {
+  margin: 0;
+  text-align: center;
+  font-size: 12.5px;
+  color: #6b7280;
+}
+.hq-login-help a { color: #fe7a00; font-weight: 500; text-decoration: none; }
+.hq-login-help a:hover { text-decoration: underline; }
+.hq-login-help-sep { margin: 0 6px; color: #c2c2c6; }
+
+.hq-login-message {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.hq-login-message.is-error { background: rgba(192, 38, 38, .08); color: #c02626; }
+.hq-login-message.is-notice { background: rgba(254, 122, 0, .08); color: #b45309; }
+
+/* The art pane. The image is cropped to the Trimurti already, so it only ever
+   needs to cover; the gradient keeps the copy legible over the bright stone. */
+.hq-login-art {
+  position: relative;
+  overflow: hidden;
+  background: #2a1405;
+}
+.hq-login-art > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+.hq-login-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(20, 9, 2, .34) 0%, rgba(20, 9, 2, 0) 38%),
+    linear-gradient(0deg, rgba(20, 9, 2, .72) 0%, rgba(20, 9, 2, 0) 46%);
+}
+/* The headline sits top-left; the blurb anchors the bottom. */
+.hq-login-art-copy {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 38px 40px;
+  color: #fff;
+  display: grid;
+  gap: 16px;
+  align-content: space-between;
+}
+.hq-login-art-copy h2 {
+  margin: 0;
+  font-size: clamp(26px, 2.6vw, 34px);
+  line-height: 1.16;
+  font-weight: 700;
+  letter-spacing: -.022em;
+  text-shadow: 0 2px 18px rgba(20, 9, 2, .45);
+}
+.hq-login-art-copy p {
+  margin: 0;
+  max-width: 40ch;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, .92);
+  text-shadow: 0 1px 10px rgba(20, 9, 2, .5);
+}
+
+/* The artwork is decorative, so below 900px it is dropped rather than
+   squeezed — a letterboxed sliver of a cave carries none of its meaning. */
+@media (max-width: 900px) {
+  .hq-login { grid-template-columns: 1fr; max-width: 460px; height: auto; }
+  .hq-login-art { display: none; }
+  .hq-login-form-pane { padding: 40px 32px; }
+}
+@media (max-width: 560px) {
+  /* On a phone the frame stops earning its margin: the card goes full-bleed
+     and the page behind it disappears. */
+  .hq-login-page { padding: 0; }
+  .hq-login {
+    max-width: none;
+    min-height: 100vh;
+    height: auto;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .hq-login-form-pane { padding: 28px 20px; align-content: center; }
+  .hq-login-heading h1 { font-size: 26px; }
+}

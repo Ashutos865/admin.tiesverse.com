@@ -1,11 +1,14 @@
 import { useContext, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowRight, Eye, EyeOff, LoaderCircle, Lock, User } from 'lucide-react';
+import { Eye, EyeOff, LoaderCircle, Lock, User } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import Turnstile from '../components/Turnstile';
-import Wordmark from '../components/Wordmark';
 import './Login.css';
 
+/* A two-panel sign-in card, the same shape TIES Mail uses so the two
+   properties read as one house — different logo, headline and copy.
+   Below 900px the artwork is dropped rather than shrunk: a letterboxed sliver
+   of a cave carries none of the image's meaning. */
 const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -40,76 +43,90 @@ const Login = () => {
   };
 
   return (
-    <main className="login-page">
-      <div className="login-ambient" aria-hidden="true" />
+    <main className="login-page hq-login-page">
+      <div className="hq-login">
+        <div className="hq-login-form-pane">
+          <form className="hq-login-form" onSubmit={handleSubmit}>
+            <img src="/hq-logo.png" alt="Tiesverse HQ" className="hq-login-brand"
+              width="400" height="97" />
 
-      <section className="login-shell" aria-labelledby="login-title">
-        <header className="login-brand">
-          <h1 id="login-title" className="login-wordmark"><Wordmark size={36} /></h1>
-        </header>
+            <div className="hq-login-heading">
+              <h1>Sign in</h1>
+              <p>This is your entry to the coolest team on the planet.</p>
+            </div>
 
-        <div className="login-card">
-          <div className="login-card-heading">
-            <p>Please authenticate to access management</p>
-          </div>
+            {notice && <div className="hq-login-message is-notice">{notice}</div>}
+            {error && <div className="hq-login-message is-error" role="alert">{error}</div>}
 
-          {notice && <div className="login-message is-notice">{notice}</div>}
-          {error && <div className="login-message is-error" role="alert">{error}</div>}
-
-          <form className="login-form" onSubmit={handleSubmit}>
-            <label className="login-field">
-              <span>Crew ID or work email</span>
-              <div className="login-input">
-                <User size={18} aria-hidden="true" />
+            <label className="hq-login-field">
+              <span>Email or Crew ID</span>
+              <span className="hq-login-input">
+                <User size={16} aria-hidden="true" />
                 <input
                   type="text"
                   autoComplete="username"
-                  placeholder="CRW-A-0001 or your work email"
+                  placeholder="you@tiesverse.com"
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
+                  spellCheck="false"
+                  autoFocus
                   required
                 />
-              </div>
+              </span>
             </label>
 
-            <label className="login-field">
+            <label className="hq-login-field">
               <span>Password</span>
-              <div className="login-input">
-                <Lock size={18} aria-hidden="true" />
+              <span className="hq-login-input">
+                <Lock size={16} aria-hidden="true" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
-                  placeholder="password"
+                  placeholder="Enter your password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
                 />
                 <button
                   type="button"
-                  className="login-password-toggle"
+                  className="hq-login-eye"
                   onClick={() => setShowPassword((current) => !current)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
-              </div>
+              </span>
             </label>
 
+            {/* The bot check the API enforces on this endpoint — a login that
+                skips it is refused server-side, so it is not decoration. */}
             <Turnstile onToken={setCaptcha} resetKey={captchaReset} />
 
-            <button className="login-submit" type="submit" disabled={submitting}>
-              <span className="login-submit-label">{submitting ? 'Authenticating…' : 'Log in'}</span>
-              <span className="login-submit-arrow">
-                {submitting
-                  ? <LoaderCircle size={18} className="login-spinner" aria-hidden="true" />
-                  : <ArrowRight size={18} aria-hidden="true" />}
-              </span>
+            <button className="hq-login-submit" type="submit" disabled={submitting}>
+              {submitting
+                ? <><LoaderCircle size={16} className="hq-login-spinner" aria-hidden="true" /> Signing in…</>
+                : 'Sign in'}
             </button>
 
-            <Link to="/forgot-password" className="login-forgot">Forgot password?</Link>
+            {/* The reset page is the useful destination — it does the job
+                itself, where mailing support waits on a person. The address is
+                offered alongside for anyone who cannot get in that way. */}
+            <p className="hq-login-help">
+              <Link to="/forgot-password">Forgot password?</Link>
+              <span className="hq-login-help-sep">·</span>
+              <a href="mailto:support@tiesverse.com">support@tiesverse.com</a>
+            </p>
           </form>
         </div>
-      </section>
+
+        <div className="hq-login-art" aria-hidden="true">
+          <img src="/login-art.webp" alt="" width="1237" height="1400" />
+          <div className="hq-login-art-copy">
+            <h2>One HQ that keeps<br />the whole team<br />together.</h2>
+            <p>Manage people, programs and operations—without losing context.</p>
+          </div>
+        </div>
+      </div>
     </main>
   );
 };
