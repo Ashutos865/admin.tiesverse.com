@@ -13,7 +13,7 @@
   border-radius: 0;
   background: #f8f9ff;
   color: #0b1c30;
-  font-family: 'Hanken Grotesk', Inter, system-ui, sans-serif;
+  font-family: 'Google Sans', Inter, system-ui, sans-serif;
 }
 
 .certificate-editor-toolbar {
@@ -53,7 +53,7 @@
   border: 0;
   background: transparent;
   color: #0b1c30;
-  font-family: 'Hanken Grotesk', Inter, system-ui, sans-serif;
+  font-family: 'Google Sans', Inter, system-ui, sans-serif;
   font-size: 18px;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -121,7 +121,7 @@
   padding: 16px;
   border-bottom: 1px solid #c7c4d8;
   color: #0b1c30;
-  font-family: 'Hanken Grotesk', Inter, system-ui, sans-serif;
+  font-family: 'Google Sans', Inter, system-ui, sans-serif;
   font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -345,7 +345,7 @@
 
 .certificate-properties-heading strong,
 .certificate-variable-list header strong {
-  font-family: 'Hanken Grotesk', Inter, system-ui, sans-serif;
+  font-family: 'Google Sans', Inter, system-ui, sans-serif;
   font-size: 18px;
   letter-spacing: -0.02em;
   text-transform: capitalize;
@@ -366,7 +366,7 @@
   border-radius: 10px;
   background: #f8f9ff;
   color: #0b1c30;
-  font-family: 'Hanken Grotesk', Inter, system-ui, sans-serif;
+  font-family: 'Google Sans', Inter, system-ui, sans-serif;
 }
 
 .certificate-format-buttons button {
@@ -401,7 +401,7 @@
   display: block;
   margin-bottom: 5px;
   color: var(--primary);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -411,7 +411,7 @@
 .certificate-page-header h1 {
   margin: 0;
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 34px;
   letter-spacing: -0.035em;
 }
@@ -433,7 +433,7 @@
   border-radius: 999px;
   background: rgba(6, 122, 80, 0.06);
   color: #067a50;
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
@@ -478,7 +478,7 @@
 
 .certificate-upload-zone strong {
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 17px;
 }
 
@@ -515,7 +515,7 @@
 .certificate-section-heading h2 {
   margin: 0;
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 21px;
 }
 
@@ -589,7 +589,7 @@
   overflow: hidden;
   margin: 0;
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 17px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -608,7 +608,7 @@
 
 .certificate-template-main small {
   margin-top: 13px;
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 8px;
 }
 
@@ -684,7 +684,7 @@
 .certificate-backend-note {
   margin: 22px 0 0;
   color: var(--text-muted);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 8px;
   text-align: right;
 }
@@ -875,7 +875,7 @@
 .certificate-page-sidebar h2 {
   margin: 0 4px 11px;
   color: var(--text-muted);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 8px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1110,7 +1110,7 @@
 .certificate-field > span,
 .certificate-color-fields label span {
   color: var(--text-muted);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -1138,7 +1138,7 @@
 
 .certificate-field textarea.is-code {
   min-height: 260px;
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 9px;
 }
 
@@ -1329,7 +1329,7 @@
 .certificate-generator-title h2 {
   margin: 0;
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 17px;
 }
 
@@ -1462,7 +1462,7 @@
 
 .certificate-email-preview > span {
   color: var(--text-muted);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
@@ -1734,7 +1734,7 @@
   border: 0;
   background: transparent;
   color: #0b1c30;
-  font-family: 'Hanken Grotesk', Inter, system-ui, sans-serif;
+  font-family: 'Google Sans', Inter, system-ui, sans-serif;
   font-size: 18px;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -1760,7 +1760,7 @@
   padding: 16px;
   border-bottom: 1px solid #c7c4d8;
   color: #0b1c30;
-  font-family: 'Hanken Grotesk', Inter, system-ui, sans-serif;
+  font-family: 'Google Sans', Inter, system-ui, sans-serif;
   font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.08em;

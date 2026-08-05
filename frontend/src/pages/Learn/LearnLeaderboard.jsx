@@ -54,7 +54,7 @@ export default function LearnLeaderboard() {
               {loading ? <tr><td colSpan={3}><div className="learn-state"><Trophy size={34} /><strong>Loading leaderboard</strong></div></td></tr>
                 : rows.length ? rows.map((r) => (
                   <tr key={r.id} style={r.is_me ? { background: 'color-mix(in srgb, var(--primary) 8%, transparent)' } : undefined}>
-                    <td style={{ fontFamily: "'Hanken Grotesk', sans-serif", fontWeight: 800, fontSize: 15 }}>{medal(r.rank)}</td>
+                    <td style={{ fontFamily: "'Google Sans', sans-serif", fontWeight: 800, fontSize: 15 }}>{medal(r.rank)}</td>
                     <td><div className="learn-cell-title"><span className="learn-avatar">{r.name.split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()}</span><strong>{r.name}{r.is_me ? ' (You)' : ''}</strong></div></td>
                     <td style={{ textAlign: 'right', fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: 'var(--primary)' }}>{r.points}</td>
                   </tr>

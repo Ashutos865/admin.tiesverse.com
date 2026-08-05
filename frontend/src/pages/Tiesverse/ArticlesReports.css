@@ -16,7 +16,7 @@
   display: block;
   margin-bottom: 6px;
   color: var(--primary);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -26,7 +26,7 @@
 .content-admin-header h1 {
   margin: 0;
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: clamp(34px, 4vw, 48px);
   font-weight: 700;
   letter-spacing: -0.035em;
@@ -134,7 +134,7 @@
   background: color-mix(in srgb, var(--primary) 88%, transparent);
   backdrop-filter: blur(7px);
   color: #fff;
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -163,7 +163,7 @@
 .article-kind {
   margin-bottom: 7px;
   color: var(--primary);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -175,7 +175,7 @@
   overflow: hidden;
   margin: 0;
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 21px;
   font-weight: 700;
   letter-spacing: -0.025em;
@@ -226,7 +226,7 @@
   border-radius: 50%;
   background: var(--primary-fixed);
   color: var(--primary);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 9px;
   font-weight: 800;
 }
@@ -240,7 +240,7 @@
 .article-meta-author strong {
   overflow: hidden;
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -321,7 +321,7 @@
 
 .article-new-card strong {
   margin-top: 16px;
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 20px;
 }
 
@@ -365,7 +365,7 @@
 }
 
 .article-overview-heading h2 {
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 20px;
   line-height: 1.2;
 }
@@ -392,7 +392,7 @@
 .article-overview-metrics small {
   display: block;
   color: var(--text-muted);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 8px;
   font-weight: 600;
   letter-spacing: 0.07em;
@@ -403,7 +403,7 @@
   display: block;
   margin-top: 3px;
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 20px;
 }
 

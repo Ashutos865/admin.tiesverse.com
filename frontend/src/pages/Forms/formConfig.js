@@ -58,7 +58,7 @@ export const FONT_OPTIONS = [
   { id: 'system', label: 'System (SF/Segoe)', stack: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' },
   { id: 'serif',  label: 'Serif (Georgia)',   stack: 'Georgia, "Times New Roman", serif' },
   { id: 'mono',   label: 'Mono',              stack: '"SF Mono", ui-monospace, Menlo, monospace' },
-  { id: 'grotesk',label: 'Grotesk',           stack: '"Hanken Grotesk", "Segoe UI", sans-serif' },
+  { id: 'grotesk',label: 'Grotesk',           stack: '"Google Sans", "Segoe UI", sans-serif' },
 ];
 export const fontStack = (id) => (FONT_OPTIONS.find(f => f.id === id) || FONT_OPTIONS[0]).stack;
 

@@ -100,7 +100,7 @@ function PhotoAvatar({ member, size = 44, textSize = '0.9375rem' }) {
             background: `color-mix(in srgb, ${color} 16%, var(--surface-container-low))`,
             border: `2px solid color-mix(in srgb, ${color} 28%, transparent)`,
             display: 'grid', placeItems: 'center',
-            fontSize: textSize, fontWeight: 800, color, fontFamily: 'Hanken Grotesk, sans-serif',
+            fontSize: textSize, fontWeight: 800, color, fontFamily: "'Google Sans', sans-serif",
         }}>
             {initials(member.candidate_name)}
         </div>
@@ -168,7 +168,7 @@ function MemberRow({ member, onClick, isLast }) {
             {/* Name + role */}
             <div style={{ minWidth: 0, flex: '1 1 160px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-main)', fontFamily: "'Google Sans', sans-serif", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>
                         {member.candidate_name}
                     </span>
                     {meta.type && (
@@ -496,7 +496,7 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
 
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 2 }}>
-                                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>
+                                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, color: 'var(--text-main)', fontFamily: "'Google Sans', sans-serif" }}>
                                     {member.candidate_name}
                                 </h2>
                                 {meta.type && (
@@ -776,7 +776,7 @@ function WorkHistoryModal({ memberName, workDays, totalMinutes, fmtHM, onDownloa
             <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 640, background: 'var(--surface-container-lowest, var(--surface))', borderRadius: 16, border: '1px solid var(--outline-variant)', boxShadow: '0 24px 60px -20px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--outline-variant)' }}>
                     <div>
-                        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>Work history — {memberName}</div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)', fontFamily: "'Google Sans', sans-serif" }}>Work history — {memberName}</div>
                         <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>{workDays.length} day{workDays.length === 1 ? '' : 's'} · {fmtHM(totalMinutes)} total</div>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -823,7 +823,7 @@ function ProfileSection({ title, icon, children }) {
         <div style={{ paddingTop: 20, marginTop: 20, borderTop: '1px solid var(--outline-variant)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
                 <span style={{ color: 'var(--primary)' }}>{icon}</span>
-                <span style={{ fontSize: '0.8125rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{title}</span>
+                <span style={{ fontSize: '0.8125rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: "'Google Sans', sans-serif", textTransform: 'uppercase', letterSpacing: '0.05em' }}>{title}</span>
             </div>
             {children}
         </div>
@@ -873,7 +873,7 @@ function EditModal({ member, departments, onClose, onSaved, allowSuperuser }) {
         <div style={{ position: 'fixed', inset: 0, zIndex: 10100, background: 'rgba(15,20,25,0.72)', backdropFilter: 'blur(10px)', display: 'grid', placeItems: 'center', padding: 24 }}>
             <div style={{ background: 'var(--surface-container-lowest)', border: '1px solid var(--outline-variant)', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 32px 80px rgba(0,0,0,0.22)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 22px', borderBottom: '1px solid var(--outline-variant)' }}>
-                    <strong style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>Edit Member</strong>
+                    <strong style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: "'Google Sans', sans-serif" }}>Edit Member</strong>
                     <button onClick={onClose} style={{ background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'grid', placeItems: 'center' }}><X size={14} /></button>
                 </div>
                 <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1071,7 +1071,7 @@ function AddModal({ departments, onClose, onAdded }) {
             <div style={{ background: 'var(--surface-container-lowest)', border: '1px solid var(--outline-variant)', borderRadius: 16, width: '100%', maxWidth: 540, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 32px 80px rgba(0,0,0,0.22)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 22px', borderBottom: '1px solid var(--outline-variant)' }}>
                     <div>
-                        <strong style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>Add Team Member</strong>
+                        <strong style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: "'Google Sans', sans-serif" }}>Add Team Member</strong>
                         <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>Manually add someone who bypassed the onboarding flow.</p>
                     </div>
                     <button onClick={onClose} style={{ background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'grid', placeItems: 'center', flexShrink: 0 }}><X size={14} /></button>
@@ -1254,7 +1254,7 @@ export default function TeamDirectory() {
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24, overflowX: 'auto', paddingBottom: 2 }}>
                 {stats.map(({ label, value, accent }) => (
                     <div key={label} style={{ padding: '10px 16px', borderRadius: 10, flexShrink: 0, background: accent ? 'color-mix(in srgb, var(--primary) 7%, var(--surface-container-low))' : 'var(--surface-container-low)', border: accent ? '1px solid color-mix(in srgb, var(--primary) 20%, transparent)' : '1px solid var(--outline-variant)' }}>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 900, color: accent ? 'var(--primary)' : 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif', lineHeight: 1 }}>{loading ? '—' : value}</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 900, color: accent ? 'var(--primary)' : 'var(--text-main)', fontFamily: "'Google Sans', sans-serif", lineHeight: 1 }}>{loading ? '—' : value}</div>
                         <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: 3 }}>{label}</div>
                     </div>
                 ))}
@@ -1291,7 +1291,7 @@ export default function TeamDirectory() {
                             {/* Section header */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                                 <Building2 size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                                <h2 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>{dept.name}</h2>
+                                <h2 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: "'Google Sans', sans-serif" }}>{dept.name}</h2>
                                 <span style={{ fontSize: '0.625rem', fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: 'color-mix(in srgb, var(--primary) 8%, transparent)', color: 'var(--primary)', flexShrink: 0 }}>
                                     {deptMembers.length} {deptMembers.length === 1 ? 'member' : 'members'}
                                 </span>

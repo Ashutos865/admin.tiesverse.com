@@ -204,17 +204,17 @@ function CertCanvas({ candidate }) {
         ctx.fillStyle = '#fe7a00';
         ctx.fillRect(0, 0, W, 72);
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 13px "Inter", sans-serif';
+        ctx.font = "bold 13px 'Google Sans', sans-serif";
         ctx.textAlign = 'center';
         ctx.letterSpacing = '0.25em';
         ctx.fillText('T I E S V E R S E', W / 2, 32);
-        ctx.font = '11px "Inter", sans-serif';
+        ctx.font = "11px 'Google Sans', sans-serif";
         ctx.fillStyle = 'rgba(255,255,255,0.7)';
         ctx.fillText('CERTIFICATE OF SELECTION', W / 2, 52);
 
         // Body text
         ctx.fillStyle = '#5a5a7a';
-        ctx.font = '13px "Inter", sans-serif';
+        ctx.font = "13px 'Google Sans', sans-serif";
         ctx.textAlign = 'center';
         ctx.fillText('This is to certify that', W / 2, 120);
 
@@ -235,7 +235,7 @@ function CertCanvas({ candidate }) {
         ctx.beginPath(); ctx.moveTo(140, 186); ctx.lineTo(W - 140, 186); ctx.stroke();
 
         ctx.fillStyle = '#5a5a7a';
-        ctx.font = '13px "Inter", sans-serif';
+        ctx.font = "13px 'Google Sans', sans-serif";
         ctx.fillText('has been selected for the role of', W / 2, 220);
 
         ctx.fillStyle = '#fe7a00';
@@ -243,7 +243,7 @@ function CertCanvas({ candidate }) {
         ctx.fillText(candidate.roles || 'Intern / Associate', W / 2, 258);
 
         ctx.fillStyle = '#6b6b8a';
-        ctx.font = '12px "Inter", sans-serif';
+        ctx.font = "12px 'Google Sans', sans-serif";
         ctx.fillText(`Department: ${candidate.department || 'General'}`, W / 2, 290);
 
         const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -255,7 +255,7 @@ function CertCanvas({ candidate }) {
         ctx.beginPath(); ctx.arc(W / 2, 375, 38, 0, Math.PI * 2); ctx.stroke();
         ctx.beginPath(); ctx.arc(W / 2, 375, 32, 0, Math.PI * 2); ctx.stroke();
         ctx.fillStyle = '#fe7a00';
-        ctx.font = 'bold 11px "Inter", sans-serif';
+        ctx.font = "bold 11px 'Google Sans', sans-serif";
         ctx.fillText('OFFICIAL', W / 2, 371);
         ctx.fillText('SEAL', W / 2, 385);
 
@@ -265,11 +265,11 @@ function CertCanvas({ candidate }) {
             ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(x - 70, y - 18); ctx.lineTo(x + 70, y - 18); ctx.stroke();
             ctx.fillStyle = '#9a9ab0';
-            ctx.font = '10px "Inter", sans-serif';
+            ctx.font = "10px 'Google Sans', sans-serif";
             ctx.textAlign = 'center';
             ctx.fillText(label, x, y - 4);
             ctx.fillStyle = '#555';
-            ctx.font = 'bold 10px "Inter", sans-serif';
+            ctx.font = "bold 10px 'Google Sans', sans-serif";
             ctx.fillText(val, x, y + 10);
         });
 
@@ -1248,7 +1248,7 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                                             .filter(c => offerSubTab === 'pending' ? !offerSent[c.email] : !!offerSent[c.email])
                                             .map((c, idx, arr) => (
                                                 <tr key={c.id} style={{ borderBottom: idx < arr.length - 1 ? '1px solid var(--outline-variant)' : 'none', transition: 'background 150ms ease' }}>
-                                                    <td style={{ padding: '13px 16px', fontWeight: 700, whiteSpace: 'nowrap', fontFamily: 'Hanken Grotesk, sans-serif', color: 'var(--text-main)' }}>
+                                                    <td style={{ padding: '13px 16px', fontWeight: 700, whiteSpace: 'nowrap', fontFamily: "'Google Sans', sans-serif", color: 'var(--text-main)' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                                                             <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--primary-fixed)', display: 'grid', placeItems: 'center', fontSize: '0.75rem', fontWeight: 800, color: 'var(--primary)', flexShrink: 0 }}>
                                                                 {`${c.first_name?.[0] || ''}${c.last_name?.[0] || ''}`.toUpperCase()}
@@ -1603,7 +1603,7 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 22px', borderBottom: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', borderRadius: '14px 14px 0 0' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <Eye size={15} style={{ color: 'var(--primary)' }} />
-                                    <strong style={{ fontSize: '0.9375rem', color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>Mail Template Preview</strong>
+                                    <strong style={{ fontSize: '0.9375rem', color: 'var(--text-main)', fontFamily: "'Google Sans', sans-serif" }}>Mail Template Preview</strong>
                                 </div>
                                 <button onClick={() => setPreviewModal({ open: false, type: null, candidate: null })} style={{ background: 'var(--surface-container)', border: '1px solid var(--outline-variant)', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'grid', placeItems: 'center' }}><X size={14} /></button>
                             </div>
@@ -1678,7 +1678,7 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 22px', borderBottom: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', borderRadius: '14px 14px 0 0' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <Award size={15} style={{ color: '#8a5700' }} />
-                                    <strong style={{ fontSize: '0.9375rem', color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>Certificate of Selection — Preview</strong>
+                                    <strong style={{ fontSize: '0.9375rem', color: 'var(--text-main)', fontFamily: "'Google Sans', sans-serif" }}>Certificate of Selection — Preview</strong>
                                 </div>
                                 <button onClick={() => setPreviewModal({ open: false, type: null, candidate: null })} style={{ background: 'var(--surface-container)', border: '1px solid var(--outline-variant)', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'grid', placeItems: 'center' }}><X size={14} /></button>
                             </div>

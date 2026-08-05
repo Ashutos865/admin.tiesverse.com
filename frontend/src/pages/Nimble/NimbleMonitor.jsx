@@ -19,7 +19,7 @@ const label = { fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textT
 function Stat({ label: l, value, color }) {
   return (
     <div style={card}>
-      <div style={{ fontSize: 26, fontWeight: 900, color: color || 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>{value}</div>
+      <div style={{ fontSize: 26, fontWeight: 900, color: color || 'var(--text-main)', fontFamily: "'Google Sans', sans-serif" }}>{value}</div>
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{l}</div>
     </div>
   );

@@ -11,7 +11,7 @@ export default function Wordmark({ size = 28, light = false, mono = false, hq = 
   const accent = mono ? ink : '#fe7a00';
 
   const reset = {
-    fontFamily: "'Poppins', 'Hanken Grotesk', system-ui, sans-serif",
+    fontFamily: "'Poppins', 'Google Sans', system-ui, sans-serif",
     textTransform: 'none',
     fontWeight: 700,
     fontSize: '1em',

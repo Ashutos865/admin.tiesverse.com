@@ -4,9 +4,17 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The UI font is Google Sans, self-hosted (see @font-face in index.css).
+         Preloaded because it is otherwise discovered three round trips deep —
+         bundle, stylesheet, font — by which point the first paint has already
+         happened in a fallback face and then visibly reflowed. -->
+    <link rel="preload" href="/fonts/google-sans-latin.woff2" as="font"
+          type="font/woff2" crossorigin />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
+    <!-- Only the two faces still in use: the mono for figures/IDs/code, and
+         Poppins for the .tiesverse wordmark. -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/certificate-editor-overrides.css" />
     <title>Tiesverse Admin</title>
   </head>

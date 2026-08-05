@@ -51,7 +51,7 @@ const eyebrowStyle = {
     display: 'block',
     marginBottom: 6,
     color: 'var(--primary)',
-    fontFamily: 'Hanken Grotesk, sans-serif',
+    fontFamily: "'Google Sans', sans-serif",
     fontSize: 10,
     fontWeight: 700,
     letterSpacing: '0.1em',
@@ -61,7 +61,7 @@ const eyebrowStyle = {
 const titleStyle = {
     margin: 0,
     color: 'var(--text-main)',
-    fontFamily: 'Hanken Grotesk, sans-serif',
+    fontFamily: "'Google Sans', sans-serif",
     fontSize: 'clamp(1.75rem, 4vw, 2.125rem)',
     fontWeight: 850,
     lineHeight: 1.05,
@@ -92,7 +92,7 @@ const createButtonStyle = {
     boxShadow: '0 8px 20px color-mix(in srgb, var(--primary) 22%, transparent)',
     color: '#fff',
     cursor: 'pointer',
-    fontFamily: 'Hanken Grotesk, sans-serif',
+    fontFamily: "'Google Sans', sans-serif",
     fontSize: 13,
     fontWeight: 750,
     lineHeight: 1,
@@ -265,7 +265,7 @@ export default function HRDepartments() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                            <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif', overflowWrap: 'anywhere' }}>
+                                            <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: "'Google Sans', sans-serif", overflowWrap: 'anywhere' }}>
                                                 {dept.name}
                                             </h3>
                                             <span style={{
@@ -330,7 +330,7 @@ export default function HRDepartments() {
                     <div style={{ background: 'var(--surface-container-lowest)', border: '1px solid var(--outline-variant)', borderRadius: 13, width: '100%', maxWidth: 480, boxShadow: '0 28px 80px rgba(15,23,42,0.2)' }}>
                         {/* Modal header */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 22px', borderBottom: '1px solid var(--outline-variant)' }}>
-                            <strong style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>
+                            <strong style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: "'Google Sans', sans-serif" }}>
                                 {modal.mode === 'create' ? 'New Department' : 'Edit Department'}
                             </strong>
                             <button type="button" aria-label="Close department dialog" title="Close" onClick={closeModal} style={{ background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'grid', placeItems: 'center' }}><X size={14} /></button>

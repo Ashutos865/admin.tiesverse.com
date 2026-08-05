@@ -209,12 +209,12 @@ export default function OnboardingManagement() {
                                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                                     {sub.avatar_url
                                         ? <img src={sub.avatar_url} alt={sub.candidate_name} style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--outline-variant)' }} />
-                                        : <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--primary-fixed)', display: 'grid', placeItems: 'center', fontSize: '1rem', fontWeight: 800, color: 'var(--primary)', fontFamily: 'Hanken Grotesk, sans-serif', flexShrink: 0 }}>
+                                        : <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--primary-fixed)', display: 'grid', placeItems: 'center', fontSize: '1rem', fontWeight: 800, color: 'var(--primary)', fontFamily: "'Google Sans', sans-serif", flexShrink: 0 }}>
                                             {sub.candidate_name?.split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase()}
                                         </div>}
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
-                                            <span style={{ color: 'var(--text-main)', fontWeight: 700, fontSize: '0.9375rem', fontFamily: 'Hanken Grotesk, sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub.candidate_name}</span>
+                                            <span style={{ color: 'var(--text-main)', fontWeight: 700, fontSize: '0.9375rem', fontFamily: "'Google Sans', sans-serif", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub.candidate_name}</span>
                                             <span style={{ fontSize: '0.625rem', fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: sm.bg, color: sm.color, textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>{sm.label}</span>
                                         </div>
                                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub.candidate_email}</div>
@@ -253,12 +253,12 @@ export default function OnboardingManagement() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 24px', borderBottom: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', borderRadius: '16px 16px 0 0', flexShrink: 0 }}>
                             {profileModal.avatar_url
                                 ? <img src={profileModal.avatar_url} alt={profileModal.candidate_name} style={{ width: 50, height: 50, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--outline-variant)' }} />
-                                : <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'var(--primary-fixed)', display: 'grid', placeItems: 'center', fontSize: '1.125rem', fontWeight: 800, color: 'var(--primary)', fontFamily: 'Hanken Grotesk, sans-serif', flexShrink: 0 }}>
+                                : <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'var(--primary-fixed)', display: 'grid', placeItems: 'center', fontSize: '1.125rem', fontWeight: 800, color: 'var(--primary)', fontFamily: "'Google Sans', sans-serif", flexShrink: 0 }}>
                                     {profileModal.candidate_name?.split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase()}
                                 </div>}
                             <div style={{ flex: 1 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                    <strong style={{ fontSize: '1.0625rem', color: 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>{profileModal.candidate_name}</strong>
+                                    <strong style={{ fontSize: '1.0625rem', color: 'var(--text-main)', fontFamily: "'Google Sans', sans-serif" }}>{profileModal.candidate_name}</strong>
                                     {(() => { const sm = STATUS_META[profileModal.status] || STATUS_META.pending; return <span style={{ fontSize: '0.625rem', fontWeight: 800, padding: '2px 9px', borderRadius: 4, background: sm.bg, color: sm.color, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{sm.label}</span>; })()}
                                 </div>
                                 <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: 2 }}>{profileModal.candidate_email}</div>

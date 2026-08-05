@@ -57,7 +57,7 @@
 .form-gate-panel-heading h2 {
   margin: 0;
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 23px;
   font-weight: 650;
   letter-spacing: -0.02em;
@@ -283,13 +283,13 @@
 .form-gate-detailed-heading h2 {
   margin: 0;
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 17px;
 }
 
 .form-gate-detailed-heading > span {
   color: var(--text-muted);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -357,7 +357,7 @@
 
 .form-gate-open-count span {
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.06em;

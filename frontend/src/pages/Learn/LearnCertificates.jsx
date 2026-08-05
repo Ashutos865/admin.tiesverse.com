@@ -68,7 +68,7 @@ export default function LearnCertificates() {
                   </span>
                   <span className={`learn-status ${d.earned ? 'is-done' : 'is-locked'}`}>{d.earned ? 'Earned' : 'Locked'}</span>
                 </div>
-                <h3 style={{ fontFamily: "'Hanken Grotesk', 'Inter', sans-serif", fontSize: 17, marginBottom: 4 }}>{d.name} Certificate</h3>
+                <h3 style={{ fontFamily: "'Google Sans', sans-serif", fontSize: 17, marginBottom: 4 }}>{d.name} Certificate</h3>
                 <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
                   {d.earned ? 'All courses complete. Certificate available.' : `Complete all ${d.courses_total || 0} courses to unlock.`}
                 </p>

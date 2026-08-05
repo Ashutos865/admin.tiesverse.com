@@ -293,7 +293,7 @@ export default function TiesDocs() {
                 <div style={{ flex: 1 }}>
                   {parentTitle && <div className="docs-subpage-note"><CornerDownRight size={13} /> Sub-page of <b>{parentTitle}</b></div>}
                   <input className="docs-title-input" value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} placeholder="Page title"
-                    style={{ width: '100%', fontFamily: "'Hanken Grotesk','Inter',sans-serif", fontSize: 26, fontWeight: 700, border: 0, background: 'transparent', color: 'var(--text-main)', outline: 'none' }} />
+                    style={{ width: '100%', fontFamily: "'Google Sans', sans-serif", fontSize: 26, fontWeight: 700, border: 0, background: 'transparent', color: 'var(--text-main)', outline: 'none' }} />
                 </div>
                 <div className="docs-actions">
                   <select value={editing.space} onChange={(e) => setEditing({ ...editing, space: Number(e.target.value) })} style={{ padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface-hover)', color: 'var(--text-main)' }}>

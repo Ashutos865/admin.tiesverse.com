@@ -16,7 +16,7 @@ const CLASS_LABEL = {
 function Stat({ label, value, color }) {
     return (
         <div style={card}>
-            <div style={{ fontSize: 26, fontWeight: 900, color: color || 'var(--text-main)', fontFamily: 'Hanken Grotesk, sans-serif' }}>{value}</div>
+            <div style={{ fontSize: 26, fontWeight: 900, color: color || 'var(--text-main)', fontFamily: "'Google Sans', sans-serif" }}>{value}</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{label}</div>
         </div>
     );

@@ -53,7 +53,7 @@ export default function LearnProgram() {
       <div className="learn-panel">
         <div className="learn-panel-heading">
           <div><h2>Onboarding completion</h2><p>Target is 100% across all published modules</p></div>
-          <strong style={{ fontFamily: "'Hanken Grotesk', sans-serif", fontSize: 28, color: 'var(--primary)' }}>{completion}%</strong>
+          <strong style={{ fontFamily: "'Google Sans', sans-serif", fontSize: 28, color: 'var(--primary)' }}>{completion}%</strong>
         </div>
         <div className="learn-progress"><i style={{ width: `${completion}%` }} /></div>
       </div>
@@ -87,7 +87,7 @@ export default function LearnProgram() {
           {PILLARS.map((p, i) => (
             <div className="learn-panel" key={p.n} style={{ padding: 20 }}>
               <div className="learn-eyebrow">{String(i + 1).padStart(2, '0')}</div>
-              <h3 style={{ fontFamily: "'Hanken Grotesk', 'Inter', sans-serif", fontSize: 16, margin: '4px 0 6px' }}>{p.n}</h3>
+              <h3 style={{ fontFamily: "'Google Sans', sans-serif", fontSize: 16, margin: '4px 0 6px' }}>{p.n}</h3>
               <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>{p.d}</p>
             </div>
           ))}

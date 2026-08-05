@@ -83,7 +83,7 @@ function Stat({ label: l, value, sub, accent }) {
     <div style={{ ...card, padding: 16, flex: 1, minWidth: 175 }}>
       <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase',
                     letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 7 }}>{l}</div>
-      <div style={{ fontSize: 24, fontWeight: 900, fontFamily: 'Hanken Grotesk, sans-serif',
+      <div style={{ fontSize: 24, fontWeight: 900, fontFamily: "'Google Sans', sans-serif",
                     color: accent || 'var(--text-main)' }}>{value}</div>
       {sub && <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 3 }}>{sub}</div>}
     </div>

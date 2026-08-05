@@ -16,7 +16,7 @@
   display: block;
   margin-bottom: 6px;
   color: var(--primary);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -25,7 +25,7 @@
 
 .career-admin-header h1 {
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 34px;
   letter-spacing: -0.035em;
 }
@@ -103,7 +103,7 @@
   border-radius: 999px;
   background: var(--primary-fixed);
   color: var(--on-primary-fixed-variant, var(--primary));
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 9px;
   font-weight: 700;
 }
@@ -128,7 +128,7 @@
   align-items: center;
   gap: 6px;
   color: var(--text-muted);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.07em;
@@ -150,7 +150,7 @@
 
 .career-position-card h2 {
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 21px;
   letter-spacing: -0.025em;
   line-height: 1.25;
@@ -187,7 +187,7 @@
   align-items: center;
   gap: 7px;
   color: var(--text-muted);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 9px;
 }
 
@@ -252,7 +252,7 @@
 }
 
 .career-position-new-card strong {
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 17px;
 }
 

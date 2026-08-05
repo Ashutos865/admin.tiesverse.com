@@ -98,7 +98,7 @@
 
 .webinar-listing-state > strong {
   color: var(--text-main);
-  font-family: "Hanken Grotesk", sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 15px;
 }
 
@@ -115,7 +115,7 @@
   border-radius: 5px;
   background: var(--surface-container-high);
   color: var(--text-muted);
-  font-family: "Hanken Grotesk", sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: .075em;
@@ -132,7 +132,7 @@
   padding: 5px 12px;
   border: 1px solid transparent;
   border-radius: 999px;
-  font-family: "Hanken Grotesk", sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 10px;
   font-weight: 600;
   line-height: 1.2;
@@ -153,7 +153,7 @@
 .webinar-listing-body h3 {
   margin: 0 0 17px;
   color: var(--text-main);
-  font-family: "Hanken Grotesk", sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 20px;
   font-weight: 650;
   letter-spacing: -.016em;

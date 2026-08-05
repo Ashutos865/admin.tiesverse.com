@@ -16,7 +16,7 @@
   display: block;
   margin-bottom: 6px;
   color: var(--primary);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -25,7 +25,7 @@
 
 .events-page-header h1 {
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 34px;
   letter-spacing: -0.035em;
 }
@@ -123,7 +123,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--primary) 10%, transparent);
   color: var(--primary);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.07em;
@@ -159,7 +159,7 @@
   display: -webkit-box;
   overflow: hidden;
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 20px;
   letter-spacing: -0.025em;
   line-height: 1.25;
@@ -233,7 +233,7 @@
 
 .event-status-price strong {
   color: var(--text-main);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 18px;
 }
 
@@ -387,7 +387,7 @@
 
 .event-modal-header h2,
 .event-delete-modal h2 {
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 21px;
 }
 
@@ -432,7 +432,7 @@
 .event-modal form > label:not(.event-field),
 .event-modal form > div > label {
   color: var(--text-muted);
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Google Sans', sans-serif;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
