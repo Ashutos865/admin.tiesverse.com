@@ -381,8 +381,14 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 
 .ctx-section { padding: 16px; border-bottom: 1px solid var(--line-soft); display: grid; gap: 10px; }
 .ctx-contact { display: grid; justify-items: center; gap: 8px; text-align: center; padding-top: 22px; }
-.ctx-contact strong { font-size: 15px; font-weight: 600; }
-.ctx-contact span { font-size: 12.5px; color: var(--muted); }
+/* Name over address. Both are inline elements, so without this they run
+   together on one line — "Licensinglicensing@mapsource.com". */
+.ctx-contact strong { display: block; font-size: 15px; font-weight: 600; }
+.ctx-contact span {
+  display: block; margin-top: 2px;
+  font-size: 12.5px; color: var(--muted);
+  overflow-wrap: anywhere;
+}
 .ctx-field { display: grid; gap: 5px; }
 .ctx-field > .eyebrow { font-size: 10.5px; }
 .ctx-value { font-size: 13px; color: var(--ink-2); }

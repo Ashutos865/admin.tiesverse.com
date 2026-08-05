@@ -3,6 +3,12 @@
   <head>
     <link rel="icon" type="image/png" href="/logo.png" />
     <meta charset="UTF-8" />
+    <!-- The UI font. Preloaded because it is discovered inside a stylesheet
+         that is itself discovered inside the JS bundle — three round trips
+         deep, by which point the first paint has already happened in a
+         fallback face and then visibly reflowed. -->
+    <link rel="preload" href="/fonts/google-sans-latin.woff2" as="font"
+          type="font/woff2" crossorigin />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#fff6ec" />
     <meta name="robots" content="noindex, nofollow" />
