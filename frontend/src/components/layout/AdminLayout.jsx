@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
 import Sidebar, { portals } from './Sidebar';
+import MailFab from './MailFab';
 import CommandPalette from '../CommandPalette';
 import { usePermissions } from '../../context/PermissionContext';
 import { useMe } from '../../context/MeContext';
@@ -102,15 +103,12 @@ const AdminLayout = () => {
         onOpenPalette={() => setPaletteOpen(true)}
       />
       <div className="admin-main">
-        <Navbar
-          activePortal={activePortal}
-          setIsSidebarOpen={setIsSidebarOpen}
-          onOpenPalette={() => setPaletteOpen(true)}
-        />
+        <Navbar setIsSidebarOpen={setIsSidebarOpen} />
         <main className="admin-page custom-scrollbar">
           <Outlet />
         </main>
       </div>
+      <MailFab />
       {paletteOpen && (
         <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />
       )}

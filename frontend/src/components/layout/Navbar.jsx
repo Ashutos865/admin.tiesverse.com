@@ -1,38 +1,18 @@
 import { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, HelpCircle, Mail, Menu, Moon, Search, Sun } from 'lucide-react';
+import { ArrowLeft, Menu } from 'lucide-react';
 import { AuthContext } from '../../context/AuthContext';
-import { ThemeContext } from '../../context/ThemeContext';
-import { useMe } from '../../context/MeContext';
-import { mailSsoTicket } from '../../apiClient';
-import NotificationsBell from './NotificationsBell.jsx';
 
-// Standalone webmail. Overridable so a dev build can point at a local instance.
-const MAIL_SITE_URL = import.meta.env.VITE_MAIL_URL || 'https://mail.tiesverse.com';
-
-const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '');
-
-const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
+/* The topbar carries only where you are: a way back, and who is greeted.
+ *
+ * Everything that used to sit on the right has a better home. Mail is the
+ * floating button at the bottom right; theme, account settings and log out are
+ * in the sidebar's profile menu; search is ⌘K, which is where people who use
+ * it were reaching for it anyway.
+ */
+const Navbar = ({ setIsSidebarOpen }) => {
   const { user, profile } = useContext(AuthContext);
-  const { theme, toggleTheme } = useContext(ThemeContext);
-  // Only people a superadmin has given a mailbox see the Mail shortcut.
-  const { mailAccess } = useMe();
-  const hasMail = mailAccess === 'admin' || mailAccess === 'user';
   const navigate = useNavigate();
-
-  // Carry the signed-in session across to mail.tiesverse.com so nobody types
-  // their password twice. The tab is opened FIRST, synchronously — a window
-  // opened after an await is a popup as far as the browser is concerned, and
-  // gets blocked. If the ticket fails we simply land on the login page.
-  const openMail = async () => {
-    const tab = window.open('', '_blank');
-    const res = await mailSsoTicket().catch(() => null);
-    const url = res?.code
-      ? `${MAIL_SITE_URL}/#sso=${encodeURIComponent(res.code)}`
-      : MAIL_SITE_URL;
-    if (tab) tab.location = url;
-    else window.open(url, '_blank', 'noreferrer');
-  };
 
   const displayName = profile?.display_name || user?.username || 'Admin';
   const firstName = displayName.split(/\s+/)[0];
@@ -62,52 +42,6 @@ const Navbar = ({ activePortal, setIsSidebarOpen, onOpenPalette }) => {
         </button>
         <span className="portal-topbar-title">{greeting}, {firstName}</span>
       </div>
-
-      <div className="portal-topbar-actions">
-        {onOpenPalette && (
-          <button
-            type="button"
-            className="palette-trigger"
-            onClick={onOpenPalette}
-            aria-label="Search"
-            title="Search pages and actions"
-            style={paletteBtn}
-          >
-            <Search size={16} />
-            <span className="palette-trigger-label" style={paletteBtnText}>Search</span>
-            <kbd className="palette-trigger-label" style={paletteBtnKbd}>{isMac ? '⌘' : 'Ctrl'} K</kbd>
-          </button>
-        )}
-        {hasMail && (
-          <button
-            onClick={openMail}
-            style={navBtn}
-            title="Open TIES Mail"
-            aria-label="Open TIES Mail"
-          >
-            <Mail size={17} />
-          </button>
-        )}
-        <NotificationsBell />
-        <button
-          type="button"
-          onClick={() => navigate('/help')}
-          aria-label="Help"
-          title="Help & documentation"
-        >
-          <HelpCircle size={19} />
-        </button>
-        {/* Theme, profile and log out live in the sidebar's profile card now —
-            one account menu, in the place that never scrolls away. */}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-label="Toggle theme"
-          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-        >
-          {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
-        </button>
-      </div>
     </header>
   );
 };
@@ -117,17 +51,6 @@ const navBtn = {
   width: 36, height: 36, borderRadius: 10, cursor: 'pointer',
   border: '1px solid var(--outline-variant)', background: 'transparent',
   color: 'var(--text-muted)', flex: 'none',
-};
-const paletteBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: 8, width: 'auto',
-  height: 36, boxSizing: 'border-box', padding: '0 12px', borderRadius: 10, cursor: 'pointer',
-  border: '1px solid var(--outline-variant)', background: 'transparent',
-  color: 'var(--text-muted)',
-};
-const paletteBtnText = { fontSize: 13, fontWeight: 500 };
-const paletteBtnKbd = {
-  fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 6,
-  border: '1px solid var(--border,#e5e7eb)', color: 'var(--text-muted,#9ca3af)',
 };
 
 export default Navbar;

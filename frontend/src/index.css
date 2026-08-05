@@ -1874,3 +1874,114 @@ tr:hover td {
 /* Mail Automation certificate-generation spinner */
 @keyframes ma-spin { to { transform: rotate(360deg); } }
 .ma-spin { animation: ma-spin 1s linear infinite; }
+
+/* ── floating mail button ────────────────────────────────────────────────── */
+
+/* Bottom right, above everything except the wash it triggers. Sized to the
+   thumb: 60px is comfortably past the 44px minimum for a touch target. */
+.mail-fab {
+  position: fixed;
+  right: 26px;
+  bottom: 26px;
+  z-index: 70;
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  cursor: pointer;
+  line-height: 0;
+  /* The icon carries its own orange, so the shadow is tinted to match rather
+     than the neutral grey used elsewhere — a grey shadow under a saturated
+     object reads as dirt. */
+  box-shadow:
+    0 10px 26px -8px rgba(239, 122, 43, 0.55),
+    0 3px 8px rgba(20, 20, 25, 0.14);
+  transition: transform 220ms cubic-bezier(.34, 1.4, .5, 1), box-shadow 220ms ease;
+}
+.mail-fab img { width: 100%; height: 100%; display: block; border-radius: inherit; }
+.mail-fab:hover {
+  transform: translateY(-3px) scale(1.05);
+  box-shadow:
+    0 16px 34px -8px rgba(239, 122, 43, 0.62),
+    0 4px 10px rgba(20, 20, 25, 0.16);
+}
+.mail-fab:active { transform: translateY(-1px) scale(0.97); }
+/* Once pressed it hands over to the wash, so it gets out of the way. */
+.mail-fab.is-going { opacity: 0; transform: scale(.6); pointer-events: none; transition: opacity 160ms ease, transform 160ms ease; }
+
+/* The wash. Parked at the button's corner and scaled to nothing, so when it
+   grows it appears to come out of the button rather than fading in over the
+   page. The circle is sized off the viewport diagonal so it always covers,
+   whatever the aspect ratio. */
+/* Sized in viewport units rather than scaled from 60px: scale() takes a
+   unitless number, and calc() over vw/vh yields a length, which makes the whole
+   declaration invalid and silently dropped. Growing width/height sidesteps that
+   and needs no arithmetic to cover the corners. */
+.mail-fab-wash {
+  position: fixed;
+  right: 26px;
+  bottom: 26px;
+  z-index: 200;
+  width: 60px;
+  height: 60px;
+  margin: 0;
+  border-radius: 50%;
+  background: linear-gradient(150deg, #f9963f 0%, #ef7a2b 55%, #e26c1c 100%);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(0, 0);
+  transition: width 560ms cubic-bezier(.4, 0, .2, 1),
+              height 560ms cubic-bezier(.4, 0, .2, 1),
+              margin 560ms cubic-bezier(.4, 0, .2, 1),
+              opacity 140ms ease;
+}
+.mail-fab-wash.is-going {
+  opacity: 1;
+  /* 250vmax across covers every corner at any aspect ratio. The negative
+     margins re-centre it on the button's middle (30px in from its corner)
+     as it grows, so the colour appears to come out of the button. */
+  width: 250vmax;
+  height: 250vmax;
+  margin: 0 calc(30px - 125vmax) calc(30px - 125vmax) 0;
+}
+/* The icon travels from the button to the centre of the screen and grows a
+   little, so the eye follows it in rather than cutting to a new page. Its own
+   layer, so it is never scaled by the wash behind it. */
+.mail-fab-hero {
+  position: fixed;
+  right: 26px;
+  bottom: 26px;
+  z-index: 201;
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  opacity: 0;
+  pointer-events: none;
+  transform: none;
+  transition: opacity 160ms ease, transform 520ms cubic-bezier(.4, 0, .2, 1),
+              right 520ms cubic-bezier(.4, 0, .2, 1), bottom 520ms cubic-bezier(.4, 0, .2, 1);
+}
+.mail-fab-hero.is-going {
+  opacity: 1;
+  /* Right/bottom of 50% puts its far corner at the centre; the translate then
+     shifts it back by half its own size to sit true. */
+  right: 50%;
+  bottom: 50%;
+  transform: translate(50%, 50%) scale(1.9);
+}
+
+@media (max-width: 767px) {
+  .mail-fab, .mail-fab-wash, .mail-fab-hero { right: 18px; bottom: 18px; }
+  .mail-fab-hero.is-going { right: 50%; bottom: 50%; }
+}
+
+/* Someone who has asked for less motion gets the destination, not the show. */
+@media (prefers-reduced-motion: reduce) {
+  .mail-fab, .mail-fab:hover, .mail-fab:active { transform: none; }
+  .mail-fab-wash { transition: opacity 120ms ease; }
+  .mail-fab-wash.is-going { width: 250vmax; height: 250vmax; margin: 0 calc(30px - 125vmax) calc(30px - 125vmax) 0; }
+  .mail-fab-hero { transition: opacity 120ms ease; }
+  .mail-fab-hero.is-going { right: 50%; bottom: 50%; transform: translate(50%, 50%); }
+}
