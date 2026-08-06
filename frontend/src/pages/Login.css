@@ -288,10 +288,16 @@
 
 /* Overrides the warm gradient the shared .login-page sets, and drops its
    fixed grain overlay — the card is meant to sit on plain white. */
+/* place-items:center from the shared .login-page would pin a too-tall card to
+   the middle and crop both ends. `safe` centres only while there is room and
+   falls back to start-aligned once there is not, so nothing is ever cut off
+   the top — and the page scrolls to reach the rest. */
 .hq-login-page {
   background: #ffffff;
   padding: 32px;
   overflow-y: auto;
+  place-items: safe center;
+  align-content: safe center;
 }
 .hq-login-page::after { content: none; }
 
@@ -304,7 +310,13 @@
   grid-template-columns: minmax(0, 42fr) minmax(0, 58fr);
   width: 100%;
   max-width: 920px;
-  height: min(604px, calc(100vh - 96px));
+  /* Grows with its content rather than being pinned to a number. The form is
+     taller than it looks — the captcha alone adds ~65px — so a fixed height
+     clipped the logo and the footer link the moment the window got short.
+     Deliberately NO max-height: capping it at the viewport is what forced the
+     form to squeeze and lose its footer on a short window. Past that point the
+     page scrolls instead, which costs a scroll and loses nothing. */
+  min-height: min(604px, calc(100vh - 64px));
   background: #ffffff;
   border: 1px solid #e6e6e9;
   border-radius: 24px;
@@ -317,13 +329,16 @@
 
 /* Optically centred rather than mathematically — the extra bottom padding is
    what makes it read as balanced once the eye weighs the logo. */
+/* `safe center` again: centred while it fits, top-aligned once it does not,
+   so the logo is never pushed off the top of its own pane. No overflow of its
+   own — the pane pushes the card taller and the PAGE scrolls, rather than the
+   form hiding its own footer behind an inner scrollbar nobody notices. */
 .hq-login-form-pane {
   display: grid;
   justify-items: center;
-  align-content: center;
-  padding: 36px 32px 44px;
+  align-content: safe center;
+  padding: 32px 32px 36px;
   min-width: 0;
-  overflow-y: auto;
 }
 .hq-login-form {
   width: 100%;

@@ -109,12 +109,9 @@ const Login = () => {
             </button>
 
             {/* The reset page is the useful destination — it does the job
-                itself, where mailing support waits on a person. The address is
-                offered alongside for anyone who cannot get in that way. */}
+                itself, where mailing support waits on a person. */}
             <p className="hq-login-help">
               <Link to="/forgot-password">Forgot password?</Link>
-              <span className="hq-login-help-sep">·</span>
-              <a href="mailto:support@tiesverse.com">support@tiesverse.com</a>
             </p>
           </form>
         </div>
