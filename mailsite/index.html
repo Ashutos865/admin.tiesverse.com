@@ -1,7 +1,15 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <link rel="icon" type="image/png" href="/logo.png" />
+    <!-- The app icon, not the wordmark. The '.ties | Mail' lockup is 5:1, so as
+         a favicon it shrank to an unreadable smear; the square envelope is what
+         the floating button in the admin panel uses, so the tab and the button
+         that opens it now show the same mark.
+         .ico first, carrying 16/32/48 — the browser picks the size it needs
+         rather than downscaling one big PNG in the tab strip. -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta charset="UTF-8" />
     <!-- The UI font. Preloaded because it is discovered inside a stylesheet
          that is itself discovered inside the JS bundle — three round trips
