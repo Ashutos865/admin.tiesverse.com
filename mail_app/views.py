@@ -9,6 +9,7 @@ Two audiences:
 import uuid
 from datetime import timedelta
 
+from django.contrib.auth import get_user_model
 from django.core import signing
 from django.db.models import Count, Q
 from django.http import HttpResponse
@@ -37,7 +38,25 @@ SHARED_TOKEN_MAX_AGE = 12 * 60 * 60          # 12 hours
 
 
 def is_superadmin(user):
-    return bool(user and getattr(user, 'is_superuser', False))
+    """May this user administer TIES Mail?
+
+    Two ways in, and the distinction matters. `is_superuser` is checked in 63
+    places across the portal — finance, HR, careers, docs — so granting it to
+    hand out mailbox administration handed over everything else too. A MailAdmin
+    row grants mail administration ALONE.
+
+    The name is kept because it is what the whole app already calls this gate;
+    what changed is that it is no longer only the portal superuser.
+    """
+    if not (user and getattr(user, 'is_authenticated', False)):
+        return False
+    if getattr(user, 'is_superuser', False):
+        return True
+    try:
+        from .models import MailAdmin
+        return MailAdmin.objects.filter(user_id=user.id).exists()
+    except Exception:  # noqa: BLE001 — a lookup failure must never grant access
+        return False
 
 
 # ── scoped shared-mailbox token ──────────────────────────────────────────────
@@ -76,11 +95,24 @@ class MailPermission(permissions.BasePermission):
 
 
 class IsSuperAdmin(permissions.BasePermission):
-    message = 'Only a superadmin can administer mailboxes.'
+    message = 'Only a mail administrator can do this.'
 
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated
                     and is_superadmin(request.user))
+
+
+class IsPortalSuperuser(permissions.BasePermission):
+    """Appointing other administrators is kept to portal superusers.
+
+    A mail admin who could appoint mail admins could quietly widen the circle;
+    deciding who administers mail stays with whoever runs the portal.
+    """
+    message = 'Only a portal superadmin can appoint mail administrators.'
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated
+                    and getattr(request.user, 'is_superuser', False))
 
 
 def _accessible_mailbox(request, mailbox_id):
@@ -121,7 +153,12 @@ class MyMailboxesView(APIView):
         user = request.user
         return Response({
             'mode': 'portal',
+            # Administers mail — either a portal superuser or an appointed mail
+            # admin. The name is kept because the whole app reads it already.
             'is_superadmin': is_superadmin(user),
+            # May appoint OTHER administrators. Only portal superusers, so the
+            # UI can hide controls the server would refuse anyway.
+            'can_manage_admins': bool(getattr(user, 'is_superuser', False)),
             'user': {
                 'name': user.get_full_name() or user.username,
                 'email': user.email or '',
@@ -545,9 +582,41 @@ class MailboxAdminViewSet(viewsets.ModelViewSet):
                        note=f'Created {box.address} ({box.kind}).')
 
     def perform_update(self, serializer):
+        """Record WHAT changed, not merely that something did — an audit line
+        reading 'Updated x@…' answers none of the questions it gets asked."""
+        before = Mailbox.objects.filter(pk=serializer.instance.pk).first()
+        was = {
+            'display_name': before.display_name, 'address': before.address,
+            'daily_send_limit': before.daily_send_limit,
+            'is_active': before.is_active, 'is_archived': before.is_archived,
+            'user': before.user_id, 'member': before.member_id,
+        } if before else {}
+
         box = serializer.save()
-        services.audit(self.request.user, 'updated_mailbox', mailbox=box,
-                       note=f'Updated {box.address}.')
+
+        labels = {
+            'display_name': 'name', 'address': 'address',
+            'daily_send_limit': 'daily limit', 'is_active': 'active',
+            'is_archived': 'archived',
+        }
+        changes = []
+        for field, label in labels.items():
+            old, new = was.get(field), getattr(box, field)
+            if old != new:
+                changes.append(f'{label} {old!r} → {new!r}')
+
+        # Reassignment is its own action: it hands someone else's mail to a new
+        # person, which is not the same kind of edit as a rename.
+        if was.get('user') != box.user_id or was.get('member') != box.member_id:
+            from .serializers import _user_label
+            who = (getattr(box.member, 'candidate_name', '') if box.member_id
+                   else _user_label(box.user_id)) or 'nobody'
+            services.audit(self.request.user, 'updated_mailbox_owner', mailbox=box,
+                           note=f'{box.address} now belongs to {who}.')
+
+        if changes:
+            services.audit(self.request.user, 'updated_mailbox', mailbox=box,
+                           note=f'{box.address}: ' + '; '.join(changes))
 
     def perform_destroy(self, instance):
         # Never hard-delete a mailbox — archive it so its history survives.
@@ -611,6 +680,106 @@ class MailboxGrantView(APIView):
         services.audit(request.user, 'revoked_access',
                        mailbox=Mailbox.objects.filter(pk=pk).first(),
                        note=f'Revoked access for user {user_id}.')
+        return Response({'ok': True})
+
+
+class MailAdminRoleView(APIView):
+    """GET — who administers mail. POST {user} — appoint. DELETE ?user= — remove.
+
+    Reading the list is open to any mail admin (knowing who else can reach your
+    mail is not a secret worth keeping); changing it is superuser-only.
+    """
+    permission_classes = [IsSuperAdmin]
+
+    def _user_label(self, user_id):
+        User = get_user_model()
+        u = User.objects.filter(pk=user_id).only(
+            'username', 'first_name', 'last_name', 'email').first()
+        if not u:
+            return ('', '')
+        return ((u.get_full_name() or u.username or '').strip(), u.email or '')
+
+    def get(self, request):
+        from .models import MailAdmin
+        rows = list(MailAdmin.objects.all())
+        User = get_user_model()
+        # Superusers administer mail implicitly and hold no row, so they are
+        # listed too — otherwise the page would claim they cannot do what they
+        # plainly can.
+        supers = list(User.objects.filter(is_superuser=True, is_active=True)
+                      .only('id', 'username', 'first_name', 'last_name', 'email'))
+        out = [{
+            'id': f'super-{u.id}', 'user': u.id,
+            'user_name': (u.get_full_name() or u.username or '').strip(),
+            'user_email': u.email or '',
+            'source': 'superuser', 'removable': False,
+            'granted_by_name': '', 'created_at': None,
+        } for u in supers]
+        seen = {u.id for u in supers}
+        for r in rows:
+            if r.user_id in seen:
+                continue          # a superuser who also holds a row: listed once
+            out.append({
+                'id': r.id, 'user': r.user_id,
+                'user_name': r.user_name, 'user_email': r.user_email,
+                'source': 'granted', 'removable': True,
+                'granted_by_name': r.granted_by_name, 'created_at': r.created_at,
+            })
+        return Response(out)
+
+    def post(self, request):
+        if not getattr(request.user, 'is_superuser', False):
+            return Response({'error': IsPortalSuperuser.message}, status=403)
+        from .models import MailAdmin
+        user_id = request.data.get('user')
+        if not user_id:
+            return Response({'error': 'user is required.'}, status=400)
+        User = get_user_model()
+        target = User.objects.filter(pk=user_id, is_active=True).first()
+        if not target:
+            return Response({'error': 'That person was not found.'}, status=400)
+        if target.is_superuser:
+            return Response(
+                {'error': 'Superadmins already administer mail.'}, status=400)
+
+        name, email = self._user_label(target.id)
+        row, created = MailAdmin.objects.get_or_create(
+            user_id=target.id,
+            defaults={
+                'user_name': name, 'user_email': email,
+                'granted_by_user': request.user,
+                'granted_by_name': (request.user.get_full_name()
+                                    or request.user.username or ''),
+                'note': (request.data.get('note') or '')[:255],
+            },
+        )
+        if created:
+            services.audit(request.user, 'granted_admin',
+                           note=f'Made {name or target.username} a mail administrator.')
+        return Response({
+            'id': row.id, 'user': row.user_id, 'user_name': row.user_name,
+            'user_email': row.user_email, 'source': 'granted', 'removable': True,
+            'granted_by_name': row.granted_by_name, 'created_at': row.created_at,
+        }, status=201 if created else 200)
+
+    def delete(self, request):
+        if not getattr(request.user, 'is_superuser', False):
+            return Response({'error': IsPortalSuperuser.message}, status=403)
+        from .models import MailAdmin
+        user_id = request.query_params.get('user')
+        if not user_id:
+            return Response({'error': 'user is required.'}, status=400)
+        # Removing your own row would be harmless for a superuser (the flag
+        # still admits them) but confusing, so say so rather than no-op.
+        if str(user_id) == str(request.user.id):
+            return Response({'error': 'You cannot remove your own access.'}, status=400)
+        row = MailAdmin.objects.filter(user_id=user_id).first()
+        if not row:
+            return Response({'error': 'They are not a mail administrator.'}, status=404)
+        name = row.user_name
+        row.delete()
+        services.audit(request.user, 'revoked_admin',
+                       note=f'Removed mail administration from {name or user_id}.')
         return Response({'ok': True})
 
 

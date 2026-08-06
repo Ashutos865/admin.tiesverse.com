@@ -65,6 +65,12 @@ export const adminRevoke = (id, user) => del(`/api/mail/admin/mailboxes/${id}/gr
 export const adminAudit = (mailbox) =>
   get(`/api/mail/admin/audit/${mailbox ? `?mailbox=${mailbox}` : ''}`);
 
+// who may administer mail at all — reading is open to admins, appointing and
+// removing is portal-superadmin only (enforced server side)
+export const adminListAdmins = () => get('/api/mail/admin/admins/');
+export const adminAddAdmin = (user) => post('/api/mail/admin/admins', { user });
+export const adminRemoveAdmin = (user) => del(`/api/mail/admin/admins/?user=${user}`);
+
 // Portal accounts, for the mailbox-access picker. Superadmin-only server side.
 export const adminListUsers = () => get('/api/accounts/users');
 

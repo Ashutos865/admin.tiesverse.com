@@ -278,8 +278,18 @@ def get_mail_access(user):
         boxes = list(mailboxes_for_user(user))
     except Exception:  # noqa: BLE001 — mail must never break /me for everyone else
         boxes = []
+    # Superusers administer mail implicitly; a MailAdmin row grants the same
+    # administration WITHOUT the rest of the portal. Both must report 'admin'
+    # here or the Mail entry point would be hidden from someone who can in fact
+    # administer it.
     if getattr(user, 'is_superuser', False):
         return ('admin', boxes)
+    try:
+        from mail_app.models import MailAdmin
+        if MailAdmin.objects.filter(user_id=user.id).exists():
+            return ('admin', boxes)
+    except Exception:  # noqa: BLE001 — never break /me over this lookup
+        pass
     return ('user', boxes) if boxes else ('none', [])
 
 

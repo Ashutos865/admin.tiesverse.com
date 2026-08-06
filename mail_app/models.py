@@ -240,6 +240,9 @@ class MailAuditLog(models.Model):
         ('sent_scheduled', 'Sent a scheduled message'),
         ('bulk_started', 'Started a bulk send'),
         ('created_task', 'Turned a message into a task'),
+        ('granted_admin', 'Made someone a mail administrator'),
+        ('revoked_admin', 'Removed mail administration'),
+        ('updated_mailbox_owner', 'Reassigned a mailbox'),
     ]
 
     actor_user = models.ForeignKey(
@@ -446,3 +449,46 @@ class MailBulkJob(models.Model):
     @property
     def total(self):
         return len(self.recipients or [])
+
+
+class MailAdmin(models.Model):
+    """Someone who may administer TIES Mail without being a portal superuser.
+
+    `is_superuser` is checked in 63 places across the portal — finance, HR,
+    careers, docs — so it was the only way to hand out mailbox administration
+    and it carried everything else with it. This row grants mail administration
+    ALONE: mailboxes, access grants, passwords and the audit log, and nothing
+    outside mail.
+
+    Superusers are still mail admins implicitly and are not listed here; the
+    role is additive, never a way to take a superuser's access away.
+    """
+
+    # auth.User lives in the `default` DB while this app is on turso_db, so the
+    # FK is unconstrained and resolved with a separate query (see serializers).
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, db_constraint=False,
+        related_name='+',
+    )
+    # Kept alongside the id so the list still reads correctly if the account is
+    # later renamed or removed.
+    user_name = models.CharField(max_length=255, blank=True)
+    user_email = models.CharField(max_length=254, blank=True)
+
+    granted_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        db_constraint=False, related_name='+',
+    )
+    granted_by_name = models.CharField(max_length=255, blank=True)
+    note = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mail_admins'
+        ordering = ['user_name', 'id']
+        constraints = [
+            models.UniqueConstraint(fields=['user'], name='uniq_mail_admin_user'),
+        ]
+
+    def __str__(self):
+        return self.user_name or f'user {self.user_id}'

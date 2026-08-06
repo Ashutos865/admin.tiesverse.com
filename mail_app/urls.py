@@ -2,6 +2,7 @@ from django.urls import path
 from rest_framework.routers import SimpleRouter
 
 from .views import (
+    MailAdminRoleView,
     MailAttachmentDetailView, MailAttachmentUploadView, MailAuditLogView,
     MailBulkJobActionView, MailBulkJobDetailView, MailBulkJobListView,
     MailboxAdminViewSet, MailboxAvatarView, MailboxGrantView, MailboxPasswordView,
@@ -58,6 +59,9 @@ urlpatterns = [
     path('admin/mailboxes/<int:pk>/password/', MailboxPasswordView.as_view(), name='mail-password'),
     path('admin/mailboxes/<int:pk>/grants/', MailboxGrantView.as_view(), name='mail-grants'),
     path('admin/audit/', MailAuditLogView.as_view(), name='mail-audit'),
+    # who may administer mail at all — reading is open to admins, changing it
+    # is portal-superuser only (enforced in the view)
+    path('admin/admins/', MailAdminRoleView.as_view(), name='mail-admins'),
 
     *router.urls,
 ]
