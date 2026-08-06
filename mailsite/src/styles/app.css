@@ -163,7 +163,11 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   color: var(--ink-2); font-size: 13.5px; font-weight: 500;
   transition: background var(--t-fast), color var(--t-fast);
 }
-.nav-item:hover { background: var(--card-2); }
+.nav-item:hover { background: var(--hover); color: var(--ink); }
+/* A click must register the instant the mouse goes down, not when the next
+   screen finishes loading. */
+.nav-item:active { background: var(--pressed); }
+.nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .nav-item .label { flex: 1; min-width: 0; text-align: left; }
 .nav-item .count {
   font-size: 11.5px; font-weight: 600; color: var(--muted);
@@ -174,12 +178,18 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   color: var(--accent);
   font-weight: 600;
 }
+.nav-item.active svg { color: var(--accent); }
 .nav-item.active .count { color: var(--accent); }
-/* The leading bar marks the active row without moving anything. */
+/* The leading bar marks the active row without moving anything. It sits just
+   inside the row: .sidebar-scroll clips horizontal overflow, so a bar hung
+   outside the row (left: -10px) landed in the padding and was never drawn. */
 .nav-item.active::before {
-  content: ''; position: absolute; left: -10px; top: 6px; bottom: 6px;
+  content: ''; position: absolute; left: 0; top: 5px; bottom: 5px;
   width: 3px; border-radius: 0 3px 3px 0; background: var(--accent);
 }
+/* The active row keeps its tint on hover — hover must never wash out the
+   stronger signal of where you already are. */
+.nav-item.active:hover { background: var(--accent-soft); }
 .nav-item .badge {
   min-width: 20px; height: 18px; padding: 0 6px;
   display: grid; place-items: center;
@@ -269,7 +279,10 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   transition: background var(--t-fast);
 }
 .msg-row:hover { background: var(--card); }
-.msg-row.unread { background: var(--accent-soft); }
+/* Pinned rather than --accent-soft: that token was strengthened so the
+   sidebar's active row is actually visible, but a whole list of unread
+   rows at that strength is too heavy. */
+.msg-row.unread { background: rgba(254, 122, 0, .08); }
 .msg-row.unread:hover { background: rgba(254, 122, 0, .12); }
 .msg-row.selected { background: var(--card); box-shadow: inset 3px 0 0 var(--accent); }
 .msg-main { min-width: 0; display: grid; gap: 2px; }

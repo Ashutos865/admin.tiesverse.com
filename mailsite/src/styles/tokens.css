@@ -44,6 +44,10 @@
   --card-2: #fcfcfd;
   --line: #e5e7eb;
   --line-soft: #f1f2f4;
+  /* Interaction feedback. --card-2 (#fcfcfd) was doing this job and is a 1%
+     grey — on a white sidebar it reads as no response at all. */
+  --hover: #f0f1f4;
+  --pressed: #e4e6ea;
 
   /* text */
   --ink: #111827;
@@ -54,7 +58,7 @@
   /* the one brand colour */
   --accent: #fe7a00;
   --accent-hover: #e86e00;
-  --accent-soft: rgba(254, 122, 0, .08);
+  --accent-soft: rgba(254, 122, 0, .13);
   --accent-line: rgba(254, 122, 0, .28);
 
   /* meaning */
