@@ -1,14 +1,18 @@
 /* Session handling for TIES Mail.
  *
- * Three ways in:
- *   portal      — work email or Crew ID + password, same account as the panel
- *   shared      — a team mailbox's own password; scoped to that one box
- *   sso         — arriving from the admin panel already signed in
+ * Two ways in:
+ *   portal — work email or Crew ID + password, same account as the panel
+ *   sso    — arriving from the admin panel already signed in
+ *
+ * There used to be a third: a team mailbox's own password. It is gone. A team
+ * mailbox is now reached by granting it to someone's normal account, so a
+ * password can neither leak nor hide who actually read or sent a message.
  *
  * Tokens live in sessionStorage rather than localStorage: mail is often read on
  * a shared or borrowed machine, and closing the tab should end the session.
  */
 export const TOKENS_KEY = 'tiesverseAuthTokens';
+// Retired. Kept only so signOut can clear a token left in an old session.
 export const SHARED_KEY = 'tiesMailSharedToken';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://admin.tiesverse.com';
@@ -27,25 +31,21 @@ export function getTokens() {
 export function getAccess() {
   return getTokens()?.access || null;
 }
+/* Always null. The server no longer issues or honours a shared-mailbox token,
+   so a stale one left in an old tab must not be treated as a session — it would
+   look signed in and then have every request refused. */
 export function getSharedToken() {
-  try {
-    return sessionStorage.getItem(SHARED_KEY) || null;
-  } catch {
-    return null;
-  }
+  return null;
 }
 export function setTokens(tokens) {
   sessionStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));
 }
-export function setSharedToken(token) {
-  sessionStorage.setItem(SHARED_KEY, token);
-}
 export function signOut() {
   sessionStorage.removeItem(TOKENS_KEY);
-  sessionStorage.removeItem(SHARED_KEY);
+  sessionStorage.removeItem(SHARED_KEY);   // clear any retired token too
 }
 export function isSignedIn() {
-  return Boolean(getAccess() || getSharedToken());
+  return Boolean(getAccess());
 }
 
 /* Decode a JWT payload without a library. Only used to read `exp` for a
@@ -120,23 +120,9 @@ export async function signIn(username, password) {
   }
 }
 
-export async function signInShared(address, password) {
-  try {
-    const res = await fetch(`${API_BASE}/api/mail/shared-login/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address, password }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.token) {
-      return { error: data?.error || 'That mailbox or password was not recognised.' };
-    }
-    setSharedToken(data.token);
-    return { ok: true };
-  } catch {
-    return { error: 'Could not reach the server. Check your connection.' };
-  }
-}
+/* signInShared is gone with the endpoint it called. A team mailbox is opened by
+   signing in as yourself; if it has been granted to you it appears in your
+   sidebar alongside your own. */
 
 /* Arriving from the admin panel: the code rides in the URL fragment, which
    browsers never send to a server and proxies never log. It is redeemed before

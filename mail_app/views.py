@@ -59,23 +59,25 @@ def is_superadmin(user):
         return False
 
 
-# ── scoped shared-mailbox token ──────────────────────────────────────────────
+# ── shared-mailbox password login: withdrawn ─────────────────────────────────
+#
+# A team mailbox used to carry its own password, so a whole team could sign in
+# to that one box without portal accounts. That is gone: a team mailbox is now
+# reached only by granting it to someone's normal account.
+#
+# Two reasons. A password shared by a team is a password that leaks and can
+# never be un-shared without rotating it for everyone; and every action taken
+# through it was attributable only to "the team", so the audit log could not say
+# who actually read or sent a message.
+#
+# This function is kept — rather than being torn out of the twenty-odd handlers
+# that call it — and now always returns None. No token can be issued (the login
+# endpoint is gone) and none would be honoured if one were replayed, so every
+# one of those call sites simply takes its authenticated-user path.
 
-def make_shared_token(mailbox):
-    return signing.dumps({'mailbox_id': mailbox.id}, salt=SHARED_TOKEN_SALT)
-
-
-def mailbox_from_shared_token(request):
-    """A team signed in with the mailbox password: grants access to THAT box only."""
-    raw = request.META.get('HTTP_X_MAIL_TOKEN', '') or ''
-    if not raw:
-        return None
-    try:
-        data = signing.loads(raw, salt=SHARED_TOKEN_SALT, max_age=SHARED_TOKEN_MAX_AGE)
-    except Exception:  # noqa: BLE001 — expired/tampered tokens simply grant nothing
-        return None
-    box = Mailbox.objects.filter(pk=data.get('mailbox_id')).first()
-    return box if (box and box.usable) else None
+def mailbox_from_shared_token(request):  # noqa: ARG001 — signature kept for callers
+    """Always None. Shared-password sign-in has been withdrawn; see above."""
+    return None
 
 
 class MailPermission(permissions.BasePermission):
@@ -100,19 +102,6 @@ class IsSuperAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated
                     and is_superadmin(request.user))
-
-
-class IsPortalSuperuser(permissions.BasePermission):
-    """Appointing other administrators is kept to portal superusers.
-
-    A mail admin who could appoint mail admins could quietly widen the circle;
-    deciding who administers mail stays with whoever runs the portal.
-    """
-    message = 'Only a portal superadmin can appoint mail administrators.'
-
-    def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated
-                    and getattr(request.user, 'is_superuser', False))
 
 
 def _accessible_mailbox(request, mailbox_id):
@@ -156,9 +145,10 @@ class MyMailboxesView(APIView):
             # Administers mail — either a portal superuser or an appointed mail
             # admin. The name is kept because the whole app reads it already.
             'is_superadmin': is_superadmin(user),
-            # May appoint OTHER administrators. Only portal superusers, so the
-            # UI can hide controls the server would refuse anyway.
-            'can_manage_admins': bool(getattr(user, 'is_superuser', False)),
+            # May appoint other administrators. Any mail admin can — the role
+            # confers mail administration and nothing else, so widening it
+            # cannot reach finance, HR or the rest of the portal.
+            'can_manage_admins': is_superadmin(user),
             'user': {
                 'name': user.get_full_name() or user.username,
                 'email': user.email or '',
@@ -517,38 +507,7 @@ def _collect_attachments(request, box):
     return rows, None
 
 
-# ── shared-mailbox password sign-in ──────────────────────────────────────────
-
-class SharedMailboxLoginView(APIView):
-    """POST {address, password} → a scoped token for that ONE mailbox.
-
-    Lets a team sign in to e.g. nimble@mail.tiesverse.com without a portal account.
-    The token never grants portal access or any other mailbox.
-    """
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
-    throttle_scope = 'login'
-
-    def post(self, request):
-        address = (request.data.get('address') or '').strip().lower()
-        password = request.data.get('password') or ''
-        generic = Response({'error': 'Invalid mailbox address or password.'}, status=400)
-        if not address or not password:
-            return generic
-        box = Mailbox.objects.filter(address__iexact=address, kind=KIND_SHARED,
-                                     is_active=True, is_archived=False).first()
-        # Same generic error whether the box is missing or the password is wrong.
-        if not box or not box.check_access_password(password):
-            return generic
-        services.audit(None, 'shared_login', mailbox=box,
-                       note=f'Password sign-in to {box.address}.')
-        return Response({
-            'token': make_shared_token(box),
-            'mailbox': MailboxSerializer(box).data,
-        })
-
-
-# ── superadmin administration ────────────────────────────────────────────────
+# ── mail administration ──────────────────────────────────────────────────────
 
 class MailboxAdminViewSet(viewsets.ModelViewSet):
     """Create/manage every mailbox. Superadmin ROLE only — promoting a colleague to
@@ -628,23 +587,28 @@ class MailboxAdminViewSet(viewsets.ModelViewSet):
 
 
 class MailboxPasswordView(APIView):
-    """POST {password} — set/rotate a SHARED mailbox password; empty clears it."""
+    """Gone. A team mailbox no longer has a password of its own.
+
+    Kept as a route so an old tab still holding the button gets a sentence
+    explaining what to do instead, rather than a bare 404. It also CLEARS any
+    password left on the box, so pressing it retires the old credential rather
+    than leaving it lying in the database.
+    """
     permission_classes = [IsSuperAdmin]
 
     def post(self, request, pk):
         box = Mailbox.objects.filter(pk=pk).first()
         if not box:
             return Response({'error': 'Mailbox not found.'}, status=404)
-        if box.kind != KIND_SHARED:
-            return Response({'error': 'Only shared mailboxes can have a password.'}, status=400)
-        raw = request.data.get('password') or ''
-        if raw and len(raw) < 8:
-            return Response({'error': 'Password must be at least 8 characters.'}, status=400)
-        box.set_access_password(raw)
-        box.save(update_fields=['access_password'])
-        services.audit(request.user, 'set_password', mailbox=box,
-                       note=('Set/rotated' if raw else 'Cleared') + f' password for {box.address}.')
-        return Response({'ok': True, 'has_access_password': box.has_access_password})
+        if box.access_password:
+            box.set_access_password('')
+            box.save(update_fields=['access_password'])
+            services.audit(request.user, 'set_password', mailbox=box,
+                           note=f'Cleared the retired password on {box.address}.')
+        return Response(
+            {'error': 'Team mailboxes no longer have their own password. '
+                      'Use Access to give people the mailbox instead.'},
+            status=400)
 
 
 class MailboxGrantView(APIView):
@@ -728,8 +692,9 @@ class MailAdminRoleView(APIView):
         return Response(out)
 
     def post(self, request):
-        if not getattr(request.user, 'is_superuser', False):
-            return Response({'error': IsPortalSuperuser.message}, status=403)
+        # Any mail admin may appoint another. The role only ever confers mail
+        # administration, so widening it cannot leak finance, HR or the portal —
+        # and every appointment is audited with who made it.
         from .models import MailAdmin
         user_id = request.data.get('user')
         if not user_id:
@@ -763,8 +728,6 @@ class MailAdminRoleView(APIView):
         }, status=201 if created else 200)
 
     def delete(self, request):
-        if not getattr(request.user, 'is_superuser', False):
-            return Response({'error': IsPortalSuperuser.message}, status=403)
         from .models import MailAdmin
         user_id = request.query_params.get('user')
         if not user_id:

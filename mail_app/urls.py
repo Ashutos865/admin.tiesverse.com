@@ -10,7 +10,7 @@ from .views import (
     MailMessageCancelView, MailMessageDetailView, MailMessageFlagsView,
     MailMessageListView, MailMessageReleaseView, MailNoteView, MailSendView,
     MailSsoRedeemView, MailSsoTicketView,
-    MyMailboxesView, SharedMailboxLoginView,
+    MyMailboxesView,
 )
 from .tasks_api import MailAssignableView, MailMessageTaskView
 
@@ -48,8 +48,9 @@ urlpatterns = [
     path('bulk/<int:pk>/', MailBulkJobDetailView.as_view(), name='mail-bulk-detail'),
     path('bulk/<int:pk>/<str:action>/', MailBulkJobActionView.as_view(), name='mail-bulk-action'),
 
-    # team sign-in with a shared-mailbox password (no portal account needed)
-    path('shared-login/', SharedMailboxLoginView.as_view(), name='mail-shared-login'),
+    # NOTE: shared-login/ is deliberately gone. A team mailbox no longer has a
+    # password of its own — it is reached by granting it to someone's normal
+    # account, so every action is attributable to a person.
 
     # silent sign-in when arriving from the admin panel
     path('sso-ticket/', MailSsoTicketView.as_view(), name='mail-sso-ticket'),

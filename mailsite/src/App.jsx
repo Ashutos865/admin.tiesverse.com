@@ -113,7 +113,10 @@ function Root() {
 
   if (!signedIn) return <Login onSignedIn={onSignedIn} />;
 
-  if (!me?.mailboxes?.length) {
+  /* Someone with no mailbox has nothing to read — EXCEPT a mail administrator,
+     who needs to get in precisely to create the first one. Bouncing them here
+     was a bootstrap trap: the person able to fix it was the one locked out. */
+  if (!me?.mailboxes?.length && !me?.is_superadmin) {
     return (
       <div style={{ height: '100%', display: 'grid', placeItems: 'center', padding: 24 }}>
         <EmptyState icon={<Inbox size={30} style={{ color: 'var(--muted-2)' }} />}
@@ -123,7 +126,7 @@ function Root() {
               Sign out
             </button>
           )}>
-          A superadmin has not given this account a TIES Mail mailbox.
+          Nobody has given this account a TIES Mail mailbox yet.
         </EmptyState>
       </div>
     );
@@ -167,15 +170,17 @@ function Shell({ me, counts, onCompose, children }) {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // The mailbox in the URL, or the first one this person can open.
+  // The mailbox in the URL, or the first one this person can open. May be
+  // undefined: a mail admin with no mailbox of their own still gets in, to
+  // create the first one.
   const idFromPath = location.pathname.match(/^\/m\/(\d+)/)?.[1];
   const activeMailbox = (me.mailboxes || []).find((b) => String(b.id) === String(idFromPath))
-    || me.mailboxes[0];
+    || (me.mailboxes || [])[0];
 
   const focusSearch = useCallback(() => {
     const el = document.querySelector('.pane-list input');
     if (el) el.focus();
-    else navigate(`/m/${activeMailbox.id}/inbox`);
+    else if (activeMailbox) navigate(`/m/${activeMailbox.id}/inbox`);
   }, [navigate, activeMailbox]);
 
   useEffect(() => {

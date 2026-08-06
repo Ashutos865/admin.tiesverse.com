@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Archive, Check, Key, Loader2, Pencil, Plus, RotateCcw, Search, Shield,
+  Archive, Check, Loader2, Pencil, Plus, RotateCcw, Search, Shield,
   UserMinus, UserPlus, Users, X,
 } from 'lucide-react';
 import {
   adminAddAdmin, adminArchiveMailbox, adminAudit, adminCreateMailbox, adminGrant,
   adminListAdmins, adminListGrants, adminListMailboxes, adminListUsers,
-  adminRemoveAdmin, adminRevoke, adminSetPassword, adminUpdateMailbox,
+  adminRemoveAdmin, adminRevoke, adminUpdateMailbox,
 } from '../api/mail.js';
 import { Avatar, EmptyState, ErrorNotice, useDelayedFlag } from '../components/common.jsx';
 import { relative } from '../lib/format.js';
@@ -17,8 +17,9 @@ import { relative } from '../lib/format.js';
 const asList = (res) => (Array.isArray(res) ? res : res?.results || []);
 
 /* Mailbox administration, for anyone who administers mail — a portal superuser
- * or someone appointed on the Administrators tab. Appointing others stays with
- * superusers.
+ * or someone appointed on the Administrators tab. A mail admin can do all of
+ * it: create personal and team mailboxes, grant access to any of them, and
+ * appoint further administrators.
  */
 export default function Admin({ me }) {
   const navigate = useNavigate();
@@ -116,12 +117,11 @@ export default function Admin({ me }) {
                     <Pencil size={13} /> Edit
                   </button>
                   {b.kind === 'SHARED' && (
-                    <>
-                      <button className="btn btn-sm" onClick={() => setGrantsFor(b)}>
-                        <Users size={13} /> Access{b.grant_count ? ` (${b.grant_count})` : ''}
-                      </button>
-                      <PasswordButton box={b} />
-                    </>
+                    /* Access is the only way in: a team mailbox has no password
+                       of its own, so this list IS who can open it. */
+                    <button className="btn btn-sm" onClick={() => setGrantsFor(b)}>
+                      <Users size={13} /> Access{b.grant_count ? ` (${b.grant_count})` : ''}
+                    </button>
                   )}
                   {b.is_archived ? (
                     /* Restoring was impossible from here before — an archived
@@ -184,23 +184,6 @@ export default function Admin({ me }) {
   );
 }
 
-function PasswordButton({ box }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <button className="btn btn-sm" disabled={busy}
-      onClick={async () => {
-        const pw = window.prompt(`Set a sign-in password for ${box.address}\n\nLeave empty to remove it.`);
-        if (pw === null) return;
-        if (pw && pw.length < 8) { window.alert('Use at least 8 characters.'); return; }
-        setBusy(true);
-        const res = await adminSetPassword(box.id, pw);
-        setBusy(false);
-        window.alert(res.error || (pw ? 'Password set.' : 'Password removed.'));
-      }}>
-      {busy ? <Loader2 size={13} className="spin" /> : <Key size={13} />} Password
-    </button>
-  );
-}
 
 function CreateMailbox({ onClose, onCreated }) {
   const [address, setAddress] = useState('');
@@ -303,8 +286,10 @@ function CreateMailbox({ onClose, onCreated }) {
               )}
             </div>
           ) : (
-            <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
-              You will choose who can open this team mailbox once it exists.
+            <p className="muted" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.55 }}>
+              A team mailbox has no password of its own. Once it exists, use
+              <strong> Access</strong> to give it to people — it then appears in
+              their sidebar beside their own mail.
             </p>
           )}
 
@@ -380,7 +365,7 @@ function GrantsModal({ box, onClose }) {
           {grants === null ? <p className="muted">Loading…</p>
             : !grants.length ? (
               <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-                Nobody yet — this mailbox can only be opened with its password.
+                Nobody yet — until someone is added, this mailbox cannot be opened at all.
               </p>
             ) : (
               <div style={{ display: 'grid', gap: 6 }}>
@@ -711,7 +696,7 @@ function AdminsTab({ canManage }) {
         </div>
       ) : (
         <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
-          Only a portal superadmin can appoint or remove mail administrators.
+          Only a mail administrator can appoint or remove other administrators.
         </p>
       )}
     </div>
