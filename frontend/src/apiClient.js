@@ -187,6 +187,11 @@ export const uploadSiteImage = async (key, file) => {
     try { return JSON.parse(text); } catch { return { error: `Upload failed (${res.status}).` }; }
 };
 
+// Contact-form messages from tiesverse.com.
+export const getContactMessages = (params = '') => adminFetch(`/api/landing/contact-messages/${params}`).catch(() => ({ messages: [], new_count: 0 }));
+export const updateContactMessage = (id, data) => adminFetch(`/api/landing/contact-messages/${id}/`, 'PATCH', data);
+export const deleteContactMessage = (id) => adminFetch(`/api/landing/contact-messages/${id}/`, 'DELETE');
+
 // Podcast episodes (website Insights - Audio). Audio uploads go to R2.
 export const getPodcasts = () => adminFetch('/api/landing/podcasts/').catch(() => ({ episodes: [] }));
 export const createPodcast = (data) => adminFetch('/api/landing/podcasts/', 'POST', data);

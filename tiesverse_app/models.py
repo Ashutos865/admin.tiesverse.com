@@ -367,6 +367,36 @@ class SiteImage(models.Model):
         return f"{self.key} ({self.mode})"
 
 
+class ContactMessage(models.Model):
+    """A message sent from the contact form on tiesverse.com.
+
+    Stored as well as emailed: an email can be missed, filtered or deleted, and
+    an enquiry that reached us should still be findable a month later.
+    """
+    NEW, HANDLED = 'new', 'handled'
+    STATUS_CHOICES = [(NEW, 'New'), (HANDLED, 'Handled')]
+
+    name = models.CharField(max_length=160)
+    email = models.EmailField(max_length=254)
+    organisation = models.CharField(max_length=200, blank=True)
+    message = models.TextField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=NEW)
+    # Whether the notification email actually went out. A message that saved but
+    # failed to send is the case worth seeing in the admin.
+    emailed = models.BooleanField(default=False)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    handled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'contact_messages'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} <{self.email}>'
+
+
 class Podcast(models.Model):
     """One podcast episode, managed in the admin and served to tiesverse.com.
 

@@ -47,6 +47,7 @@ router = DefaultRouter()
 router.register(r'settings', SettingViewSet, basename='setting')
 
 from tiesverse_app.podcast_views import public_podcasts, public_podcast_audio
+from tiesverse_app.contact_views import contact_submit
 from tiesverse_app.data_api import (
     data_schema, data_records, data_record_detail, data_sequence, data_upload,
 )
@@ -69,6 +70,7 @@ urlpatterns = [
     path('api/public/verify-certificate/', verify_certificate, name='verify-certificate'),
     path('api/public/verify-certificate/photo/', verify_certificate_photo, name='verify-certificate-photo'),
     path('api/public/site-images/', public_site_images, name='public-site-images'),
+    path('api/public/contact/', contact_submit, name='public-contact'),
     path('api/public/podcasts/', public_podcasts, name='public-podcasts'),
     path('api/public/podcast-audio/<str:name>', public_podcast_audio, name='public-podcast-audio'),
     path('api/public/site-image/<str:key>/', public_site_image, name='public-site-image'),

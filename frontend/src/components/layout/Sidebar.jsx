@@ -44,6 +44,7 @@ import {
   X,
   Image as ImageIcon,
   Mic,
+  Inbox,
   BookOpen,
   BarChart3,
 } from 'lucide-react';
@@ -119,6 +120,7 @@ export const portals = [
       { name: 'Brands / Mastheads', path: '/tiesverse/brands',       icon: LayoutGrid,     perms: [] },
       { name: 'Website Images',     path: '/tiesverse/website-images', icon: ImageIcon,     perms: [] },
       { name: 'Podcasts',           path: '/tiesverse/podcasts',       icon: Mic,           perms: [] },
+      { name: 'Messages',           path: '/tiesverse/messages',       icon: Inbox,         perms: [] },
       { name: 'Data API',           path: '/tiesverse/data-api',     icon: Database,        perms: [], advisoryOnly: true },
     ],
   },
