@@ -46,13 +46,17 @@ from rest_framework.routers import DefaultRouter
 router = DefaultRouter()
 router.register(r'settings', SettingViewSet, basename='setting')
 
-from tiesverse_app.data_api import data_schema, data_records, data_upload
+from tiesverse_app.data_api import (
+    data_schema, data_records, data_record_detail, data_sequence, data_upload,
+)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     # ── Standalone Data API (cross-domain, API-key auth) ──
     path('api/data/v1/<str:slug>/schema/', data_schema, name='data-schema'),
     path('api/data/v1/<str:slug>/records/', data_records, name='data-records'),
+    path('api/data/v1/<str:slug>/records/<int:pk>/', data_record_detail, name='data-record-detail'),
+    path('api/data/v1/<str:slug>/sequence/', data_sequence, name='data-sequence'),
     path('api/data/v1/uploads/<int:store_id>/<str:name>/', data_upload, name='data-upload'),
     path('api/public/featured/', PublicFeaturedView.as_view(), name='public-featured'),
     path('api/public/newsroom/nav/', public_newsroom_nav, name='public-newsroom-nav'),

@@ -10,6 +10,7 @@ import datetime
 import re
 
 from django.core import signing
+from django.db import connections, transaction
 from django.core.cache import cache
 from django.http import HttpResponse, HttpResponseNotFound
 from django.utils import timezone
@@ -19,7 +20,7 @@ from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.response import Response
 
 from career_app import access
-from .models import DataStore, DataApiKey, DataRecord
+from .models import DataStore, DataApiKey, DataRecord, DataSequence
 
 HONEYPOT_FIELD = '_hp'
 WRITE_RATE_PER_MIN = 60
@@ -85,7 +86,11 @@ def _auth_key(request, store, scope):
     st = key.status
     if st != 'active':
         return None, _err(f'This API key is {st}.', 403)
-    if key.scope != scope:
+    # An admin key is a superset of both: a server that owns the whole workflow
+    # creates records, reads them back and updates them. Forcing it to juggle
+    # three keys for one job would serve nothing — the trust boundary is that it
+    # lives on a server, not in a browser.
+    if key.scope != scope and key.scope != DataApiKey.SCOPE_ADMIN:
         return None, _err(f'This key is not permitted to {scope}.', 403)
     if not key.origin_allowed(_origin(request)):
         return None, _err('This key is not allowed from this domain.', 403)
@@ -195,6 +200,98 @@ _CTYPES = {
 }
 
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@parser_classes([JSONParser, FormParser])
+def data_sequence(request, slug):
+    """Hand out the next number in a named sequence, atomically.
+
+    A registration number must never be issued twice. Computing it as
+    "count + 1" races: two submissions arriving together read the same count and
+    both take the same number. This does the increment inside the database so
+    each caller provably gets a distinct value.
+
+    POST {"name": "DEL"} -> {"name": "DEL", "value": 41}
+    """
+    store = _get_store(slug)
+    if store is None:
+        return HttpResponseNotFound('{"error": "Data store not found."}')
+    key, err = _auth_key(request, store, DataApiKey.SCOPE_ADMIN)
+    if err:
+        return err
+
+    name = str(request.data.get('name') or 'default').strip()[:40]
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        return _err('Sequence name must be letters, digits, _ or -.', 400)
+
+    # Increment and read back in ONE statement. Splitting them lets a concurrent
+    # writer bump the value in between, handing two callers the same number —
+    # which is the exact failure this endpoint exists to prevent. SQLite backs
+    # this store and select_for_update is a no-op there, so the RETURNING clause
+    # is what makes it safe.
+    DataSequence.objects.get_or_create(store=store, name=name, defaults={'value': 0})
+    conn = connections[DataSequence.objects.db]
+    with transaction.atomic(using=DataSequence.objects.db):
+        with conn.cursor() as cur:
+            cur.execute(
+                'UPDATE data_sequences SET value = value + 1 '
+                'WHERE store_id = %s AND name = %s RETURNING value',
+                [store.id, name],
+            )
+            row = cur.fetchone()
+    if not row:
+        return _err('Could not draw a number.', 500)
+    value = row[0]
+
+    DataApiKey.objects.filter(pk=key.id).update(last_used_at=timezone.now())
+    return Response({'name': name, 'value': value})
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([AllowAny])
+@parser_classes([JSONParser, MultiPartParser, FormParser])
+def data_record_detail(request, slug, pk):
+    """One record: GET with a read key, PATCH with an admin key.
+
+    An approval workflow has to change a record after it was submitted — mark it
+    approved, attach a decision, store an issued pass. Submit keys only create
+    and read keys only read, so without this the whole review step has nowhere
+    to write.
+    """
+    store = _get_store(slug)
+    if store is None:
+        return HttpResponseNotFound('{"error": "Data store not found."}')
+
+    scope = DataApiKey.SCOPE_ADMIN if request.method == 'PATCH' else DataApiKey.SCOPE_READ
+    key, err = _auth_key(request, store, scope)
+    if err:
+        return err
+
+    rec = DataRecord.objects.filter(store=store, pk=pk).first()
+    if rec is None:
+        return HttpResponseNotFound('{"error": "Record not found."}')
+
+    if request.method == 'GET':
+        DataApiKey.objects.filter(pk=key.id).update(last_used_at=timezone.now())
+        return Response({'id': rec.id, 'data': _sign_record_files(store, rec.data),
+                         'created_at': rec.created_at.isoformat()})
+
+    patch, ferr = _collect(request, store)
+    if ferr:
+        return ferr
+    merged = {**(rec.data or {}), **patch}
+    # Validate the merged record, not the patch: a partial update must not trip
+    # "required" on fields it simply isn't touching.
+    errors = _validate(store.columns or [], merged)
+    if errors:
+        return _err('Validation failed.', 422, fields=errors)
+
+    rec.data = merged
+    rec.save(update_fields=['data'])
+    DataApiKey.objects.filter(pk=key.id).update(last_used_at=timezone.now())
+    return Response({'ok': True, 'id': rec.id, 'data': _sign_record_files(store, rec.data)})
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def data_upload(request, store_id, name):
@@ -264,9 +361,13 @@ def _collect(request, store):
     defined = {str(c.get('key')) for c in (store.columns or []) if c.get('key')}
     if defined:
         data = {k: v for k, v in data.items() if str(k) in defined}
+    # Refuse an oversized value rather than trimming it. Silently truncating a
+    # field that holds structured text (a JSON payload, a long answer) stores
+    # something corrupt and unparseable, and the writer is never told.
     for k, v in list(data.items()):
         if isinstance(v, str) and len(v) > MAX_VALUE_LEN:
-            data[k] = v[:MAX_VALUE_LEN]
+            return None, _err(
+                f'{k}: value too long ({len(v)} characters, max {MAX_VALUE_LEN}).', 413)
 
     files = getattr(request, 'FILES', None)
     if files:
@@ -422,6 +523,22 @@ def _paginate(store, request):
     except (TypeError, ValueError):
         page, page_size = 1, 50
     qs = DataRecord.objects.filter(store=store).order_by('-created_at')
+
+    # Filter on stored values: ?where.status=approved&where.email=a@b.com. Without
+    # this a caller looking for one record has to page through the whole store.
+    for param, raw in request.GET.items():
+        if not param.startswith('where.'):
+            continue
+        field = param[6:].strip()
+        if not field or not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', field):
+            continue
+        qs = qs.filter(**{f'data__{field}': raw})
+
+    # ?q= searches across the record as free text, for a name/email box.
+    needle = (request.GET.get('q') or '').strip()
+    if needle:
+        qs = qs.filter(data__icontains=needle)
+
     total = qs.count()
     rows = qs[(page - 1) * page_size: page * page_size]
     return {'count': total, 'page': page, 'page_size': page_size,

@@ -407,7 +407,15 @@ class DataApiKey(models.Model):
     the full key is shown once. Submit keys write, read keys read."""
     SCOPE_SUBMIT = 'submit'
     SCOPE_READ = 'read'
-    SCOPE_CHOICES = [(SCOPE_SUBMIT, 'Write only (POST)'), (SCOPE_READ, 'Read only (GET)')]
+    # Server-side only: reads AND updates existing records. An approval workflow
+    # needs to change a record after the fact, which submit/read cannot do. Never
+    # put one of these in a browser — it can rewrite any record in the store.
+    SCOPE_ADMIN = 'admin'
+    SCOPE_CHOICES = [
+        (SCOPE_SUBMIT, 'Write only (POST)'),
+        (SCOPE_READ, 'Read only (GET)'),
+        (SCOPE_ADMIN, 'Server-side: read + update records'),
+    ]
 
     store = models.ForeignKey(DataStore, on_delete=models.CASCADE, related_name='api_keys')
     label = models.CharField(max_length=120, blank=True)
@@ -440,7 +448,7 @@ class DataApiKey(models.Model):
     def issue(cls, store, scope, **kwargs):
         """Create a key; returns (obj, full_key). full_key is shown once only."""
         import secrets
-        prefix = 'tvk_wr' if scope == cls.SCOPE_SUBMIT else 'tvk_rd'
+        prefix = {cls.SCOPE_SUBMIT: 'tvk_wr', cls.SCOPE_READ: 'tvk_rd'}.get(scope, 'tvk_ad')
         key_id = f'{prefix}_{secrets.token_hex(5)}'
         secret = secrets.token_urlsafe(32)
         full = f'{key_id}.{secret}'
@@ -498,3 +506,26 @@ class DataRecord(models.Model):
 
     def __str__(self):
         return f"Record {self.pk} in {self.store_id}"
+
+
+class DataSequence(models.Model):
+    """A named counter per store, incremented atomically.
+
+    Registration numbers must be unique and gapless-ish. Deriving one from
+    "how many records exist" races under concurrent submissions — two writers
+    read the same count and issue the same number. A row that is locked and
+    incremented in a transaction cannot do that.
+    """
+    store = models.ForeignKey(DataStore, on_delete=models.CASCADE, related_name='sequences')
+    name = models.CharField(max_length=40)
+    value = models.BigIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'data_sequences'
+        constraints = [
+            models.UniqueConstraint(fields=['store', 'name'], name='uniq_data_sequence_per_store'),
+        ]
+
+    def __str__(self):
+        return f"{self.store_id}:{self.name}={self.value}"

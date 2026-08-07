@@ -215,7 +215,7 @@ function KeysTab({ id, keys, reload, showToast }) {
         <h3 style={S.cardH}>Issue a key</h3>
         <div style={S.grid2}>
           <Field label="Label (who / which site)"><input style={S.input} value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} placeholder="Campaign landing page" /></Field>
-          <Field label="Scope"><select style={S.input} value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value })}><option value="submit">Write (POST) — safe in a frontend</option><option value="read">Read (GET) — keep on a server</option></select></Field>
+          <Field label="Scope"><select style={S.input} value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value })}><option value="submit">Write (POST) — safe in a frontend</option><option value="read">Read (GET) — keep on a server</option><option value="admin">Server-side (read + update) — never in a browser</option></select></Field>
           <Field label="Allowed domains (comma-separated)" full><input style={S.input} value={draft.allowed_origins} onChange={(e) => setDraft({ ...draft, allowed_origins: e.target.value })} placeholder="https://campaign.tiesverse.com" /></Field>
           <Field label="Expires (optional)"><input type="date" style={S.input} value={draft.expires_at} onChange={(e) => setDraft({ ...draft, expires_at: e.target.value })} /></Field>
           <Field label="Single use"><label style={S.check}><input type="checkbox" checked={draft.single_use} onChange={(e) => setDraft({ ...draft, single_use: e.target.checked })} /> Dies after one write</label></Field>
@@ -229,7 +229,7 @@ function KeysTab({ id, keys, reload, showToast }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <strong style={{ fontSize: 14 }}>{k.label || '(no label)'}</strong>
-                <span style={{ ...S.badge, ...(k.scope === 'read' ? S.badgeRead : S.badgeSubmit) }}>{k.scope === 'read' ? 'read' : 'write'}</span>
+                <span style={{ ...S.badge, ...(k.scope === 'read' ? S.badgeRead : k.scope === 'admin' ? S.badgeAdmin : S.badgeSubmit) }}>{k.scope === 'read' ? 'read' : k.scope === 'admin' ? 'server' : 'write'}</span>
                 <span style={{ ...S.badge, ...statusStyle(k.status) }}>{k.status}</span>
                 {k.single_use && <span style={{ ...S.badge, background: '#eef', color: '#3730a3' }}>single-use</span>}
               </div>
@@ -347,8 +347,14 @@ function Snippet({ title, code, note, showToast }) {
 function SecretModal({ secret, scope, onClose, showToast }) {
   return (
     <Modal onClose={onClose}>
-      <h3 style={{ margin: '0 0 6px' }}>Your {scope === 'read' ? 'read' : 'write'} key</h3>
+      <h3 style={{ margin: '0 0 6px' }}>Your {scope === 'read' ? 'read' : scope === 'admin' ? 'server-side' : 'write'} key</h3>
       <p style={{ color: '#b45309', fontSize: 13.5, margin: '0 0 14px' }}>Copy it now — shown once only, can't be recovered.</p>
+      {scope === 'admin' && (
+        <p style={{ color: '#991b1b', fontSize: 13, margin: '-6px 0 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '9px 11px' }}>
+          This key can read <b>and rewrite</b> every record in the store. Keep it in server
+          environment variables only — never ship it to a browser.
+        </p>
+      )}
       <div style={{ display: 'flex', gap: 8 }}>
         <code style={{ ...S.code, flex: 1, padding: '11px 12px', fontSize: 13, wordBreak: 'break-all' }}>{secret}</code>
         <button style={S.primary} onClick={() => { navigator.clipboard?.writeText(secret); showToast('Key copied'); }}><Copy size={15} /> Copy</button>
@@ -446,6 +452,7 @@ const S = {
   lbCard: { background: '#fff', borderRadius: 12, overflow: 'hidden', maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' },
   lbImg: { maxWidth: '90vw', maxHeight: 'calc(90vh - 56px)', objectFit: 'contain', display: 'block', background: '#f3f4f6' },
   lbBar: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderTop: '1px solid #e5e7eb' },
+  badgeAdmin: { background: '#ede9fe', color: '#5b21b6' },
   rules: { margin: '2px 0 6px', padding: '10px 12px', background: '#fafafa', border: '1px dashed #e5e7eb', borderRadius: 8 },
   rulesLbl: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: '#6b7280' },
   rulesHint: { fontSize: 11.5, color: '#9ca3af' },
