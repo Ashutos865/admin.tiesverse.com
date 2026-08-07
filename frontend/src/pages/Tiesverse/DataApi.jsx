@@ -9,7 +9,7 @@ import {
   ShieldAlert, Loader2, Settings2, Paperclip,
 } from 'lucide-react';
 
-const COL_TYPES = ['text', 'number', 'boolean', 'email', 'url', 'date', 'datetime', 'file'];
+const COL_TYPES = ['text', 'longtext', 'number', 'boolean', 'email', 'url', 'date', 'datetime', 'file'];
 const FILE_KINDS = [
   { id: 'image', label: 'Images' }, { id: 'pdf', label: 'PDF' },
   { id: 'doc', label: 'Documents' }, { id: 'sheet', label: 'Spreadsheets' },

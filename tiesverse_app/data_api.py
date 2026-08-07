@@ -53,8 +53,12 @@ FILE_KINDS = {
     },
 }
 MAX_VALUE_LEN = 20000                  # per string value
+# A `longtext` column holds a whole serialised document — a full application
+# form, say — where 20k is genuinely too small. Kept separate so an ordinary
+# text field still can't be used to push megabytes into a record.
+MAX_LONGTEXT_LEN = 1000000
 MAX_KEYS = 100                         # per record
-COLUMN_TYPES = ['text', 'number', 'boolean', 'email', 'url', 'date', 'datetime', 'file']
+COLUMN_TYPES = ['text', 'longtext', 'number', 'boolean', 'email', 'url', 'date', 'datetime', 'file']
 _EMAIL = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 
 
@@ -364,10 +368,14 @@ def _collect(request, store):
     # Refuse an oversized value rather than trimming it. Silently truncating a
     # field that holds structured text (a JSON payload, a long answer) stores
     # something corrupt and unparseable, and the writer is never told.
+    types = {str(c.get('key')): (c.get('type') or 'text') for c in (store.columns or []) if c.get('key')}
     for k, v in list(data.items()):
-        if isinstance(v, str) and len(v) > MAX_VALUE_LEN:
+        if not isinstance(v, str):
+            continue
+        limit = MAX_LONGTEXT_LEN if types.get(str(k)) == 'longtext' else MAX_VALUE_LEN
+        if len(v) > limit:
             return None, _err(
-                f'{k}: value too long ({len(v)} characters, max {MAX_VALUE_LEN}).', 413)
+                f'{k}: value too long ({len(v)} characters, max {limit}).', 413)
 
     files = getattr(request, 'FILES', None)
     if files:
