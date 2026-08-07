@@ -9,6 +9,7 @@ these paths by DataApiCorsMiddleware.
 import datetime
 import re
 
+from django.core import signing
 from django.core.cache import cache
 from django.http import HttpResponse, HttpResponseNotFound
 from django.utils import timezone
@@ -23,7 +24,33 @@ from .models import DataStore, DataApiKey, DataRecord
 HONEYPOT_FIELD = '_hp'
 WRITE_RATE_PER_MIN = 60
 R2_PREFIX = 'data-uploads'
-MAX_FILE_BYTES = 10 * 1024 * 1024      # 10 MB per uploaded file
+MAX_FILE_BYTES = 10 * 1024 * 1024      # 10 MB per uploaded file (global ceiling)
+UPLOAD_URL_TTL = 15 * 60               # signed file links last 15 minutes
+UPLOAD_SALT = 'data_api.upload'
+MAX_FILES_PER_COLUMN = 10              # when a column allows multiple
+
+# What a `file` column may accept. A column names one or more of these kinds;
+# naming none means "anything", which is the old behaviour.
+FILE_KINDS = {
+    'image': {
+        'label': 'Images',
+        'mimes': ('image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'),
+        'exts': ('png', 'jpg', 'jpeg', 'webp', 'gif'),
+    },
+    'pdf': {'label': 'PDF', 'mimes': ('application/pdf',), 'exts': ('pdf',)},
+    'doc': {
+        'label': 'Documents',
+        'mimes': ('application/msword', 'application/vnd.oasis.opendocument.text', 'text/plain',
+                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+        'exts': ('doc', 'docx', 'odt', 'txt', 'rtf'),
+    },
+    'sheet': {
+        'label': 'Spreadsheets',
+        'mimes': ('application/vnd.ms-excel', 'text/csv',
+                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+        'exts': ('xls', 'xlsx', 'csv'),
+    },
+}
 MAX_VALUE_LEN = 20000                  # per string value
 MAX_KEYS = 100                         # per record
 COLUMN_TYPES = ['text', 'number', 'boolean', 'email', 'url', 'date', 'datetime', 'file']
@@ -144,17 +171,72 @@ def _read(request, store):
     return Response(_paginate(store, request))
 
 
+def sign_upload(store_id, name, ttl=UPLOAD_URL_TTL):
+    """A short-lived token for one file. Carries its own expiry, so a link that
+    leaks stops working on its own rather than living forever."""
+    return signing.dumps({'s': int(store_id), 'n': str(name)}, salt=UPLOAD_SALT)
+
+
+def _upload_token_ok(token, store_id, name):
+    try:
+        payload = signing.loads(token, salt=UPLOAD_SALT, max_age=UPLOAD_URL_TTL)
+    except signing.SignatureExpired:
+        return False, 'This file link has expired. Reload the page to get a fresh one.'
+    except signing.BadSignature:
+        return False, 'Invalid file link.'
+    if int(payload.get('s', -1)) != int(store_id) or str(payload.get('n')) != str(name):
+        return False, 'Invalid file link.'
+    return True, None
+
+
+_CTYPES = {
+    'webp': 'image/webp', 'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+    'gif': 'image/gif', 'pdf': 'application/pdf', 'txt': 'text/plain', 'csv': 'text/csv',
+}
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def data_upload(request, store_id, name):
+    """Serve an uploaded file.
+
+    Uploads used to be served to anyone who had the URL. Submissions can be ID
+    photos or documents, so a guessed or forwarded link exposed them for good.
+    Three ways in now, each proving the caller is entitled to this store:
+      - ?t=<signed token>, which the admin panel mints per view and which expires
+      - a valid read key for the store (X-Api-Key), as the read API already needs
+      - a signed-in advisory user, who can already read every record
+    """
+    store = DataStore.objects.filter(pk=store_id).first()
+    if store is None:
+        return HttpResponseNotFound('Not found')
+
+    token = (request.GET.get('t') or '').strip()
+    allowed, why = False, 'This file is not public.'
+    if token:
+        allowed, why = _upload_token_ok(token, store_id, name)
+    elif (request.headers.get('X-Api-Key') or '').strip():
+        _key, err = _auth_key(request, store, DataApiKey.SCOPE_READ)
+        allowed = err is None
+        if err is not None:
+            why = 'A read key is required to fetch this file.'
+    elif getattr(request, 'user', None) and request.user.is_authenticated and _is_advisory(request.user):
+        allowed = True
+    if not allowed:
+        return _err(why, 403)
+
     from career_app.providers import R2Storage
     try:
         data = R2Storage().get_object(f'{R2_PREFIX}/{store_id}/{name}')
     except Exception:  # noqa: BLE001
         return HttpResponseNotFound('Not found')
-    ctype = 'image/webp' if name.endswith('.webp') else 'application/octet-stream'
-    resp = HttpResponse(data, content_type=ctype)
-    resp['Cache-Control'] = 'public, max-age=86400'
+    ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+    resp = HttpResponse(data, content_type=_CTYPES.get(ext, 'application/octet-stream'))
+    # private: a signed link is per-viewer, so a shared cache must not keep it.
+    resp['Cache-Control'] = 'private, max-age=300'
+    resp['X-Content-Type-Options'] = 'nosniff'
+    if ext not in ('webp', 'png', 'jpg', 'jpeg', 'gif', 'pdf'):
+        resp['Content-Disposition'] = f'attachment; filename="{name}"'
     return resp
 
 
@@ -191,31 +273,106 @@ def _collect(request, store):
         from career_app.providers import R2Storage
         import secrets
         base = request.build_absolute_uri('/')[:-1]
-        for col, f in files.items():
+        spec_by_key = {str(c.get('key')): c for c in (store.columns or []) if c.get('key')}
+        for col in files.keys():
             if defined and str(col) not in defined:
                 continue  # ignore files for undefined columns
-            if getattr(f, 'size', 0) > MAX_FILE_BYTES:
-                return None, _err(f'File too large (max {MAX_FILE_BYTES // (1024 * 1024)} MB).', 413)
-            payload, ctype, ext = _maybe_webp(f)
-            safe = f'{secrets.token_hex(8)}.{ext}'
-            try:
-                R2Storage().put_object(f'{R2_PREFIX}/{store.id}/{safe}', payload, ctype)
-            except Exception as e:  # noqa: BLE001
-                return None, _err(f'File upload failed: {e}', 502)
-            data[str(col)] = {'name': getattr(f, 'name', safe), 'size': getattr(f, 'size', len(payload)),
-                              'url': f'{base}/api/data/v1/uploads/{store.id}/{safe}'}
+            spec = spec_by_key.get(str(col), {})
+            uploaded = files.getlist(col) if hasattr(files, 'getlist') else [files[col]]
+            if not spec.get('multiple') and len(uploaded) > 1:
+                return None, _err(f'{col}: only one file is allowed here.', 400)
+            if len(uploaded) > MAX_FILES_PER_COLUMN:
+                return None, _err(f'{col}: at most {MAX_FILES_PER_COLUMN} files.', 400)
+
+            saved = []
+            for f in uploaded:
+                bad = _check_file(spec, f, col)
+                if bad:
+                    return None, bad
+                payload, ctype, ext = _maybe_webp(f, spec)
+                safe = f'{secrets.token_hex(16)}.{ext}'
+                try:
+                    R2Storage().put_object(f'{R2_PREFIX}/{store.id}/{safe}', payload, ctype)
+                except Exception as e:  # noqa: BLE001
+                    return None, _err(f'File upload failed: {e}', 502)
+                saved.append({
+                    'name': getattr(f, 'name', safe), 'size': len(payload),
+                    'content_type': ctype, 'stored': safe,
+                    # Unsigned; the reader mints a signed link when it serves this.
+                    # trailing slash matters: the route has one, and a 301 can
+                    # drop the ?t= signature on the way through.
+                    'url': f'{base}/api/data/v1/uploads/{store.id}/{safe}/',
+                })
+            if saved:
+                data[str(col)] = saved if spec.get('multiple') else saved[0]
     return data, None
 
 
-def _maybe_webp(f):
-    ctype = (getattr(f, 'content_type', '') or '').lower()
+def _col_max_bytes(spec):
+    try:
+        mb = float(spec.get('max_mb') or 0)
+    except (TypeError, ValueError):
+        mb = 0
+    limit = int(mb * 1024 * 1024) if mb > 0 else MAX_FILE_BYTES
+    return min(limit, MAX_FILE_BYTES)   # a column may tighten, never loosen
+
+
+def _check_file(spec, f, col):
+    """Enforce this column's kind and size rules. Returns an error Response or None."""
+    limit = _col_max_bytes(spec)
+    if getattr(f, 'size', 0) > limit:
+        return _err(f'{col}: file too large (max {round(limit / (1024 * 1024), 1)} MB).', 413)
+
+    kinds = [k for k in (spec.get('kinds') or []) if k in FILE_KINDS]
+    if not kinds:
+        return None                      # no restriction set = accept anything
+    ctype = (getattr(f, 'content_type', '') or '').lower().split(';')[0]
+    name = (getattr(f, 'name', '') or '').lower()
+    ext = name.rsplit('.', 1)[-1] if '.' in name else ''
+    for k in kinds:
+        spec_k = FILE_KINDS[k]
+        if ctype in spec_k['mimes'] or ext in spec_k['exts']:
+            return None
+    allowed = ', '.join(FILE_KINDS[k]['label'] for k in kinds)
+    return _err(f'{col}: this file type is not allowed (accepted: {allowed}).', 415)
+
+
+def _maybe_webp(f, spec=None):
+    """Images become webp; oversized ones are downscaled first.
+
+    A phone photo or print poster can be several thousand pixels wide, which
+    costs storage and download time for a thumbnail nobody views at that size.
+    `max_px` caps the long edge, preserving aspect ratio.
+    """
+    spec = spec or {}
+    ctype = (getattr(f, 'content_type', '') or '').lower().split(';')[0]
     if ctype in ('image/png', 'image/jpeg', 'image/jpg', 'image/webp'):
         try:
+            max_px = int(spec.get('max_px') or 0)
+        except (TypeError, ValueError):
+            max_px = 0
+        if max_px > 0:
+            try:
+                from io import BytesIO
+                from PIL import Image
+                f.seek(0)
+                img = Image.open(f)
+                img.load()
+                if max(img.size) > max_px:
+                    img.thumbnail((max_px, max_px), Image.LANCZOS)
+                buf = BytesIO()
+                img.convert('RGB').save(buf, format='WEBP', quality=82, method=4)
+                return buf.getvalue(), 'image/webp', 'webp'
+            except Exception:  # noqa: BLE001 — fall through to the plain path
+                f.seek(0)
+        try:
             from tiesverse_app.media_views import to_webp
+            f.seek(0)
             return to_webp(f).read(), 'image/webp', 'webp'
         except Exception:  # noqa: BLE001
             f.seek(0)
     ext = (getattr(f, 'name', 'file').rsplit('.', 1)[-1] or 'bin')[:8].lower()
+    f.seek(0)
     return f.read(), ctype or 'application/octet-stream', ext
 
 
@@ -268,7 +425,32 @@ def _paginate(store, request):
     total = qs.count()
     rows = qs[(page - 1) * page_size: page * page_size]
     return {'count': total, 'page': page, 'page_size': page_size,
-            'results': [{'id': r.id, 'data': r.data, 'created_at': r.created_at.isoformat()} for r in rows]}
+            'results': [{'id': r.id, 'data': _sign_record_files(store, r.data),
+                         'created_at': r.created_at.isoformat()} for r in rows]}
+
+
+def _sign_record_files(store, data):
+    """Attach a fresh signed link to every stored file in a record.
+
+    Records hold the bare URL; the signature is added at read time so links are
+    always short-lived and never sit in the database waiting to be leaked.
+    """
+    if not isinstance(data, dict):
+        return data
+
+    def sign_one(v):
+        if isinstance(v, dict) and v.get('stored'):
+            token = sign_upload(store.id, v['stored'])
+            return {**v, 'url': f"{v.get('url', '')}?t={token}"}
+        return v
+
+    out = {}
+    for k, v in data.items():
+        if isinstance(v, list):
+            out[k] = [sign_one(x) for x in v]
+        else:
+            out[k] = sign_one(v)
+    return out
 
 
 # ── Advisory-only management (staff, JWT) ────────────────────────────────
@@ -305,9 +487,30 @@ def _clean_columns(raw):
         key = str(c.get('key') or '').strip()
         if not key or not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', key):
             continue
-        out.append({'key': key, 'label': (c.get('label') or key)[:120],
-                    'type': c.get('type') if c.get('type') in COLUMN_TYPES else 'text',
-                    'required': bool(c.get('required'))})
+        col = {'key': key, 'label': (c.get('label') or key)[:120],
+               'type': c.get('type') if c.get('type') in COLUMN_TYPES else 'text',
+               'required': bool(c.get('required'))}
+        # File rules only mean anything on a file column, so they are not carried
+        # on the others — a type change back to text leaves nothing stale behind.
+        if col['type'] == 'file':
+            kinds = [k for k in (c.get('kinds') or []) if k in FILE_KINDS]
+            if kinds:
+                col['kinds'] = kinds
+            try:
+                mb = float(c.get('max_mb') or 0)
+            except (TypeError, ValueError):
+                mb = 0
+            if mb > 0:
+                col['max_mb'] = round(min(mb, MAX_FILE_BYTES / (1024 * 1024)), 2)
+            try:
+                px = int(c.get('max_px') or 0)
+            except (TypeError, ValueError):
+                px = 0
+            if px > 0:
+                col['max_px'] = max(64, min(px, 8000))
+            if c.get('multiple'):
+                col['multiple'] = True
+        out.append(col)
     return out
 
 

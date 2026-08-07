@@ -6,10 +6,14 @@ import {
 import { useMe } from '../../context/MeContext';
 import {
   Database, KeyRound, Code2, Table2, Plus, Trash2, Ban, Copy, Check, X, ArrowLeft,
-  ShieldAlert, Loader2, Settings2,
+  ShieldAlert, Loader2, Settings2, Paperclip,
 } from 'lucide-react';
 
 const COL_TYPES = ['text', 'number', 'boolean', 'email', 'url', 'date', 'datetime', 'file'];
+const FILE_KINDS = [
+  { id: 'image', label: 'Images' }, { id: 'pdf', label: 'PDF' },
+  { id: 'doc', label: 'Documents' }, { id: 'sheet', label: 'Spreadsheets' },
+];
 const BASE = (slug) => `${API_URL}/api/data/v1/${slug}`;
 
 export default function DataApi() {
@@ -85,6 +89,44 @@ function CreateStore({ onClose, onCreated, showToast }) {
   );
 }
 
+/* What a file column accepts. Without these a file column takes anything up to
+   10 MB, so a photo field would happily swallow a 9 MB executable. */
+function FileRules({ col, set }) {
+  const kinds = col.kinds || [];
+  const toggle = (k) => set({ kinds: kinds.includes(k) ? kinds.filter((x) => x !== k) : [...kinds, k] });
+  return (
+    <div style={S.rules}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={S.rulesLbl}>Accepts</span>
+        {FILE_KINDS.map((k) => (
+          <button key={k.id} type="button" onClick={() => toggle(k.id)}
+            style={{ ...S.kind, ...(kinds.includes(k.id) ? S.kindOn : null) }}>{k.label}</button>
+        ))}
+        {!kinds.length && <span style={S.rulesHint}>any file type</span>}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginTop: 8 }}>
+        <label style={S.rulesField}>
+          <span style={S.rulesLbl}>Max size</span>
+          <input style={S.mini} type="number" min="0" step="0.5" placeholder="10"
+            value={col.max_mb ?? ''} onChange={(e) => set({ max_mb: e.target.value })} />
+          <span style={S.rulesHint}>MB</span>
+        </label>
+        {kinds.includes('image') && (
+          <label style={S.rulesField}>
+            <span style={S.rulesLbl}>Resize to</span>
+            <input style={S.mini} type="number" min="64" step="100" placeholder="none"
+              value={col.max_px ?? ''} onChange={(e) => set({ max_px: e.target.value })} />
+            <span style={S.rulesHint}>px long edge</span>
+          </label>
+        )}
+        <label style={{ ...S.check, paddingTop: 0, fontSize: 12 }}>
+          <input type="checkbox" checked={Boolean(col.multiple)} onChange={(e) => set({ multiple: e.target.checked })} /> allow several files
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function ColumnsEditor({ columns, onChange }) {
   const set = (i, patch) => onChange(columns.map((c, j) => (j === i ? { ...c, ...patch } : c)));
   const add = () => onChange([...columns, { key: '', label: '', type: 'text', required: false }]);
@@ -92,12 +134,15 @@ function ColumnsEditor({ columns, onChange }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       {columns.map((c, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px auto auto', gap: 8, alignItems: 'center' }}>
-          <input style={S.input} value={c.key} onChange={(e) => set(i, { key: e.target.value.replace(/[^a-zA-Z0-9_]/g, '') })} placeholder="key (e.g. email)" />
-          <input style={S.input} value={c.label} onChange={(e) => set(i, { label: e.target.value })} placeholder="Label" />
-          <select style={S.input} value={c.type} onChange={(e) => set(i, { type: e.target.value })}>{COL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-          <label style={{ ...S.check, paddingTop: 0, fontSize: 12 }}><input type="checkbox" checked={c.required} onChange={(e) => set(i, { required: e.target.checked })} /> req</label>
-          <button style={S.del} onClick={() => del(i)}><Trash2 size={14} /></button>
+        <div key={i}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px auto auto', gap: 8, alignItems: 'center' }}>
+            <input style={S.input} value={c.key} onChange={(e) => set(i, { key: e.target.value.replace(/[^a-zA-Z0-9_]/g, '') })} placeholder="key (e.g. email)" />
+            <input style={S.input} value={c.label} onChange={(e) => set(i, { label: e.target.value })} placeholder="Label" />
+            <select style={S.input} value={c.type} onChange={(e) => set(i, { type: e.target.value })}>{COL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+            <label style={{ ...S.check, paddingTop: 0, fontSize: 12 }}><input type="checkbox" checked={c.required} onChange={(e) => set(i, { required: e.target.checked })} /> req</label>
+            <button style={S.del} onClick={() => del(i)}><Trash2 size={14} /></button>
+          </div>
+          {c.type === 'file' && <FileRules col={c} set={(patch) => set(i, patch)} />}
         </div>
       ))}
       <button style={{ ...S.ghost, alignSelf: 'flex-start' }} onClick={add}><Plus size={14} /> Add column</button>
@@ -204,6 +249,7 @@ function KeysTab({ id, keys, reload, showToast }) {
 function RecordsTab({ id, columns }) {
   const [data, setData] = useState(null);
   const [page, setPage] = useState(1);
+  const [zoom, setZoom] = useState(null);
   useEffect(() => { getStoreRecords(id, page).then(setData); }, [id, page]);
   if (!data) return <Spinner />;
   const cols = columns.length ? columns.map((c) => c.key) : (data.results[0] ? Object.keys(data.results[0].data) : []);
@@ -221,12 +267,13 @@ function RecordsTab({ id, columns }) {
           <thead><tr><th style={S.th}>#</th>{cols.map((c) => <th key={c} style={S.th}>{c}</th>)}<th style={S.th}>when</th></tr></thead>
           <tbody>
             {data.results.map((r) => (
-              <tr key={r.id}><td style={S.td}>{r.id}</td>{cols.map((c) => <td key={c} style={S.td}>{fmt(r.data[c])}</td>)}<td style={S.td}>{r.created_at.slice(0, 16).replace('T', ' ')}</td></tr>
+              <tr key={r.id}><td style={S.td}>{r.id}</td>{cols.map((c) => <td key={c} style={S.td}><Cell value={r.data[c]} onZoom={setZoom} /></td>)}<td style={S.td}>{r.created_at.slice(0, 16).replace('T', ' ')}</td></tr>
             ))}
             {!data.results.length && <tr><td style={S.td} colSpan={cols.length + 2}>No records yet.</td></tr>}
           </tbody>
         </table>
       </div>
+      {zoom && <Lightbox file={zoom} onClose={() => setZoom(null)} />}
     </div>
   );
 }
@@ -273,7 +320,8 @@ function Docs({ store, showToast }) {
         <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, lineHeight: 1.7, color: 'var(--text-main)' }}>
           <li>A key only works from the domains set on it — copies elsewhere fail.</li>
           <li>Never put a <b>read</b> key in a browser. Write keys are safe in a frontend (domain-locked, POST-only).</li>
-          <li>File columns: send <code style={S.code}>multipart/form-data</code> with <code style={S.code}>data</code> as a JSON string plus each file as its column key.</li>
+          <li>File columns: send <code style={S.code}>multipart/form-data</code> with <code style={S.code}>data</code> as a JSON string plus each file as its column key. Repeat the key to send several files to a column that allows it.</li>
+          <li>Uploads are private. A read response returns each file with a signed <code style={S.code}>url</code> that works for 15 minutes; fetch it again for a fresh link, or request the file directly with your read key.</li>
         </ul>
       </div>
     </div>
@@ -341,10 +389,70 @@ const Denied = () => (
 const Spinner = () => <p style={{ color: 'var(--text-muted)' }}><Loader2 className="spin" size={16} style={{ verticalAlign: -3 }} /> Loading… <style>{`.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style></p>;
 
 const fmt = (v) => (v && typeof v === 'object') ? (v.name || JSON.stringify(v)) : String(v ?? '');
+
+const isFile = (v) => v && typeof v === 'object' && v.url;
+const isImage = (v) => isFile(v) && /^image\//.test(v.content_type || '');
+const kb = (n) => (!n ? '' : n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`);
+
+/* A record cell. Uploads used to render as bare filename text, so a submitted
+   photo could not actually be looked at. Links are signed and short-lived, so
+   they work while the page is open and expire rather than leaking. */
+function Cell({ value, onZoom }) {
+  const items = Array.isArray(value) ? value : [value];
+  if (!items.some(isFile)) return <>{fmt(value)}</>;
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+      {items.filter(isFile).map((f, i) => (isImage(f) ? (
+        <img key={i} src={f.url} alt={f.name} title={`${f.name} · ${kb(f.size)}`}
+          onClick={() => onZoom(f)} style={S.thumb} />
+      ) : (
+        <a key={i} href={f.url} target="_blank" rel="noreferrer" style={S.fileChip}
+          title={`${f.name} · ${kb(f.size)}`}>
+          <Paperclip size={12} /> {(f.name || 'file').slice(0, 22)}
+        </a>
+      )))}
+    </div>
+  );
+}
+
+/* Full-size view of a submitted photo. */
+function Lightbox({ file, onClose }) {
+  useEffect(() => {
+    const k = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
+  return (
+    <div style={S.lbWrap} onClick={onClose}>
+      <div style={S.lbCard} onClick={(e) => e.stopPropagation()}>
+        <img src={file.url} alt={file.name} style={S.lbImg} />
+        <div style={S.lbBar}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{file.name}</span>
+          <span style={{ fontSize: 12, color: '#6b7280' }}>{kb(file.size)}</span>
+          <a href={file.url} download={file.name} style={{ ...S.ghost, marginLeft: 'auto', textDecoration: 'none' }}>Download</a>
+          <button style={S.ghost} onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 const sampleVal = (t) => t === 'number' ? '123' : t === 'boolean' ? 'true' : t === 'email' ? '"a@b.com"' : '"…"';
 function statusStyle(s) { return s === 'active' ? { background: '#dcfce7', color: '#166534' } : s === 'revoked' ? { background: '#fee2e2', color: '#991b1b' } : { background: '#f3f4f6', color: '#6b7280' }; }
 
 const S = {
+  thumb: { width: 46, height: 46, objectFit: 'cover', borderRadius: 6, border: '1px solid #e5e7eb', cursor: 'zoom-in', display: 'block' },
+  fileChip: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: '#374151', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 8px', textDecoration: 'none' },
+  lbWrap: { position: 'fixed', inset: 0, background: 'rgba(17,24,39,.72)', display: 'grid', placeItems: 'center', zIndex: 5000, padding: 24 },
+  lbCard: { background: '#fff', borderRadius: 12, overflow: 'hidden', maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' },
+  lbImg: { maxWidth: '90vw', maxHeight: 'calc(90vh - 56px)', objectFit: 'contain', display: 'block', background: '#f3f4f6' },
+  lbBar: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderTop: '1px solid #e5e7eb' },
+  rules: { margin: '2px 0 6px', padding: '10px 12px', background: '#fafafa', border: '1px dashed #e5e7eb', borderRadius: 8 },
+  rulesLbl: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: '#6b7280' },
+  rulesHint: { fontSize: 11.5, color: '#9ca3af' },
+  rulesField: { display: 'inline-flex', alignItems: 'center', gap: 6 },
+  kind: { fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 999, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', cursor: 'pointer' },
+  kindOn: { background: 'rgba(254,122,0,.12)', borderColor: 'rgba(254,122,0,.4)', color: '#c2410c' },
+  mini: { width: 74, padding: '5px 8px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12.5 },
   page: { padding: '26px 30px', maxWidth: 1000, margin: '0 auto' },
   denied: { minHeight: '60vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
   toast: { position: 'fixed', top: 70, right: 24, background: 'var(--primary,#fe7a00)', color: '#fff', padding: '10px 16px', borderRadius: 8, zIndex: 4000, fontSize: 13, fontWeight: 600 },

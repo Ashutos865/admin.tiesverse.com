@@ -374,7 +374,9 @@ class DataStore(models.Model):
     name = models.CharField(max_length=200)
     slug = models.SlugField(max_length=120, unique=True, blank=True)
     description = models.TextField(blank=True)
-    columns = models.JSONField(default=list, blank=True)   # [{key,label,type,required}]
+    # [{key,label,type,required}]; file columns may add
+    # {kinds:[image|pdf|doc|sheet], max_mb, max_px, multiple}
+    columns = models.JSONField(default=list, blank=True)
     is_active = models.BooleanField(default=True)
     created_by_user = models.ForeignKey(
         'auth.User', on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False,
