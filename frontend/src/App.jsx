@@ -42,6 +42,7 @@ const TiesverseAdminPanel = lazy(() => import('./pages/Tiesverse/Admin.jsx'));
 const TechProducts = lazy(() => import('./pages/Tiesverse/TechProducts.jsx'));
 const Brands = lazy(() => import('./pages/Tiesverse/Brands.jsx'));
 const WebsiteImages = lazy(() => import('./pages/Tiesverse/WebsiteImages.jsx'));
+const Podcasts = lazy(() => import('./pages/Tiesverse/Podcasts.jsx'));
 const DataApi = lazy(() => import('./pages/Tiesverse/DataApi.jsx'));
 
 // Career
@@ -196,6 +197,7 @@ function App() {
               <Route path="/tiesverse/tech-products" element={<TechProducts />} />
               <Route path="/tiesverse/brands" element={<Brands />} />
               <Route path="/tiesverse/website-images" element={<WebsiteImages />} />
+              <Route path="/tiesverse/podcasts" element={<Podcasts />} />
               <Route path="/tiesverse/data-api" element={<DataApi />} />
 
               {/* Career Routes */}

@@ -367,6 +367,38 @@ class SiteImage(models.Model):
         return f"{self.key} ({self.mode})"
 
 
+class Podcast(models.Model):
+    """One podcast episode, managed in the admin and served to tiesverse.com.
+
+    The audio itself lives in R2; only its URL is stored here. `position` drives
+    the order on the site — episodes are rarely published in the order you want
+    them listed, and renumbering titles to reorder them is not editing.
+    """
+    title = models.CharField(max_length=250)
+    slug = models.SlugField(max_length=140, unique=True, blank=True)
+    episode_label = models.CharField(max_length=20, blank=True)   # 'EP.01'
+    tag = models.CharField(max_length=60, blank=True)             # 'Strategy'
+    description = models.TextField(blank=True)
+    audio_url = models.CharField(max_length=600, blank=True)
+    cover_url = models.CharField(max_length=600, blank=True)
+    # Seconds. Read from the file on upload; the site formats it for display, so
+    # a stored "48 min" string can never drift from the actual recording.
+    duration_seconds = models.IntegerField(default=0)
+    published_at = models.DateField(null=True, blank=True)
+    is_featured = models.BooleanField(default=False)
+    is_published = models.BooleanField(default=False)
+    position = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'podcasts'
+        ordering = ['position', '-published_at', '-created_at']
+
+    def __str__(self):
+        return self.title
+
+
 class DataStore(models.Model):
     """A standalone data store ("database"/table) that any Tiesverse frontend can
     write to / read from via /api/data/v1/ using an origin-locked API key. Columns

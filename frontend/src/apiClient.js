@@ -187,6 +187,37 @@ export const uploadSiteImage = async (key, file) => {
     try { return JSON.parse(text); } catch { return { error: `Upload failed (${res.status}).` }; }
 };
 
+// Podcast episodes (website Insights - Audio). Audio uploads go to R2.
+export const getPodcasts = () => adminFetch('/api/landing/podcasts/').catch(() => ({ episodes: [] }));
+export const createPodcast = (data) => adminFetch('/api/landing/podcasts/', 'POST', data);
+export const updatePodcast = (id, data) => adminFetch(`/api/landing/podcasts/${id}/`, 'PATCH', data);
+export const deletePodcast = (id) => adminFetch(`/api/landing/podcasts/${id}/`, 'DELETE');
+
+/* The browser already decodes the file to play it, so it knows the exact length
+   for free — send it along rather than making someone type "48 min". */
+export const uploadPodcastAudio = async (id, file, durationSeconds, onProgress) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (durationSeconds) form.append('duration_seconds', String(Math.round(durationSeconds)));
+    // XHR rather than fetch: an episode is tens of megabytes and upload progress
+    // is the difference between "working" and "frozen".
+    return new Promise((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${API_URL}/api/landing/podcasts/${id}/audio/`);
+        xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`);
+        xhr.upload.onprogress = (e) => {
+            if (onProgress && e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => {
+            if (xhr.status === 401) { setApiToken(null); window.location.href = '/login'; return; }
+            try { resolve(JSON.parse(xhr.responseText)); }
+            catch { resolve({ error: `Upload failed (${xhr.status}).` }); }
+        };
+        xhr.onerror = () => resolve({ error: 'Upload failed — check your connection.' });
+        xhr.send(form);
+    });
+};
+
 // Tech products (website Technology section)
 export const getTechProducts = () => adminFetch('/api/landing/tech-products/').catch(() => []);
 export const createTechProduct = (data) => adminFetch('/api/landing/tech-products/', 'POST', data);
