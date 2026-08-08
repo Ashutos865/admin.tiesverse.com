@@ -1,11 +1,14 @@
 """Contact form: public submit, admin inbox.
 
-Every message is stored AND emailed. Email alone is fragile — it can be
-filtered, missed or deleted — and an enquiry that reached us should still be
-findable later.
+Messages are stored and read in Admin -> Messages. They are not emailed by
+default: a notification duplicated every enquiry into a TIES Mail inbox that
+also stores it, so the same message existed twice for no added reach.
+
+Set CONTACT_NOTIFY_EMAIL to an address to turn notifications back on.
 """
 import re
 
+from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 from django.utils.html import escape
@@ -17,7 +20,9 @@ from rest_framework.response import Response
 from .models import ContactMessage
 from .views import _can_manage_site
 
-NOTIFY_TO = 'hello@mail.tiesverse.com'
+# Blank disables the notification email entirely. Set CONTACT_NOTIFY_EMAIL in
+# the environment to have new messages emailed somewhere as well as stored.
+NOTIFY_TO = getattr(settings, 'CONTACT_NOTIFY_EMAIL', '') or ''
 RATE_PER_HOUR = 5            # per IP; a genuine enquirer never needs a sixth
 HONEYPOT_FIELD = 'website'   # real people leave it empty; bots fill everything
 MAX_MESSAGE = 5000
@@ -88,13 +93,15 @@ def contact_submit(request):
         ip=_client_ip(request), user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:300],
     )
 
-    # The message is already saved, so a mail failure must not fail the request:
-    # the sender did nothing wrong and the enquiry is not lost.
-    try:
-        _notify(msg)
-        ContactMessage.objects.filter(pk=msg.pk).update(emailed=True)
-    except Exception:  # noqa: BLE001
-        pass
+    # Only when a recipient is configured. The message is already saved either
+    # way, so a mail failure must not fail the request: the sender did nothing
+    # wrong and the enquiry is not lost.
+    if NOTIFY_TO:
+        try:
+            _notify(msg)
+            ContactMessage.objects.filter(pk=msg.pk).update(emailed=True)
+        except Exception:  # noqa: BLE001
+            pass
 
     return Response({'ok': True, 'id': msg.id}, status=201)
 
