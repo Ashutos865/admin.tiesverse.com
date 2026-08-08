@@ -215,7 +215,8 @@ def data_sequence(request, slug):
     both take the same number. This does the increment inside the database so
     each caller provably gets a distinct value.
 
-    POST {"name": "DEL"} -> {"name": "DEL", "value": 41}
+    POST {"name": "DEL"}                -> {"name": "DEL", "value": 41}
+    POST {"name": "DEL", "release": 41} -> hands 41 back if still the highest
     """
     store = _get_store(slug)
     if store is None:
@@ -227,6 +228,28 @@ def data_sequence(request, slug):
     name = str(request.data.get('name') or 'default').strip()[:40]
     if not re.match(r'^[a-zA-Z0-9_-]+$', name):
         return _err('Sequence name must be letters, digits, _ or -.', 400)
+
+    # Handing a number back. A caller that drew one and then failed to write its
+    # record would otherwise burn it, leaving the counter ahead of the real
+    # count. Only the highest number can be returned: if anyone has drawn since,
+    # that number is spent and rolling back would issue a duplicate.
+    release = request.data.get('release')
+    if release is not None:
+        try:
+            release = int(release)
+        except (TypeError, ValueError):
+            return _err('release must be a number.', 400)
+        with transaction.atomic(using=DataSequence.objects.db):
+            with connections[DataSequence.objects.db].cursor() as cur:
+                cur.execute(
+                    'UPDATE data_sequences SET value = value - 1 '
+                    'WHERE store_id = %s AND name = %s AND value = %s RETURNING value',
+                    [store.id, name, release],
+                )
+                row = cur.fetchone()
+        # No row means someone drew after this caller did; nothing to undo.
+        return Response({'name': name, 'released': bool(row),
+                         'value': row[0] if row else None})
 
     # Increment and read back in ONE statement. Splitting them lets a concurrent
     # writer bump the value in between, handing two callers the same number —
