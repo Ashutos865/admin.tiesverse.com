@@ -3,6 +3,7 @@ import string
 
 from django.contrib.auth.models import User, Group
 from django.http import HttpResponse, Http404
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
@@ -1995,6 +1996,86 @@ class OffboardingReactivateView(APIView):
             return Response({'error': 'Not found'}, status=404)
         offboarding_lib.reactivate_member(off.member, actor_name=_actor_name(request.user))
         return Response({'reactivated': True, 'member': off.member_id})
+
+
+class OffboardingTerminateView(APIView):
+    """HR-only: end someone's engagement and cut access in one step.
+
+    Offboarding normally starts with the member applying. A removal decided by
+    the organisation has no such request to review, and doing it by hand means
+    create -> approve -> revoke, where a failure part-way leaves a member half
+    offboarded: marked as leaving but still able to log in. One transaction
+    instead, so it either fully happens or does not.
+
+    The member's record and Crew ID are kept, exactly as in the normal flow —
+    this removes access, it does not erase a person.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not _is_offboarding_hr(request.user):
+            return Response({'error': 'Only HR can remove a member.'}, status=403)
+
+        member_id = request.data.get('member')
+        if not member_id:
+            return Response({'error': 'member is required.'}, status=400)
+        try:
+            member = OnboardingSubmission.objects.get(pk=member_id)
+        except OnboardingSubmission.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+
+        # Typing the name is the confirmation step: it is what stops the wrong
+        # row being actioned from a long directory.
+        typed = str(request.data.get('confirm_name') or '').strip().lower()
+        if typed != (member.candidate_name or '').strip().lower():
+            return Response(
+                {'error': "The typed name does not match this member's name."}, status=400)
+
+        # Removing yourself would revoke the access needed to undo it.
+        me = access.get_member_for_user(request.user)
+        if me is not None and me.id == member.id:
+            return Response({'error': 'You cannot remove yourself.'}, status=400)
+
+        reason = str(request.data.get('reason') or '').strip()
+        offboard_type = request.data.get('offboard_type') or OffboardingRequest.TYPE_TERMINATION
+        if offboard_type not in dict(OffboardingRequest.TYPE_CHOICES):
+            offboard_type = OffboardingRequest.TYPE_TERMINATION
+
+        actor = _actor_name(request.user)
+        today = timezone.now().date()
+
+        with transaction.atomic():
+            # An existing request becomes this decision rather than a second
+            # one, so a member's history stays a single thread. `completed` is
+            # included deliberately: re-running a removal on someone already
+            # removed should be a no-op on the record, not a duplicate row.
+            off = (OffboardingRequest.objects
+                   .filter(member=member, status__in=['pending', 'approved', 'completed'])
+                   .order_by('-applied_at').first())
+            if off is None:
+                off = OffboardingRequest(member=member)
+
+            off.offboard_type = offboard_type
+            off.reason = reason
+            off.desired_last_day = today
+            off.status = OffboardingRequest.STATUS_APPROVED
+            off.notice_period_days = 0
+            off.last_working_day = today
+            off.reviewed_by_name = actor
+            off.reviewed_by_user = request.user
+            off.reviewed_at = timezone.now()
+            off.review_note = reason
+            off.save()
+
+            offboarding_lib.revoke_member_access(off, actor_name=actor)
+
+        # Outside the transaction: a mail failure must not undo the removal.
+        try:
+            _notify_offboarding(off, 'offboarding_revoked')
+        except Exception:  # noqa: BLE001
+            pass
+
+        return Response(OffboardingRequestSerializer(off).data, status=201)
 
 
 # ── Asset Management ──────────────────────────────────────────────────────────

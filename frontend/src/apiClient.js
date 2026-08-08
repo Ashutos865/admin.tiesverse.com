@@ -633,6 +633,9 @@ export const updateOffboardingRequest = (id, data) => adminFetch(`/api/career/of
 export const reviewOffboardingRequest = (id, data) => adminFetch(`/api/career/offboarding/${id}/review`, 'PATCH', data);
 export const revokeOffboardingAccess = (id) => adminFetch(`/api/career/offboarding/${id}/revoke`, 'POST', {});
 export const reactivateOffboardedMember = (id) => adminFetch(`/api/career/offboarding/${id}/reactivate`, 'POST', {});
+/* HR-initiated removal: creates the request, approves it and revokes access in
+   one server-side transaction, so a member can never end up half offboarded. */
+export const terminateMember = (data) => adminFetch('/api/career/offboarding/terminate', 'POST', data);
 
 // ASSET MANAGEMENT
 export const getAssets = (params = {}) => {

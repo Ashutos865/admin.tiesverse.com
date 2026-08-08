@@ -27,6 +27,7 @@ from .views import (
     LeaveListView, LeaveDetailView, LeaveReviewView,
     OffboardingListView, OffboardingDetailView, OffboardingReviewView,
     OffboardingRevokeView, OffboardingReactivateView,
+    OffboardingTerminateView,
     AssetListView, AssetDetailView, AssetAssignView,
     TaskListView, TaskDetailView,
     AdvisoryTaskOversightView, AdvisoryDailyUpdatesView, WeeklyUpdateView,
@@ -118,6 +119,8 @@ urlpatterns = [
 
     # ── Offboarding ────────────────────────────────────────────────────────
     path('offboarding/', OffboardingListView.as_view(), name='offboarding-list'),
+    # Before <int:pk>: a literal segment must not be captured as an id.
+    path('offboarding/terminate/', OffboardingTerminateView.as_view(), name='offboarding-terminate'),
     path('offboarding/<int:pk>/', OffboardingDetailView.as_view(), name='offboarding-detail'),
     path('offboarding/<int:pk>/review/', OffboardingReviewView.as_view(), name='offboarding-review'),
     path('offboarding/<int:pk>/revoke/', OffboardingRevokeView.as_view(), name='offboarding-revoke'),

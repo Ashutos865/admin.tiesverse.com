@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
     getOffboardingList, reviewOffboardingRequest,
     revokeOffboardingAccess, reactivateOffboardedMember,
+    terminateMember, getOnboardingList,
 } from '../../apiClient';
 import { usePermissions } from '../../context/PermissionContext';
 
@@ -37,7 +38,43 @@ export default function OffboardingPage() {
     const [lastDay, setLastDay] = useState(addDays(30));
     const [note, setNote] = useState('');
 
+    // Removing a member: who, why, and the typed-name confirmation.
+    const [removeOpen, setRemoveOpen] = useState(false);
+    const [members, setMembers] = useState([]);
+    const [removeId, setRemoveId] = useState('');
+    const [removeReason, setRemoveReason] = useState('');
+    const [confirmName, setConfirmName] = useState('');
+    const removeTarget = members.find((m) => String(m.id) === String(removeId)) || null;
+    const nameMatches = Boolean(removeTarget)
+        && confirmName.trim().toLowerCase() === (removeTarget.candidate_name || '').trim().toLowerCase();
+
     const showToast = (msg, err = false) => { setToast({ msg, err }); setTimeout(() => setToast(null), 3000); };
+
+    const openRemove = async () => {
+        setRemoveOpen(true);
+        setRemoveId(''); setRemoveReason(''); setConfirmName('');
+        if (!members.length) {
+            const list = await getOnboardingList().catch(() => []);
+            // Someone already offboarded has nothing left to remove.
+            setMembers((Array.isArray(list) ? list : []).filter((m) => m.status !== 'offboarded'));
+        }
+    };
+
+    const doRemove = async () => {
+        if (!removeTarget || !nameMatches) return;
+        setSaving(true);
+        const res = await terminateMember({
+            member: removeTarget.id,
+            confirm_name: confirmName.trim(),
+            reason: removeReason.trim(),
+        });
+        setSaving(false);
+        if (res?.error) return showToast(res.error, true);
+        setRemoveOpen(false);
+        setMembers([]);          // refetch next time; this one is gone from the list
+        showToast(`${removeTarget.candidate_name} has been removed and their access revoked.`);
+        load();
+    };
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -112,6 +149,11 @@ export default function OffboardingPage() {
                     <option value="cancelled">Cancelled</option>
                 </select>
                 <button onClick={load} style={ghostBtn}>↺ Refresh</button>
+                {canReview && (
+                    <button onClick={openRemove} style={{ ...dangerBtn, marginLeft: 'auto' }}>
+                        Remove a member
+                    </button>
+                )}
             </div>
 
             {loading ? <p style={muted}>Loading…</p> : records.length === 0 ? <p style={muted}>No offboarding requests.</p> : (
@@ -157,6 +199,61 @@ export default function OffboardingPage() {
                 </div>
             )}
 
+            {removeOpen && (
+                <div style={overlay} onClick={() => !saving && setRemoveOpen(false)}>
+                    <div style={modal} onClick={(e) => e.stopPropagation()}>
+                        <h3 style={{ margin: '0 0 4px', fontSize: 17 }}>Remove a member</h3>
+                        <p style={{ margin: '0 0 16px', color: 'var(--text-muted)', fontSize: 13 }}>
+                            Their access is revoked immediately. The member record and Crew ID are
+                            kept, so this can be undone with Reactivate.
+                        </p>
+
+                        <label style={label}>Member</label>
+                        <select value={removeId} onChange={(e) => { setRemoveId(e.target.value); setConfirmName(''); }}
+                            style={{ ...input, width: '100%', marginBottom: 12 }}>
+                            <option value="">Choose someone…</option>
+                            {members.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                    {m.candidate_name}{m.candidate_email ? ` · ${m.candidate_email}` : ''}
+                                </option>
+                            ))}
+                        </select>
+
+                        <label style={label}>Reason</label>
+                        <textarea value={removeReason} onChange={(e) => setRemoveReason(e.target.value)}
+                            rows={3} placeholder="Recorded on the offboarding record."
+                            style={{ ...input, width: '100%', marginBottom: 12, resize: 'vertical', fontFamily: 'inherit' }} />
+
+                        {removeTarget && (
+                            <>
+                                <label style={label}>
+                                    Type <strong>{removeTarget.candidate_name}</strong> to confirm
+                                </label>
+                                <input value={confirmName} onChange={(e) => setConfirmName(e.target.value)}
+                                    placeholder={removeTarget.candidate_name}
+                                    style={{ ...input, width: '100%', marginBottom: 4,
+                                             borderColor: confirmName && !nameMatches ? '#fca5a5' : undefined }} />
+                                {confirmName && !nameMatches && (
+                                    <p style={{ margin: '0 0 10px', fontSize: 12, color: '#b91c1c' }}>
+                                        That does not match their name.
+                                    </p>
+                                )}
+                            </>
+                        )}
+
+                        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
+                            <button onClick={() => setRemoveOpen(false)} style={ghostBtn} disabled={saving}>Cancel</button>
+                            <button onClick={doRemove} disabled={saving || !nameMatches}
+                                style={{ ...miniDanger, padding: '9px 16px', fontSize: 13,
+                                         opacity: (saving || !nameMatches) ? 0.5 : 1,
+                                         cursor: (saving || !nameMatches) ? 'not-allowed' : 'pointer' }}>
+                                {saving ? 'Removing…' : 'Remove & revoke access'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {approveModal && (
                 <div style={overlay} onClick={() => setApproveModal(null)}>
                     <div style={modal} onClick={e => e.stopPropagation()}>
@@ -194,6 +291,7 @@ const label = { display: 'block', fontSize: 12.5, fontWeight: 700, color: 'var(-
 const th = { textAlign: 'left', padding: '11px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--text-muted)', background: 'var(--surface-container-low, #f8f8fb)' };
 const td = { padding: '11px 14px', color: 'var(--text-main)', verticalAlign: 'top' };
 const primaryBtn = { padding: '9px 16px', border: 'none', borderRadius: 8, background: 'var(--primary)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' };
+const dangerBtn = { padding: '8px 14px', border: '1px solid #fecaca', borderRadius: 8, background: '#fff', color: '#b91c1c', fontSize: 13, fontWeight: 700, cursor: 'pointer' };
 const ghostBtn = { padding: '8px 14px', border: '1px solid var(--outline-variant)', borderRadius: 8, background: 'transparent', color: 'var(--text-main)', fontSize: 13, fontWeight: 600, cursor: 'pointer' };
 const miniPrimary = { ...primaryBtn, padding: '5px 11px', fontSize: 12, marginRight: 6 };
 const miniGhost = { ...ghostBtn, padding: '5px 11px', fontSize: 12, marginRight: 6 };
