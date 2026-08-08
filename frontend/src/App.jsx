@@ -44,6 +44,7 @@ const Brands = lazy(() => import('./pages/Tiesverse/Brands.jsx'));
 const WebsiteImages = lazy(() => import('./pages/Tiesverse/WebsiteImages.jsx'));
 const Podcasts = lazy(() => import('./pages/Tiesverse/Podcasts.jsx'));
 const ContactMessages = lazy(() => import('./pages/Tiesverse/ContactMessages.jsx'));
+const TalentPool = lazy(() => import('./pages/Tiesverse/TalentPool.jsx'));
 const DataApi = lazy(() => import('./pages/Tiesverse/DataApi.jsx'));
 
 // Career
@@ -200,6 +201,7 @@ function App() {
               <Route path="/tiesverse/website-images" element={<WebsiteImages />} />
               <Route path="/tiesverse/podcasts" element={<Podcasts />} />
               <Route path="/tiesverse/messages" element={<ContactMessages />} />
+              <Route path="/tiesverse/talent-pool" element={<TalentPool />} />
               <Route path="/tiesverse/data-api" element={<DataApi />} />
 
               {/* Career Routes */}

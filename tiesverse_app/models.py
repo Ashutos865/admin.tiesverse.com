@@ -367,6 +367,29 @@ class SiteImage(models.Model):
         return f"{self.key} ({self.mode})"
 
 
+class TalentInstitution(models.Model):
+    """An institution shown in "Our talent pool" on tiesverse.com/about.
+
+    `has_transparency` is recorded at upload rather than assumed: the grid sits
+    on a cream background, so a logo carrying its own white box is visible as a
+    rectangle and the admin should say so before it ships.
+    """
+    name = models.CharField(max_length=180)
+    logo_url = models.CharField(max_length=600, blank=True)
+    has_transparency = models.BooleanField(default=True)
+    position = models.IntegerField(default=0)
+    is_published = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'talent_institutions'
+        ordering = ['position', 'id']
+
+    def __str__(self):
+        return self.name
+
+
 class ContactMessage(models.Model):
     """A message sent from the contact form on tiesverse.com.
 

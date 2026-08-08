@@ -187,6 +187,24 @@ export const uploadSiteImage = async (key, file) => {
     try { return JSON.parse(text); } catch { return { error: `Upload failed (${res.status}).` }; }
 };
 
+// Talent pool institutions (About page logo grid). Logos go to R2.
+export const getTalentPool = () => adminFetch('/api/landing/talent-pool/').catch(() => ({ institutions: [] }));
+export const createTalent = (data) => adminFetch('/api/landing/talent-pool/', 'POST', data);
+export const updateTalent = (id, data) => adminFetch(`/api/landing/talent-pool/${id}/`, 'PATCH', data);
+export const deleteTalent = (id) => adminFetch(`/api/landing/talent-pool/${id}/`, 'DELETE');
+export const uploadTalentLogo = async (id, file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_URL}/api/landing/talent-pool/${id}/logo/`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+        body: form,
+    });
+    if (res.status === 401) { setApiToken(null); window.location.href = '/login'; return { error: 'Session expired.' }; }
+    const text = await res.text();
+    try { return JSON.parse(text); } catch { return { error: `Upload failed (${res.status}).` }; }
+};
+
 // Contact-form messages from tiesverse.com.
 export const getContactMessages = (params = '') => adminFetch(`/api/landing/contact-messages/${params}`).catch(() => ({ messages: [], new_count: 0 }));
 export const updateContactMessage = (id, data) => adminFetch(`/api/landing/contact-messages/${id}/`, 'PATCH', data);

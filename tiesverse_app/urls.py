@@ -8,6 +8,7 @@ from .views import (
 from .views import site_images_admin, site_image_upload
 from .podcast_views import podcasts_admin, podcast_detail, podcast_audio_upload
 from .contact_views import contact_messages, contact_message_detail
+from .talent_views import talent_admin, talent_detail, talent_logo_upload
 from .data_api import (
     data_stores, data_store_detail, data_store_records, data_keys, data_key_detail,
 )
@@ -25,6 +26,9 @@ router.register(r'brands', BrandViewSet, basename='brand')
 
 urlpatterns = [
     path('site-images/', site_images_admin, name='site-images-admin'),
+    path('talent-pool/', talent_admin, name='talent-admin'),
+    path('talent-pool/<int:pk>/', talent_detail, name='talent-detail'),
+    path('talent-pool/<int:pk>/logo/', talent_logo_upload, name='talent-logo-upload'),
     path('contact-messages/', contact_messages, name='contact-messages'),
     path('contact-messages/<int:pk>/', contact_message_detail, name='contact-message-detail'),
     path('podcasts/', podcasts_admin, name='podcasts-admin'),
