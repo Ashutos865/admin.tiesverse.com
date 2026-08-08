@@ -78,6 +78,8 @@ CORS_ALLOWED_ORIGINS = [
     "https://mail.tiesverse.com",     # TIES Mail webmail (standalone frontend)
     "http://localhost:5176",          # …its dev server
     "http://127.0.0.1:5176",
+    "https://iwt.tiesverse.com",      # IWT Summit registration (email OTP)
+    "https://iwtdialogue.tiesverse.com",
 ] + _cors_extra
 
 # Allow the landing site to POST to the public registration endpoint
@@ -286,6 +288,26 @@ SES_FROM_EMAIL = os.environ.get('SES_FROM_EMAIL', 'noreply@tiesverse.com')
 # own SES configuration set so its reputation/metrics stay separate from
 # transactional mail (offer letters, certificates). Optional — blank = unset.
 SES_PORTAL_MAIL_CONFIG_SET = os.environ.get('SES_PORTAL_MAIL_CONFIG_SET', '')
+
+# ── One-time codes (OTP) ─────────────────────────────────────────────────────
+# Email codes are sent from the mail subdomain, which is already a verified SES
+# identity, so no extra AWS setup is needed.
+OTP_FROM_EMAIL = os.environ.get('OTP_FROM_EMAIL', 'noreply@mail.tiesverse.com')
+# WhatsApp authentication template used for codes (see WHATSAPP_* below).
+WHATSAPP_TEMPLATE_OTP = os.environ.get('WHATSAPP_TEMPLATE_OTP', 'otp_verification')
+# MSG91 for SMS. Dormant until filled in — and SMS to Indian numbers ALSO needs
+# DLT registration with TRAI, without which carriers block the message.
+MSG91_AUTH_KEY = os.environ.get('MSG91_AUTH_KEY', '')
+MSG91_OTP_TEMPLATE_ID = os.environ.get('MSG91_OTP_TEMPLATE_ID', '')
+# 'msg91' (cheap, needs DLT) or 'fast2sms' (dearer, but sends without DLT, so
+# it can be switched on the same day). Indian numbers only on Fast2SMS.
+# 'msg91' | 'fast2sms' | '2factor'
+SMS_PROVIDER = os.environ.get('SMS_PROVIDER', 'msg91')
+FAST2SMS_API_KEY = os.environ.get('FAST2SMS_API_KEY', '')
+# 2Factor bills per DELIVERED OTP and refunds anything undelivered in 15s.
+# Leave the template name blank to use its no-DLT route.
+TWOFACTOR_API_KEY = os.environ.get('TWOFACTOR_API_KEY', '')
+TWOFACTOR_TEMPLATE_NAME = os.environ.get('TWOFACTOR_TEMPLATE_NAME', '')
 
 # ── WhatsApp (official Meta WhatsApp Cloud API) ──────────────────────────────
 # Dormant until these are filled in: with no token/phone id the sender records

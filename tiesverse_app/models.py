@@ -367,6 +367,53 @@ class SiteImage(models.Model):
         return f"{self.key} ({self.mode})"
 
 
+class OtpChallenge(models.Model):
+    """A one-time code sent to an email address or phone number.
+
+    The code itself is never stored, only a salted hash: a leaked database
+    should not hand someone a working OTP. Every challenge carries its own
+    expiry and attempt budget, so a guesser gets a handful of tries against a
+    code that dies in minutes rather than unlimited tries forever.
+    """
+    CHANNEL_EMAIL = 'email'
+    CHANNEL_WHATSAPP = 'whatsapp'
+    CHANNEL_SMS = 'sms'
+    CHANNEL_CHOICES = [
+        (CHANNEL_EMAIL, 'Email'),
+        (CHANNEL_WHATSAPP, 'WhatsApp'),
+        (CHANNEL_SMS, 'SMS'),
+    ]
+
+    # What is being verified, and what for. `purpose` keeps a code issued for
+    # one flow from being replayed in another.
+    channel = models.CharField(max_length=10, choices=CHANNEL_CHOICES)
+    destination = models.CharField(max_length=254)      # email address or E.164 number
+    purpose = models.CharField(max_length=40, default='verify')
+
+    code_hash = models.CharField(max_length=64)
+    attempts = models.IntegerField(default=0)
+    max_attempts = models.IntegerField(default=5)
+
+    sent_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    verified_at = models.DateTimeField(null=True, blank=True)
+    # Set once the caller has spent the successful verification, so a single
+    # correct entry cannot be reused to authorise two different actions.
+    consumed_at = models.DateTimeField(null=True, blank=True)
+
+    ip = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'otp_challenges'
+        ordering = ['-sent_at']
+        indexes = [
+            models.Index(fields=['destination', 'purpose', '-sent_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.channel}:{self.destination} ({self.purpose})'
+
+
 class TalentInstitution(models.Model):
     """An institution shown in "Our talent pool" on tiesverse.com/about.
 
