@@ -370,7 +370,142 @@ class PositionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, StaffModelPermissions]
 
 
-class EnrollmentViewSet(viewsets.ViewSet):
+def _interview_mail_context(cand, *, interview_at='', duration_min=30,
+                            meet_link='', previous_at=''):
+    """Shared context for the three interview templates."""
+    from datetime import datetime
+
+    def _split(iso):
+        try:
+            d = datetime.fromisoformat(str(iso))
+            return f'{d.day} {d.strftime("%B %Y")}', d.strftime('%I:%M %p').lstrip('0')
+        except Exception:  # noqa: BLE001
+            return str(iso or ''), ''
+
+    date_txt, time_txt = _split(interview_at)
+    prev_date, prev_time = _split(previous_at) if previous_at else ('', '')
+    name = f"{cand.get('first_name', '')} {cand.get('last_name', '')}".strip()
+    return {
+        'name': name or (cand.get('email') or 'there'),
+        'role': cand.get('roles') or cand.get('department') or 'the role',
+        'department': cand.get('department') or '',
+        'interview_date': date_txt,
+        'interview_time': time_txt,
+        'previous_date': prev_date,
+        'previous_time': prev_time,
+        'duration': f'{int(duration_min or 30)} minutes',
+        'meet_link': meet_link or cand.get('meeting_link') or '',
+        'interviewer': cand.get('interviewer') or 'the Tiesverse team',
+    }
+
+
+class InterviewMailMixin:
+    """Endpoints that email a candidate about their interview.
+
+    Kept separate from scheduling so the joining link can be sent when the
+    interview is close, rather than days ahead where it is lost in an old
+    thread or forwarded on.
+    """
+
+    @action(detail=True, methods=['post'], url_path='send-interview-link')
+    def send_interview_link(self, request, pk=None):
+        """Email the joining link, from Tiesverse rather than from Google."""
+        from config.email_templates import send_template_email
+
+        candidates = cloudflare_proxy.get_candidates()
+        if candidates is None:
+            return Response({'error': 'Cloudflare D1 unreachable'}, status=503)
+        cand = next((c for c in candidates if str(c.get('id')) == str(pk)), None)
+        if not cand:
+            return Response({'error': 'Candidate not found'}, status=404)
+
+        to = str(cand.get('email') or '').strip()
+        if not to:
+            return Response({'error': 'This candidate has no email address.'}, status=400)
+        meet_link = str(cand.get('meeting_link') or '').strip()
+        if not meet_link:
+            return Response({'error': 'Schedule the interview first — there is no link to send.'},
+                            status=400)
+
+        ctx = _interview_mail_context(
+            cand, interview_at=cand.get('interview_at') or '',
+            duration_min=request.data.get('duration_min') or 30, meet_link=meet_link)
+        ok = send_template_email('interview_link', to, ctx)
+        if not ok:
+            return Response({'error': 'Could not send the email.'}, status=502)
+        return Response({'status': 'sent', 'to': to, 'meet_link': meet_link})
+
+    @action(detail=True, methods=['post'], url_path='reschedule-interview')
+    def reschedule_interview(self, request, pk=None):
+        """Move an interview to a new time, KEEPING the same joining link.
+
+        The event is patched rather than recreated, so a link the candidate has
+        already saved still works. They get a branded "time changed" email
+        showing the old and new times.
+        """
+        from config import google_calendar
+        from config.email_templates import send_template_email
+
+        candidates = cloudflare_proxy.get_candidates()
+        if candidates is None:
+            return Response({'error': 'Cloudflare D1 unreachable'}, status=503)
+        cand = next((c for c in candidates if str(c.get('id')) == str(pk)), None)
+        if not cand:
+            return Response({'error': 'Candidate not found'}, status=404)
+
+        new_at = str(request.data.get('interview_at') or '').strip()
+        if not new_at:
+            return Response({'error': 'Pick the new date and time.'}, status=400)
+
+        event_id = str(cand.get('calendar_event_id') or '').strip()
+        previous_at = str(cand.get('interview_at') or '')
+        meet_link = str(cand.get('meeting_link') or '')
+        duration = int(request.data.get('duration_min') or 30)
+        notify = str(request.data.get('notify', 'true')).lower() not in ('false', '0', 'no')
+
+        note = ''
+        if event_id and google_calendar.is_configured():
+            try:
+                res = google_calendar.reschedule_event(
+                    event_id=event_id, start_iso=new_at,
+                    duration_min=request.data.get('duration_min'),
+                    # Google stays quiet; the candidate hears from us instead.
+                    send_updates='none')
+            except Exception as exc:  # noqa: BLE001
+                return Response({'error': f'Could not move the calendar event: {exc}'}, status=502)
+            if res:
+                meet_link = res.get('meet_link') or meet_link
+                previous_at = res.get('previous_start') or previous_at
+        else:
+            note = ('No calendar event to move, so only the saved time changed. '
+                    'The candidate was still told.')
+
+        ok = cloudflare_proxy.set_interview(
+            row_id=pk, interview_at=new_at, meeting_link=meet_link,
+            calendar_event_id=event_id,
+            interviewer_email=cand.get('interviewer_email') or '',
+            interview_status=str(request.data.get('interview_status')
+                                 or cand.get('interview_status') or 'Interview Rescheduled'),
+            interviewer=cand.get('interviewer') or '')
+        if not ok:
+            return Response({'error': 'Moved the event but could not update the record.'},
+                            status=503)
+
+        mailed = False
+        to = str(cand.get('email') or '').strip()
+        if notify and to:
+            ctx = _interview_mail_context(
+                cand, interview_at=new_at, duration_min=duration,
+                meet_link=meet_link, previous_at=previous_at)
+            mailed = bool(send_template_email('interview_rescheduled', to, ctx))
+
+        return Response({
+            'status': 'rescheduled', 'interview_at': new_at, 'previous_at': previous_at,
+            'meet_link': meet_link, 'link_unchanged': True, 'emailed': mailed, 'note': note,
+        })
+
+
+class EnrollmentViewSet(InterviewMailMixin, viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
@@ -439,6 +574,10 @@ class EnrollmentViewSet(viewsets.ViewSet):
                     start_iso=interview_at,
                     duration_min=duration,
                     attendees=[cand_email, *interviewer_emails],
+                    # Google stays quiet. The candidate gets our shortlist mail
+                    # instead, and the joining link later — both from Tiesverse,
+                    # rather than a raw Meet invite arriving unannounced.
+                    send_updates='none',
                 )
                 meet_link, event_id = res['meet_link'], res['event_id']
             except Exception as exc:  # noqa: BLE001
@@ -453,9 +592,26 @@ class EnrollmentViewSet(viewsets.ViewSet):
         )
         if not ok:
             return Response({'error': 'Created the event but could not update the candidate record.'}, status=503)
+
+        # Tell the candidate they are through, WITHOUT the link. The joining
+        # link goes out separately nearer the time, so it cannot be lost in an
+        # old thread or forwarded before the interview. Opt out with
+        # notify=false; a mail failure must not undo a booked interview.
+        mailed = False
+        notify = str(request.data.get('notify', 'true')).lower() not in ('false', '0', 'no')
+        if notify and cand_email:
+            try:
+                from config.email_templates import send_template_email
+                mailed = bool(send_template_email(
+                    'interview_shortlisted', cand_email,
+                    _interview_mail_context(cand, interview_at=interview_at,
+                                            duration_min=duration)))
+            except Exception:  # noqa: BLE001
+                mailed = False
+
         return Response({
             'status': 'scheduled', 'meet_link': meet_link, 'event_id': event_id,
-            'interview_at': interview_at, 'note': note,
+            'interview_at': interview_at, 'note': note, 'shortlist_emailed': mailed,
         })
 
 
