@@ -420,6 +420,11 @@ export default function MailAutomation() {
                 certificate: {
                     template_id: certTemplateId, mapping: certMapping, filename_pattern: certFilename,
                     verify_qr: certVerifyQR, doc_type: certVerifyQR ? certDocType : '',
+                    // A test send must not mint a real certificate: no verify
+                    // record, no tick on the member's matrix, a TEST- id on the
+                    // PDF. Previously a test to your own address created a real,
+                    // verifiable certificate that a later real send would clash with.
+                    test_send: Boolean(testTo),
                 },
             }).catch(() => ({ error: 'Failed' }));
             if (!res?.campaign_id) { setSending(false); showToast(res?.error || 'Send failed', true); return; }

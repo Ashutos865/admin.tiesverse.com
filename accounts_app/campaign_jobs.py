@@ -825,6 +825,10 @@ def process_campaign(camp):
         # Without it, campaign certificates are plain attachments (old behaviour).
         verify_qr = bool(cert and cert.get('verify_qr'))
         doc_key = str(cert.get('doc_type') or '') if cert else ''
+        # A test send delivers the email but records nothing: no verify row, no
+        # tick on the member's matrix, and an obviously fake TEST- id. It exists
+        # so checking a template cannot mint a real certificate for yourself.
+        is_test_send = bool((cert or {}).get('test_send') or getattr(camp, 'test_send', False))
         doc_label = _doc_type_label(doc_key)
         id_var = next((str(v.get('name')) for v in cert_vars if v.get('generator_enabled')), '')
 
@@ -875,10 +879,23 @@ def process_campaign(camp):
                         'error': 'duplicate' if dup else 'invalid or blank email', 'cert': '', 'mid': ''}
 
             attachments, cert_fname, cert_id, gen_error = None, '', '', ''
+            guard = {'allowed': True, 'reason': '', 'reuse_cert_id': '', 'is_test': is_test_send}
             if cert and cert_tid:
+                from accounts_app import certificate_guards as guards
+                guard = guards.check_recipient(
+                    to, name, template_id=str(cert_tid or ''), doc_key=doc_key,
+                    is_test=is_test_send)
+                if not guard['allowed']:
+                    return {'email': to, 'name': name, 'subject': subject,
+                            'status': 'skipped', 'error': guard['reason'],
+                            'cert': '', 'mid': ''}
                 if verify_qr:
-                    cert_id = (_make_unique_cert_id(cert_vars, id_var) if id_var
-                               else _fallback_cert_id())
+                    # An existing holder keeps their number, so the QR already in
+                    # their inbox still resolves and no second record is written.
+                    cert_id = (guard['reuse_cert_id']
+                               or (guards.test_certificate_id() if is_test_send else None)
+                               or (_make_unique_cert_id(cert_vars, id_var) if id_var
+                                   else _fallback_cert_id()))
                 # Start from the clean original and stamp everything ourselves.
                 # Per-recipient generation is only the fallback for when the
                 # original could not be fetched: it renders an invisible
@@ -959,10 +976,15 @@ def process_campaign(camp):
                 # lands, so the record is written right after the send succeeds.
                 # The record sees the RESOLVED values — a typed position like
                 # "Tech Intern" must reach the verify page, not just the PDF.
-                _record_campaign_certificate(cert_id, name, to, doc_key, doc_label,
-                                             cert_tid, cert_tpl_name,
-                                             {**row, 'position': overlay.get('position') or row.get('position') or ''},
-                                             cid)
+                # A test send writes no record and never touches the member's
+                # certificate matrix: that is the point of a test. A reused
+                # number is already recorded, so writing again would either
+                # be refused by the unique constraint or duplicate the row.
+                if not is_test_send and not guard.get('reuse_cert_id'):
+                    _record_campaign_certificate(cert_id, name, to, doc_key, doc_label,
+                                                 cert_tid, cert_tpl_name,
+                                                 {**row, 'position': overlay.get('position') or row.get('position') or ''},
+                                                 cid)
             return {'email': to, 'name': name, 'subject': subject,
                     'status': 'sent' if ok else 'failed', 'error': res.get('error') or '',
                     'cert': cert_id or cert_fname, 'mid': res.get('message_id') or ''}
