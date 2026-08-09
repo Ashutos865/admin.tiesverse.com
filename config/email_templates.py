@@ -393,6 +393,97 @@ EMAIL_TEMPLATES = {
 }
 
 
+_INTERVIEW_TEMPLATES = {
+    'interview_shortlisted': {
+        'name': 'Interview - Shortlisted',
+        'description': ('Sent as soon as an interview is scheduled. Tells the candidate '
+                        'they are through to the interview round. Deliberately carries NO '
+                        'joining link: the link follows nearer the time, so it cannot be '
+                        'lost in an old thread or shared before the interview.'),
+        'subject': 'You have been shortlisted for an interview - {{role}} | Tiesverse',
+        'from_name': 'Tiesverse Careers',
+        'from_email': '',
+        'allow_attachment': False,
+        'variables': ['name', 'role', 'department', 'interview_date', 'interview_time', 'duration'],
+        'content': {
+            'heading': 'You are through to the interview round',
+            'body': ('Dear {{name}},\n\nThank you for applying to Tiesverse. We have reviewed '
+                     'your application and are glad to tell you that you have been shortlisted '
+                     'for an interview for the {{role}} role.'),
+            'table': [
+                {'label': 'Role', 'value': '{{role}}'},
+                {'label': 'Department', 'value': '{{department}}'},
+                {'label': 'Date', 'value': '{{interview_date}}'},
+                {'label': 'Time', 'value': '{{interview_time}}'},
+                {'label': 'Duration', 'value': '{{duration}}'},
+            ],
+            'closing': ('Please keep this slot free. We will send your joining link in a '
+                        'separate email closer to the time, from this same address.\n\n'
+                        'If the time does not work for you, reply to this email and we will '
+                        'find another.'),
+            'button': {'label': '', 'url': ''},
+            'signature': 'Warm regards,\nTiesverse HR Team\ncareers@tiesverse.com',
+        },
+    },
+    'interview_link': {
+        'name': 'Interview - Joining Link',
+        'description': ('Sent separately, closer to the interview, with the joining link. '
+                        'Replaces the raw Google Meet invite so the link arrives from '
+                        'Tiesverse in a message the candidate expects.'),
+        'subject': 'Your interview link - {{role}} on {{interview_date}} | Tiesverse',
+        'from_name': 'Tiesverse Careers',
+        'from_email': '',
+        'allow_attachment': False,
+        'variables': ['name', 'role', 'department', 'interview_date', 'interview_time',
+                      'duration', 'meet_link', 'interviewer'],
+        'content': {
+            'heading': 'Your interview joining link',
+            'body': ('Dear {{name}},\n\nHere is the joining link for your interview. '
+                     'Please join a few minutes early and make sure your camera and '
+                     'microphone are working.'),
+            'table': [
+                {'label': 'Role', 'value': '{{role}}'},
+                {'label': 'Date', 'value': '{{interview_date}}'},
+                {'label': 'Time', 'value': '{{interview_time}}'},
+                {'label': 'Duration', 'value': '{{duration}}'},
+                {'label': 'Interviewer', 'value': '{{interviewer}}'},
+            ],
+            'closing': ('If the link does not open, copy this address into your browser:\n'
+                        '{{meet_link}}\n\nIf anything goes wrong on the day, reply to this '
+                        'email and we will help.'),
+            'button': {'label': 'Join the interview', 'url': '{{meet_link}}'},
+            'signature': 'Warm regards,\nTiesverse HR Team\ncareers@tiesverse.com',
+        },
+    },
+    'interview_rescheduled': {
+        'name': 'Interview - Rescheduled',
+        'description': ('Sent when an interview moves to a new time. The joining link is '
+                        'unchanged, so a candidate who already has it does not need a new one.'),
+        'subject': 'Your interview has moved to {{interview_date}} | Tiesverse',
+        'from_name': 'Tiesverse Careers',
+        'from_email': '',
+        'allow_attachment': False,
+        'variables': ['name', 'role', 'previous_date', 'previous_time',
+                      'interview_date', 'interview_time', 'duration', 'meet_link'],
+        'content': {
+            'heading': 'Your interview time has changed',
+            'body': ('Dear {{name}},\n\nYour interview for the {{role}} role has been moved. '
+                     'The joining link stays the same, so the one you already have will work.'),
+            'table': [
+                {'label': 'Was', 'value': '{{previous_date}} at {{previous_time}}'},
+                {'label': 'Now', 'value': '{{interview_date}} at {{interview_time}}'},
+                {'label': 'Duration', 'value': '{{duration}}'},
+            ],
+            'closing': ('Your calendar invite has been updated automatically.\n\n'
+                        'If the new time does not work, reply to this email and we will '
+                        'find another.'),
+            'button': {'label': 'Join the interview', 'url': '{{meet_link}}'},
+            'signature': 'Warm regards,\nTiesverse HR Team\ncareers@tiesverse.com',
+        },
+    },
+}
+
+EMAIL_TEMPLATES.update(_INTERVIEW_TEMPLATES)
 EMAIL_TEMPLATES.update(_OFFBOARDING_TEMPLATES)
 
 

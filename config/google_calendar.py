@@ -90,7 +90,8 @@ def _credentials():
 
 
 def create_event(*, summary, description, start_iso, duration_min, attendees,
-                 guests_can_see_other_guests=True, request_id_prefix='ties', meet_uri=None):
+                 guests_can_see_other_guests=True, request_id_prefix='ties', meet_uri=None,
+                 send_updates='all'):
     """Create a Calendar event and invite attendees. If `meet_uri` is given (a
     pre-configured Meet space), that link is used; otherwise Calendar auto-creates
     a Meet link. Returns {meet_link, event_id, html_link}."""
@@ -131,7 +132,9 @@ def create_event(*, summary, description, start_iso, duration_min, attendees,
         calendarId='primary',
         body=body,
         conferenceDataVersion=conf_version,
-        sendUpdates='all',
+        # 'none' keeps Google quiet so the candidate hears from us first, in a
+        # branded mail, instead of a raw Meet invite they did not expect.
+        sendUpdates=send_updates,
     ).execute()
 
     if meet_uri:
@@ -146,13 +149,72 @@ def create_event(*, summary, description, start_iso, duration_min, attendees,
     return {'meet_link': meet, 'event_id': event.get('id', ''), 'html_link': event.get('htmlLink', '')}
 
 
-def create_interview_event(*, summary, description, start_iso, duration_min, attendees):
-    """Interview scheduling — guests (candidate/interviewer) may see each other."""
+def create_interview_event(*, summary, description, start_iso, duration_min, attendees,
+                           send_updates='all'):
+    """Interview scheduling — guests (candidate/interviewer) may see each other.
+
+    `send_updates='none'` keeps Google quiet so the candidate can be told by us
+    instead: a shortlist mail first, the joining link later, both from TIES
+    rather than a raw Meet invite. The default stays 'all' until those two mails
+    are actually wired up — silencing Google before then would leave a candidate
+    with no invite at all.
+    """
     return create_event(
         summary=summary, description=description, start_iso=start_iso,
         duration_min=duration_min, attendees=attendees,
         guests_can_see_other_guests=True, request_id_prefix='ties-int',
+        send_updates=send_updates,
     )
+
+
+def reschedule_event(*, event_id, start_iso, duration_min=None, send_updates='none'):
+    """Move an existing interview to a new time, keeping the SAME Meet link.
+
+    Patching the event rather than recreating it is the point: the joining link
+    the candidate already has stays valid, so a reschedule never invalidates a
+    link someone has already saved. Returns
+    {meet_link, event_id, html_link, previous_start} or None.
+    """
+    creds = _credentials()
+    if creds is None or not (event_id and start_iso):
+        return None
+
+    from googleapiclient.discovery import build
+
+    tz = getattr(settings, 'GOOGLE_CAL_TIMEZONE', 'Asia/Kolkata')
+    svc = build('calendar', 'v3', credentials=creds, cache_discovery=False)
+    current = svc.events().get(calendarId='primary', eventId=event_id).execute()
+    previous_start = (current.get('start') or {}).get('dateTime', '')
+
+    start = datetime.datetime.fromisoformat(str(start_iso))
+    if duration_min:
+        minutes = int(duration_min)
+    else:
+        # Keep whatever length it already had, so a reschedule does not quietly
+        # turn a 45-minute interview into a 30-minute one.
+        try:
+            old_start = datetime.datetime.fromisoformat(previous_start)
+            old_end = datetime.datetime.fromisoformat((current.get('end') or {})['dateTime'])
+            minutes = max(5, int((old_end - old_start).total_seconds() // 60))
+        except Exception:  # noqa: BLE001
+            minutes = 30
+    end = start + datetime.timedelta(minutes=minutes)
+
+    updated = svc.events().patch(
+        calendarId='primary', eventId=event_id,
+        body={'start': {'dateTime': start.isoformat(), 'timeZone': tz},
+              'end': {'dateTime': end.isoformat(), 'timeZone': tz}},
+        sendUpdates=send_updates,
+    ).execute()
+
+    meet = ''
+    for ep in (updated.get('conferenceData', {}).get('entryPoints') or []):
+        if ep.get('entryPointType') == 'video':
+            meet = ep.get('uri', '')
+            break
+    meet = meet or updated.get('hangoutLink', '') or updated.get('location', '')
+    return {'meet_link': meet, 'event_id': updated.get('id', ''),
+            'html_link': updated.get('htmlLink', ''), 'previous_start': previous_start}
 
 
 def apply_meet_controls(event_obj):
