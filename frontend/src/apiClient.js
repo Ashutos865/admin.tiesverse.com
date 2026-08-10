@@ -285,6 +285,11 @@ export const getCandidates = () => adminFetch('/api/career/enrollments').catch((
 export const getEnrollments = getCandidates;
 export const updateCandidateStatus = (id, data) => adminFetch(`/api/career/enrollments/${id}/update_status`, 'PATCH', data);
 export const scheduleInterview = (id, data) => adminFetch(`/api/career/enrollments/${id}/schedule_interview`, 'POST', data);
+/* Moves an interview KEEPING the same Meet link — the link a candidate already
+   has stays valid. Scheduling again would mint a new one. */
+export const rescheduleInterview = (id, data) => adminFetch(`/api/career/enrollments/${id}/reschedule-interview`, 'POST', data);
+/* The joining link, sent separately and nearer the time. */
+export const sendInterviewLink = (id, data = {}) => adminFetch(`/api/career/enrollments/${id}/send-interview-link`, 'POST', data);
 export const updateEnrollment = updateCandidateStatus;
 export const deleteEnrollment = (id) => adminFetch(`/api/career/enrollments/${id}`, 'DELETE');
 

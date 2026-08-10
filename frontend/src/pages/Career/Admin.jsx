@@ -3,7 +3,8 @@ import { AuthContext } from '../../context/AuthContext';
 import {
     getPositions, createPosition, updatePosition, deletePosition,
     getOfferLetters, createOfferLetter, updateOfferLetter, deleteOfferLetter,
-    getCandidates, updateCandidateStatus, scheduleInterview, getFormGates, updateFormGates,
+    getCandidates, updateCandidateStatus, scheduleInterview, rescheduleInterview,
+    sendInterviewLink, getFormGates, updateFormGates,
     getOnboardingList, downloadFile, sendOffer, initiateOnboarding
 } from '../../apiClient';
 import { Plus, Edit2, Trash2, X, Sparkles, Briefcase, FileText, Mail, ToggleRight, CheckCircle, ExternalLink, Search, Download, Eye, UserCheck, Award, Send, CalendarDays, List as ListIcon } from 'lucide-react';
@@ -334,6 +335,7 @@ const CareerAdmin = ({ tab = 'positions' }) => {
     const [applicationDrafts, setApplicationDrafts] = useState({});
     const [savingApplication, setSavingApplication] = useState(null);
     const [schedulingId, setSchedulingId] = useState(null);
+    const [linkSendingId, setLinkSendingId] = useState(null);
     const [hrList, setHrList] = useState([]);   // interviewer options (verified HR/lead members)
     const [appView, setAppView] = useState('list');   // 'list' | 'calendar' (applications tab)
 
@@ -785,26 +787,62 @@ const CareerAdmin = ({ tab = 'positions' }) => {
         if (!draft.interview_at) { showNotice('Pick an interview date and time first.', 'error'); return; }
         setSchedulingId(id);
         try {
-            const res = await scheduleInterview(id, {
-                interview_at: draft.interview_at,
-                interviewer: draft.interviewer || '',
-                interviewer_email: draft.interviewer_email || '',
-                duration_min: 30,
-                interview_status: 'Interview Scheduled',
-            });
-            if (res?.status !== 'scheduled') throw new Error(res?.error || 'Could not schedule');
+            // Moving an existing interview must NOT go through scheduling: that
+            // recreates the event and mints a new link, breaking the one the
+            // candidate already has.
+            const moving = Boolean(application.calendar_event_id && application.interview_at);
+            const res = moving
+                ? await rescheduleInterview(id, {
+                    interview_at: draft.interview_at,
+                    duration_min: 30,
+                    interview_status: 'Interview Rescheduled',
+                })
+                : await scheduleInterview(id, {
+                    interview_at: draft.interview_at,
+                    interviewer: draft.interviewer || '',
+                    interviewer_email: draft.interviewer_email || '',
+                    duration_min: 30,
+                    interview_status: 'Interview Scheduled',
+                });
+            if (res?.status !== 'scheduled' && res?.status !== 'rescheduled') {
+                throw new Error(res?.error || 'Could not schedule');
+            }
             setItems((current) => current.map((it) => (
                 String(getApplicationId(it)) === String(id)
-                    ? { ...it, interview_status: 'Interview Scheduled', interview_at: res.interview_at, meeting_link: res.meet_link, interviewer: draft.interviewer, interviewer_email: draft.interviewer_email }
+                    ? {
+                        ...it,
+                        interview_status: moving ? 'Interview Rescheduled' : 'Interview Scheduled',
+                        interview_at: res.interview_at,
+                        meeting_link: res.meet_link || it.meeting_link,
+                        calendar_event_id: it.calendar_event_id || res.event_id || '',
+                        interviewer: moving ? it.interviewer : draft.interviewer,
+                        interviewer_email: moving ? it.interviewer_email : draft.interviewer_email,
+                    }
                     : it
             )));
-            showNotice(res.meet_link
-                ? 'Interview scheduled — Google Meet link created and invites emailed.'
-                : (res.note || 'Interview date saved (Google Calendar not configured, so no Meet link/invite).'));
+            showNotice(moving
+                ? 'Interview moved — same joining link, and the candidate has been emailed the new time.'
+                : (res.meet_link
+                    ? 'Scheduled — the candidate has been told they are shortlisted. Send the joining link nearer the time.'
+                    : (res.note || 'Interview date saved (Google Calendar not configured, so no Meet link).')));
         } catch (error) {
             showNotice(`Could not schedule: ${error?.message || 'Unknown error'}`, 'error');
         } finally {
             setSchedulingId(null);
+        }
+    };
+
+    const handleSendInterviewLink = async (application) => {
+        const id = getApplicationId(application);
+        setLinkSendingId(id);
+        try {
+            const res = await sendInterviewLink(id, {});
+            if (res?.status !== 'sent') throw new Error(res?.error || 'Could not send the link');
+            showNotice(`Joining link emailed to ${res.to}.`);
+        } catch (error) {
+            showNotice(`Could not send the link: ${error?.message || 'Unknown error'}`, 'error');
+        } finally {
+            setLinkSendingId(null);
         }
     };
 
@@ -1017,11 +1055,24 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                                     <input type="datetime-local" value={draft.interview_at || ''} onChange={(event) => updateApplicationDraft(item, 'interview_at', event.target.value)} />
                                 </label>
                                 <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                                    Invite goes to the candidate{draft.interviewer_email ? ` and ${draft.interviewer_email}` : ' — pick an interviewer above to invite them too'}.
+                                    {item.meeting_link
+                                        ? 'Changing the time keeps the same joining link — the candidate is emailed the new time.'
+                                        : `The candidate is told they are shortlisted, without the link. ${draft.interviewer_email ? `${draft.interviewer_email} is added to the calendar.` : 'Pick an interviewer above to add them to the calendar.'}`}
                                 </div>
-                                <button type="button" className="application-save-button" disabled={schedulingId === id} onClick={() => handleScheduleInterview(item)}>
-                                    <Send size={13} /> {schedulingId === id ? 'Scheduling…' : 'Create Meet & send invites'}
-                                </button>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <button type="button" className="application-save-button" disabled={schedulingId === id} onClick={() => handleScheduleInterview(item)}>
+                                        <Send size={13} /> {schedulingId === id
+                                            ? (item.meeting_link ? 'Moving…' : 'Scheduling…')
+                                            : (item.meeting_link ? 'Reschedule' : 'Schedule & tell the candidate')}
+                                    </button>
+                                    {item.meeting_link && (
+                                        <button type="button" className="application-save-button" disabled={linkSendingId === id}
+                                            title="Email the joining link to the candidate"
+                                            onClick={() => handleSendInterviewLink(item)}>
+                                            <Send size={13} /> {linkSendingId === id ? 'Sending…' : 'Send joining link'}
+                                        </button>
+                                    )}
+                                </div>
                                 {item.meeting_link && (
                                     <a href={item.meeting_link} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>
                                         Google Meet ↗{item.interview_at ? ` · ${new Date(item.interview_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}
