@@ -1052,6 +1052,20 @@ def webinar_broadcast(request):
     extra = data.get('extra_context') or {}
     test_email  = str(data.get('test_email') or '').strip().lower()
 
+    # Auto-fill meeting details from the event record itself, so automation
+    # mails carry the real Meet link/date/time even when left blank by hand.
+    try:
+        _ev = _find_event_registration(event_key, data.get('event_pk'))
+        if _ev is not None:
+            if not str(extra.get('join_link') or '').strip() and _ev.meeting_link:
+                extra['join_link'] = _ev.meeting_link
+            if not str(extra.get('date') or '').strip() and _ev.date:
+                extra['date'] = _ev.date
+            if not str(extra.get('time') or '').strip() and _ev.time_tz:
+                extra['time'] = _ev.time_tz
+    except Exception:  # noqa: BLE001
+        pass
+
     # Certificate attachment options
     cert_template_id = str(data.get('certificate_template_id') or '').strip()
     include_certificate = bool(data.get('include_certificate')) and bool(cert_template_id)
@@ -1453,7 +1467,16 @@ def generate_webinar_meeting(request):
 
     start = str(request.data.get('start') or '').strip()
     if not start:
-        return Response({'error': 'Pick a meeting date and time.'}, status=400)
+        # Fall back to the webinar's own listed date/time, so the Meet always
+        # matches the listing instead of depending on it being retyped right.
+        from django.utils import timezone as dj_tz
+
+        from tiesverse_app.event_time import event_start
+        auto = event_start(obj)
+        if auto:
+            start = dj_tz.localtime(auto).strftime('%Y-%m-%dT%H:%M')
+    if not start:
+        return Response({'error': "Pick a meeting date and time — the webinar's listed date couldn't be read."}, status=400)
     if not google_calendar.is_configured():
         return Response({'error': 'Google Calendar is not configured on the server yet.'}, status=400)
 

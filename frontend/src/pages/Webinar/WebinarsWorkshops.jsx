@@ -77,6 +77,41 @@ const makeDefaultQuestions = (eKey, eType) => [
 
 const previewUrl = (kind, title) =>
   `https://tiesverse.com/webinars/${toSlug(title)}`;
+
+/* Parse the listing's free-text date/time ("20 Jul 2026", "6:00 PM IST") into
+   a datetime-local value, so the Meet scheduler prefills itself from the
+   listing instead of the date being retyped (mirrors event_time.py). */
+const MONTHS3 = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+function parseListingDate(text) {
+  if (!text) return null;
+  const t = String(text).trim().toLowerCase().replace(/,/g, ' ');
+  let m = t.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);                       // ISO
+  if (m) return { y: +m[1], mo: +m[2] - 1, d: +m[3] };
+  m = t.match(/(\d{1,2})\s*[/.]\s*(\d{1,2})\s*[/.]\s*(\d{4})/);         // 20/07/2026
+  if (m) return { y: +m[3], mo: +m[2] - 1, d: +m[1] };
+  m = t.match(/(\d{1,2})\s+([a-z]{3,9})\s+(\d{4})/);                    // 20 Jul 2026
+  if (m && MONTHS3[m[2].slice(0, 3)] !== undefined) return { y: +m[3], mo: MONTHS3[m[2].slice(0, 3)], d: +m[1] };
+  m = t.match(/([a-z]{3,9})\s+(\d{1,2})\s+(\d{4})/);                    // Jul 20 2026
+  if (m && MONTHS3[m[1].slice(0, 3)] !== undefined) return { y: +m[3], mo: MONTHS3[m[1].slice(0, 3)], d: +m[2] };
+  return null;
+}
+function parseListingTime(text) {
+  const m = String(text || '').trim().toLowerCase().match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+  if (!m) return null;
+  let h = +m[1];
+  const min = +(m[2] || 0);
+  if (m[3] === 'pm' && h !== 12) h += 12;
+  if (m[3] === 'am' && h === 12) h = 0;
+  return (h >= 0 && h <= 23 && min <= 59) ? { h, min } : null;
+}
+function listingStartLocal(item) {
+  if (item.meeting_start) return String(item.meeting_start).slice(0, 16);
+  const d = parseListingDate(item.date);
+  if (!d) return '';
+  const tm = parseListingTime(item.time_tz) || { h: 18, min: 0 };   // visible in the field either way
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.y}-${p(d.mo + 1)}-${p(d.d)}T${p(tm.h)}:${p(tm.min)}`;
+}
 const EMPTY_Q = { label: '', field_type: 'text', placeholder: '', options: '', required: true };
 const EMPTY_SPEAKER = { name: '', role: '', org: '', photo_url: '', quote: '', featured: false };
 const FIELD_TYPES = [
@@ -207,7 +242,11 @@ function RegistrationsTab({ item }) {
                 const isExp = expanded.has(r.id);
                 const isSel = sel.has(r.id);
                 const paid   = r.payment_required && r.payment_required !== '0' && r.payment_required !== 0;
-                const amt    = parseInt(r.final_amount || r.amount || 0);
+                // Stored in paise. final_amount is what they actually paid
+                // after any coupon; the base amount is only a fallback for
+                // rows that predate coupons.
+                const amt    = Math.round(parseInt(r.final_amount || r.amount || 0) / 100);
+                const discount = Math.round(parseInt(r.discount_amount || 0) / 100);
                 const status = (r.payment_status || 'free').toLowerCase();
                 const attended = r.attended && r.attended !== '0' && r.attended !== 0;
                 return (
@@ -229,8 +268,15 @@ function RegistrationsTab({ item }) {
                           <span className={`ww-badge ww-badge-${status === 'paid' ? 'green' : 'amber'}`}>
                             {fmtMoney(amt)} · {status}
                           </span>
+                        ) : r.coupon_code && discount > 0 ? (
+                          <span className="ww-badge ww-badge-gray" title={`Coupon ${r.coupon_code} covered the full price`}>Free · coupon</span>
                         ) : (
                           <span className="ww-badge ww-badge-gray">Free</span>
+                        )}
+                        {paid && discount > 0 && (
+                          <span className="ww-reg-sub" title={`Coupon ${r.coupon_code || ''}`}>
+                            after coupon −₹{discount.toLocaleString('en-IN')}
+                          </span>
                         )}
                       </td>
                       <td>
@@ -253,6 +299,8 @@ function RegistrationsTab({ item }) {
                               {r.source    && <div><label>How they heard</label><span>{r.source}</span></div>}
                               {r.registered_at && <div><label>Registered</label><span>{fmtDate(r.registered_at)}</span></div>}
                               {r.razorpay_payment_id && <div><label>Payment ID</label><span>{r.razorpay_payment_id}</span></div>}
+                              {r.coupon_code && <div><label>Coupon</label><span>{r.coupon_code}{discount > 0 ? ` (−₹${discount.toLocaleString('en-IN')})` : ''}</span></div>}
+                              {paid && <div><label>Paid (after coupon)</label><span>₹{amt.toLocaleString('en-IN')}</span></div>}
                             </div>
                             {r.expectations && (
                               <div className="ww-reg-exp-qa">
@@ -585,7 +633,7 @@ function GuestSpeakerTab({ item }) {
    Sub-component: MeetingTab — one Google Meet per event + host controls
    ═══════════════════════════════════════════════════════════════ */
 function MeetingTab({ item, showToast }) {
-  const [start, setStart]         = useState(item.meeting_start ? String(item.meeting_start).slice(0, 16) : '');
+  const [start, setStart]         = useState(listingStartLocal(item));
   const [duration, setDuration]   = useState(item.meeting_duration_min || 60);
   const [hosts, setHosts]         = useState((item.meeting_hosts || []).join(', '));
   const [joinAccess, setJoinAccess] = useState(item.meeting_join_access || 'invited');
@@ -640,7 +688,14 @@ function MeetingTab({ item, showToast }) {
 
       <div style={{ display: 'grid', gap: 14, maxWidth: 560 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 12 }}>
-          <label style={F.field}>Date &amp; time<input type="datetime-local" style={F.input} value={start} onChange={(e) => setStart(e.target.value)} /></label>
+          <label style={F.field}>Date &amp; time
+            <input type="datetime-local" style={F.input} value={start} onChange={(e) => setStart(e.target.value)} />
+            {!item.meeting_start && start && (
+              <span style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--soft, #8a8aa0)' }}>
+                Auto-filled from the listing ({item.date}{item.time_tz ? ` · ${item.time_tz}` : ''}) — check before generating.
+              </span>
+            )}
+          </label>
           <label style={F.field}>Duration (min)<input type="number" min="15" step="15" style={F.input} value={duration} onChange={(e) => setDuration(e.target.value)} /></label>
         </div>
         <label style={F.field}>Hosts / co-hosts <span style={{ fontWeight: 400, color: 'var(--soft)' }}>(emails, comma-separated — get the invite + host controls)</span>
@@ -711,7 +766,8 @@ function EmailsTab({ item, showToast }) {
   const [tplKey, setTplKey]       = useState('webinar_reminder');
   const [subject, setSubject]     = useState('');
   const [audience, setAudience]   = useState('all');
-  const [joinLink, setJoinLink]   = useState('');
+  // The event's own Meet link, so mails carry the real link without pasting.
+  const [joinLink, setJoinLink]   = useState(item.meeting_link || '');
   const [recLink, setRecLink]     = useState('');
   const [timeStr, setTimeStr]     = useState(item.time_tz || '');
   const [testEmail, setTestEmail] = useState('');
@@ -1100,6 +1156,9 @@ function EmailsTab({ item, showToast }) {
           <div style={{ flex: '1 1 30%' }}>
             <label style={S.label}>Join link <span style={{ fontWeight: 400, color: '#a0a0b4' }}>{'{{join_link}}'}</span></label>
             <input style={S.input} value={joinLink} onChange={e => setJoinLink(e.target.value)} placeholder="https://meet…" />
+            {item.meeting_link && joinLink === item.meeting_link && (
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#059669' }}>✓ Auto-filled from this event&apos;s Meet link</span>
+            )}
           </div>
           <div style={{ flex: '1 1 30%' }}>
             <label style={S.label}>Recording link <span style={{ fontWeight: 400, color: '#a0a0b4' }}>{'{{recording_link}}'}</span></label>
