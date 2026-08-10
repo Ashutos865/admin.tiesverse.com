@@ -899,12 +899,32 @@ def list_registrations_extended(request):
         return Response({'rows': [], 'count': 0, 'error': str(exc)}, status=503)
 
     event_key = request.query_params.get('event_key', '').strip()
+    event_pk = request.query_params.get('event_pk', '').strip()
     try:
         if event_key:
             rows = turso_client.execute(
                 "SELECT * FROM registrations WHERE event_id=:ek ORDER BY registered_at DESC LIMIT 1000",
                 {'ek': event_key},
             )
+            # Registrations are keyed by title slug, so two events that ever
+            # shared a title share registrations. A registration cannot predate
+            # its own event — drop anything older than this event's creation.
+            ev = _find_event_registration(event_key, event_pk)
+            if ev is not None and getattr(ev, 'created_at', None):
+                cutoff = ev.created_at
+                if cutoff.tzinfo is None:
+                    cutoff = cutoff.replace(tzinfo=datetime.timezone.utc)
+
+                def _belongs(r):
+                    try:
+                        ts = str(r.get('registered_at') or '').replace(' ', 'T')
+                        dt = datetime.datetime.fromisoformat(ts)
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=datetime.timezone.utc)
+                        return dt >= cutoff
+                    except Exception:  # noqa: BLE001
+                        return True    # unparseable → keep; never hide silently
+                rows = [r for r in rows if _belongs(r)]
         else:
             rows = turso_client.execute(
                 "SELECT * FROM registrations ORDER BY registered_at DESC LIMIT 1000"

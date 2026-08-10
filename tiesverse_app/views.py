@@ -71,6 +71,15 @@ class EventSpeakerViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
                 instance.published = False
                 instance.save(update_fields=['published'])
         supabase_sync.upsert(instance)
+        # The listing's Host/Speaker is the same person as the first guest —
+        # fill it from the guest so it never has to be typed twice.
+        ev = instance.event
+        if ev and not (ev.host or '').strip():
+            ev.host = instance.name
+            if instance.photo_url and not (ev.host_image_url or '').strip():
+                ev.host_image_url = instance.photo_url
+            ev.save(update_fields=['host', 'host_image_url'])
+            supabase_sync.upsert(ev)
 
 
 class EventRegistrationViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):

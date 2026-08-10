@@ -156,10 +156,11 @@ function RegistrationsTab({ item }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const regs = await getWebinarRegistrationsFull(eKey);
+    // Pass the pk too: slugs collide when two events ever shared a title.
+    const regs = await getWebinarRegistrationsFull(eKey, item.id);
     setRows(Array.isArray(regs) ? regs : []);
     setLoading(false);
-  }, [eKey]);
+  }, [eKey, item.id]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -507,11 +508,14 @@ function GuestSpeakerTab({ item }) {
   const [saving, setSaving]     = useState(false);
   const [msg, setMsg]           = useState('');
   const [success, setSuccess]   = useState('');
+  // A counter, not the message text: two saves with the same outcome must
+  // still refresh the list, or the second guest looks like it never saved.
+  const [reload, setReload]     = useState(0);
   const fileRef = useRef(null);
 
   useEffect(() => {
     getEventGuests(item.id).then(r => setSpeakers(Array.isArray(r) ? r : []));
-  }, [success, item.id]);
+  }, [reload, item.id]);
 
   const pickPhoto = async (e) => {
     const file = e.target.files?.[0];
@@ -533,8 +537,13 @@ function GuestSpeakerTab({ item }) {
         ? `Speaker "${res.name}" added — live on the website guest section.`
         : `Speaker "${res.name}" added to this ${badge(item.kind).toLowerCase()} — they go live on the website automatically after it ends.`);
       setForm(EMPTY_SPEAKER);
+      setReload(n => n + 1);
     } else {
-      setMsg(res?.error || 'Failed to save speaker.');
+      // Show what the server actually said, not a generic shrug.
+      const detail = typeof res === 'object' && res
+        ? (res.error || Object.entries(res).map(([k, v]) => `${k}: ${v}`).join(' · '))
+        : '';
+      setMsg(detail || 'Failed to save speaker.');
     }
     setSaving(false);
   };
@@ -546,6 +555,15 @@ function GuestSpeakerTab({ item }) {
         They join the guest list right away, and appear on the website&apos;s guest
         section automatically once the {badge(item.kind).toLowerCase()} ends.
       </p>
+
+      {/* Connected to the listing's Host/Speaker field */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 14px', padding: '9px 12px',
+        background: 'var(--accent-soft, #fff7ed)', border: '1px solid var(--rule, #eadfce)', borderRadius: 10, fontSize: 12.5 }}>
+        <Mic2 size={14} />
+        {item.host
+          ? <span><strong>Host / Speaker on the listing:</strong> {item.host}. Guests added here are separate people on the same {badge(item.kind).toLowerCase()}.</span>
+          : <span><strong>No Host / Speaker set yet</strong> — the first guest you add below fills it automatically (name + photo).</span>}
+      </div>
 
       {success && (
         <div className="ww-success-banner">
@@ -863,7 +881,7 @@ function EmailsTab({ item, showToast }) {
     setLoading(true);
     const [tpls, regs, hist, certs] = await Promise.all([
       getEmailTemplates().catch(() => []),
-      getWebinarRegistrationsFull(eKey).catch(() => []),
+      getWebinarRegistrationsFull(eKey, item.id).catch(() => []),
       getWebinarSendHistory(eKey),
       listCertificateTemplates().catch(() => []),
     ]);

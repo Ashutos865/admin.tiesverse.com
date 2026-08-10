@@ -324,8 +324,8 @@ export const deleteCoupon = (id) => adminFetch(`/api/webinar/coupons/${id}`, 'DE
 export const validateCoupon = (data) => adminFetch('/api/webinar/validate-coupon', 'POST', data);
 
 // WEBINAR — Registrations (extended, with attended column)
-export const getWebinarRegistrationsFull = (event_key = '') =>
-  adminFetch(`/api/webinar/registrations-full/${event_key ? `?event_key=${encodeURIComponent(event_key)}` : ''}`)
+export const getWebinarRegistrationsFull = (event_key = '', event_pk = '') =>
+  adminFetch(`/api/webinar/registrations-full/${event_key ? `?event_key=${encodeURIComponent(event_key)}${event_pk ? `&event_pk=${encodeURIComponent(event_pk)}` : ''}` : ''}`)
     .then(r => (r?.error ? r : (r?.rows || [])))
     .catch(() => []);
 
