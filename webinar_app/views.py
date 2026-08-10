@@ -1100,24 +1100,37 @@ def webinar_broadcast(request):
         return ok, subject
 
     def _cert_attachment(name, row=None):
-        """Generate this recipient's certificate PDF; returns attachments list or None."""
+        """This recipient's certificate PDF.
+
+        Returns (attachments, cert_id, error). The error matters: a failure used
+        to be swallowed, so the covering email went out with no certificate
+        attached and was still reported as sent. The caller now refuses to send
+        rather than deliver an empty promise.
+        """
         if not include_certificate:
-            return None, ''
+            return None, '', ''
         cert_id = _make_cert_id(event_title) if include_id else ''
         try:
             gen_data = _build_cert_data(cert_fields, row, name, cert_id, cert_name_var, cert_id_var, cert_all_vars)
             pdf = _generate_certificate_pdf(cert_template_id, gen_data)
+            if not pdf:
+                return None, '', 'The certificate generator returned an empty file.'
             fname = f"certificate-{(name or 'participant').replace(' ', '_')[:40]}.pdf"
-            return [(fname, pdf, 'pdf')], cert_id
-        except Exception:  # noqa: BLE001
-            return None, ''
+            return [(fname, pdf, 'pdf')], cert_id, ''
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('certificate generation failed for %s: %s', name or '?', exc)
+            return None, '', f'Certificate could not be generated: {exc}'
 
     # Admin-uploaded documents/PDFs — same set attached to every recipient.
     doc_attachments = _fetch_url_attachments(data.get('attachments'))
 
     # ---- test send: one email, not logged as a campaign ----
     if test_email:
-        cert_att, _cid = _cert_attachment('Preview Name')
+        cert_att, _cid, cert_err = _cert_attachment('Preview Name')
+        if cert_err:
+            # Better to fail the preview than to show a working email that will
+            # arrive empty for every real recipient.
+            return Response({'error': cert_err}, status=502)
         att = (cert_att or []) + doc_attachments
         ok, subject = _send_one(test_email, 'Preview', attachments=(att or None))
         return Response({'test': True, 'sent': bool(ok), 'stubbed': not ok, 'to': test_email, 'subject': subject})
@@ -1150,7 +1163,7 @@ def webinar_broadcast(request):
         ]
         list_source = 'registrants'
 
-    sent = stubbed = skipped = 0
+    sent = stubbed = skipped = failed = 0
     seen = set()
     results = []
     for item in send_list:
@@ -1160,7 +1173,22 @@ def webinar_broadcast(request):
             skipped += 1
             continue
         seen.add(email)
-        cert_att, cert_id = _cert_attachment(name, item.get('row'))
+        cert_att, cert_id, cert_err = _cert_attachment(name, item.get('row'))
+        if cert_err:
+            # No certificate, no email. Sending the covering note without the
+            # attachment is worse than not sending: the recipient believes they
+            # have been served, and the failure is invisible to the sender.
+            failed += 1
+            results.append({'email': email, 'name': name, 'status': 'failed',
+                            'error': cert_err, 'certificate_id': ''})
+            EmailSendLog.objects.create(
+                recipient_email=email, recipient_name=name,
+                template_key=template_key, template_name=tpl.name,
+                subject=(subject_override or tpl.subject)[:300],
+                context='webinar_broadcast', event_key=event_key, event_type=event_type,
+                status='failed', certificate_id='', sent_by=actor,
+            )
+            continue
         attachments = (cert_att or []) + doc_attachments
         ok, subject = _send_one(email, name, item.get('row'), attachments=(attachments or None))
         status_str = 'sent' if ok else 'stubbed'
@@ -1180,12 +1208,12 @@ def webinar_broadcast(request):
         name=f'{tpl.name} · {event_title} ({list_source})'[:200],
         template_key=template_key, template_name=tpl.name,
         subject=(subject_override or tpl.subject)[:300],
-        recipient_count=len(seen), sent_count=sent, failed_count=0, skipped_count=skipped,
+        recipient_count=len(seen), sent_count=sent, failed_count=failed, skipped_count=skipped,
         created_by=actor,
     )
     return Response({
         'total': len(seen), 'sent': sent, 'stubbed': stubbed, 'skipped': skipped,
-        'source': list_source, 'results': results,
+        'failed': failed, 'source': list_source, 'results': results,
     })
 
 
