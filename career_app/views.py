@@ -730,7 +730,24 @@ class InitiateOnboardingView(APIView):
         if existing:
             website_url = getattr(dj_settings, 'WEBSITE_URL', 'https://tiesverse.com')
             upload_link = f"{website_url}/onboarding/{existing.token}"
-            return Response({**OnboardingSubmissionSerializer(existing).data, 'upload_link': upload_link})
+            # Re-initiating for someone who already has a record used to return
+            # the link silently, so "send it again" never actually sent
+            # anything. Anyone still waiting on documents gets the email again.
+            emailed = False
+            if existing.status == 'pending':
+                try:
+                    _send_onboarding_email(
+                        existing.candidate_email, existing.candidate_name,
+                        upload_link, existing.role_offered,
+                    )
+                    emailed = True
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[ONBOARDING] Resend failed for {existing.candidate_email}: {exc}")
+            return Response({
+                **OnboardingSubmissionSerializer(existing).data,
+                'upload_link': upload_link,
+                'email_sent': emailed,
+            })
 
         token = secrets.token_urlsafe(32)
         sub = OnboardingSubmission.objects.create(

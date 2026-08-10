@@ -224,10 +224,14 @@ EMAIL_TEMPLATES = {
         'variables': ['name', 'role', 'upload_link'],
         'content': {
             'heading': 'Complete your onboarding',
-            'body': 'Dear {{name}},\n\nCongratulations on being selected for {{role}} at Tiesverse! Please upload your documents (Aadhaar, College ID, Photo, Emergency Contact) using your secure link below.',
-            'table': [],
-            'closing': 'This link is unique to you - please do not share it.',
-            'button': {'label': 'Upload Documents', 'url': '{{upload_link}}'},
+            'body': 'Dear {{name}},\n\nCongratulations on joining Tiesverse as {{role}}. One step is left before your portal account is created: upload the three documents listed below.',
+            'table': [
+                {'label': 'Aadhaar card', 'value': 'Front side, clearly readable'},
+                {'label': 'College or company ID', 'value': 'Any current photo ID'},
+                {'label': 'Passport photo', 'value': 'Recent, plain background'},
+            ],
+            'closing': 'The link is unique to you, so please do not forward it. Once your documents are verified, your login details arrive in a separate email. If anything is unclear, reply to this message and the HR team will help.',
+            'button': {'label': 'Upload my documents', 'url': '{{upload_link}}'},
             'signature': 'Warm regards,\nTiesverse HR Team',
         },
     },
