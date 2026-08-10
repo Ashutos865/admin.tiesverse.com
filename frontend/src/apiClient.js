@@ -265,6 +265,7 @@ export const deleteTeamMember = (id) => adminFetch(`/api/landing/team_members/${
 
 // EVENT SPEAKERS
 export const getEventSpeakers = () => adminFetch('/api/landing/event_speakers');
+export const getEventGuests = (eventId) => adminFetch(`/api/landing/event_speakers?event=${eventId}`);
 export const createEventSpeaker = (data) => adminFetch('/api/landing/event_speakers', 'POST', data);
 export const updateEventSpeaker = (id, data) => adminFetch(`/api/landing/event_speakers/${id}`, 'PATCH', data);
 export const deleteEventSpeaker = (id) => adminFetch(`/api/landing/event_speakers/${id}`, 'DELETE');

@@ -10,7 +10,7 @@ import {
   updateEventRegistration, getEventRegistrations,
   getFormQuestions, createFormQuestion, updateFormQuestion,
   deleteFormQuestion, reorderFormQuestions,
-  getEventSpeakers, createEventSpeaker,
+  getEventGuests, createEventSpeaker,
   getWebinarRegistrationsFull, markAttended,
   webinarBroadcast, getWebinarSendHistory, getWebinarMyAccess,
   generateWebinarMeeting, getWebinarMeetingGuests,
@@ -453,7 +453,7 @@ function FormQuestionsTab({ item }) {
    Sub-component: GuestSpeakerTab
 ═══════════════════════════════════════════════════════════════ */
 function GuestSpeakerTab({ item }) {
-  const [speakers, setSpeakers] = useState([]);
+  const [speakers, setSpeakers] = useState([]);   // guests of THIS webinar
   const [form, setForm]         = useState(EMPTY_SPEAKER);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving]     = useState(false);
@@ -462,8 +462,8 @@ function GuestSpeakerTab({ item }) {
   const fileRef = useRef(null);
 
   useEffect(() => {
-    getEventSpeakers().then(r => setSpeakers(Array.isArray(r) ? r : []));
-  }, [success]);
+    getEventGuests(item.id).then(r => setSpeakers(Array.isArray(r) ? r : []));
+  }, [success, item.id]);
 
   const pickPhoto = async (e) => {
     const file = e.target.files?.[0];
@@ -479,9 +479,11 @@ function GuestSpeakerTab({ item }) {
     if (!form.name.trim() || !form.role.trim()) return setMsg('Name and Role are required.');
     setSaving(true);
     setMsg('');
-    const res = await createEventSpeaker(form);
+    const res = await createEventSpeaker({ ...form, event: item.id });
     if (res?.id) {
-      setSuccess(`Speaker "${res.name}" added — now live on the website guest section.`);
+      setSuccess(res.published
+        ? `Speaker "${res.name}" added — live on the website guest section.`
+        : `Speaker "${res.name}" added to this ${badge(item.kind).toLowerCase()} — they go live on the website automatically after it ends.`);
       setForm(EMPTY_SPEAKER);
     } else {
       setMsg(res?.error || 'Failed to save speaker.');
@@ -492,8 +494,9 @@ function GuestSpeakerTab({ item }) {
   return (
     <div className="ww-tab-body">
       <p className="ww-tab-hint">
-        Add a guest or speaker for this {badge(item.kind).toLowerCase()}.
-        They will appear instantly on the Tiesverse website guest section via Supabase sync.
+        Add one or more guests for this {badge(item.kind).toLowerCase()}.
+        They join the guest list right away, and appear on the website&apos;s guest
+        section automatically once the {badge(item.kind).toLowerCase()} ends.
       </p>
 
       {success && (
@@ -550,12 +553,12 @@ function GuestSpeakerTab({ item }) {
         </button>
       </div>
 
-      {/* Recent speakers */}
+      {/* This webinar's guests */}
       {speakers.length > 0 && (
         <div className="ww-speakers-recent">
-          <h4>All Speakers ({speakers.length})</h4>
+          <h4>Guests of this {badge(item.kind).toLowerCase()} ({speakers.length})</h4>
           <div className="ww-speakers-grid">
-            {speakers.slice(0, 6).map(s => (
+            {speakers.map(s => (
               <div key={s.id} className="ww-speaker-chip">
                 {s.photo_url
                   ? <img src={s.photo_url} alt={s.name} />
@@ -564,6 +567,10 @@ function GuestSpeakerTab({ item }) {
                 <div>
                   <strong>{s.name}</strong>
                   <span>{s.role}</span>
+                  <span style={{ display: 'block', fontSize: 11, fontWeight: 600,
+                    color: s.published ? '#059669' : '#b45309' }}>
+                    {s.published ? '● Live on website' : '○ Goes live after it ends'}
+                  </span>
                 </div>
               </div>
             ))}

@@ -38,6 +38,11 @@ def upsert(instance):
     table = TABLE_MAP.get(type(instance).__name__)
     if not table or not hasattr(instance, 'to_supabase_dict'):
         return
+    # Unpublished guests stay in the admin guest list only — they go to the
+    # website when their webinar ends. Remove any copy that was pushed earlier.
+    if getattr(instance, 'published', True) is False:
+        delete(instance)
+        return
     data = instance.to_supabase_dict()
     # Use Django pk as a stable external reference key so re-saves update, not duplicate.
     data['django_id'] = instance.pk

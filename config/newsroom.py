@@ -138,7 +138,9 @@ def public_guests_feed(request):
                     'photo_url': g.photo_url or '', 'quote': g.quote or '',
                     'featured': bool(g.featured),
                 }
-                for g in EventSpeaker.objects.using('turso_db').all().order_by('-featured', '-created_at')
+                # published=False → guest of a webinar that hasn't ended yet;
+                # they join this feed automatically when it does.
+                for g in EventSpeaker.objects.using('turso_db').filter(published=True).order_by('-featured', '-created_at')
             ]
         except Exception:  # noqa: BLE001
             cached = []

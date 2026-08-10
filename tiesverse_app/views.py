@@ -55,11 +55,37 @@ class EventSpeakerViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
     serializer_class = EventSpeakerSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        event_id = self.request.query_params.get('event')
+        if event_id:
+            qs = qs.filter(event_id=event_id)
+        return qs
+
+    def perform_create(self, serializer):
+        # A guest of an upcoming webinar stays off the website until it ends;
+        # a global guest (no event) or one added to a past event goes live now.
+        instance = serializer.save()
+        if instance.event and instance.event.status == 'upcoming':
+            if instance.published:
+                instance.published = False
+                instance.save(update_fields=['published'])
+        supabase_sync.upsert(instance)
+
 
 class EventRegistrationViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
     queryset = EventRegistration.objects.all().order_by('date')
     serializer_class = EventRegistrationSerializer
     permission_classes = [IsAuthenticated, StaffModelPermissions]
+
+    def perform_update(self, serializer):
+        was_upcoming = serializer.instance.status == 'upcoming'
+        instance = serializer.save()
+        supabase_sync.upsert(instance)
+        # Marking an event past by hand publishes its guests, same as the cron.
+        if was_upcoming and instance.status == 'past':
+            from .guests import publish_event_guests
+            publish_event_guests(instance)
 
 
 class TeamMemberViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):

@@ -121,6 +121,16 @@ class EventSpeaker(models.Model):
     photo_url = models.URLField(blank=True)
     quote = models.TextField(blank=True)
     featured = models.BooleanField(default=False)
+    # Which webinar/workshop this guest belongs to. Null = a legacy/global guest
+    # added before guests were tied to events.
+    event = models.ForeignKey(
+        'EventRegistration', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='guests', db_constraint=False,
+    )
+    # Unpublished guests exist in the admin guest list but are NOT synced to the
+    # website. They publish automatically when their webinar ends. Default True
+    # so every pre-existing guest stays live untouched.
+    published = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
