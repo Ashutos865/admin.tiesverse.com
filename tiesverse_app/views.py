@@ -59,7 +59,8 @@ class EventSpeakerViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
         qs = super().get_queryset()
         event_id = self.request.query_params.get('event')
         if event_id:
-            qs = qs.filter(event_id=event_id)
+            # Oldest first: the first speaker added is the host.
+            qs = qs.filter(event_id=event_id).order_by('created_at')
         return qs
 
     def perform_create(self, serializer):
@@ -71,13 +72,27 @@ class EventSpeakerViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
                 instance.published = False
                 instance.save(update_fields=['published'])
         supabase_sync.upsert(instance)
-        # The listing's Host/Speaker is the same person as the first guest —
-        # fill it from the guest so it never has to be typed twice.
+        # The listing's host is its first speaker — there is no separate host
+        # field in the UI any more, so keep the two in step here.
         ev = instance.event
         if ev and not (ev.host or '').strip():
             ev.host = instance.name
             if instance.photo_url and not (ev.host_image_url or '').strip():
                 ev.host_image_url = instance.photo_url
+            ev.save(update_fields=['host', 'host_image_url'])
+            supabase_sync.upsert(ev)
+
+    def perform_destroy(self, instance):
+        ev = instance.event
+        was_host = bool(ev and (ev.host or '').strip() == instance.name.strip())
+        supabase_sync.delete(instance)
+        instance.delete()
+        # If the host speaker was removed, the next-oldest speaker takes over
+        # on the listing (or it clears when none remain).
+        if was_host:
+            nxt = ev.guests.order_by('created_at').first()
+            ev.host = nxt.name if nxt else ''
+            ev.host_image_url = (nxt.photo_url or '') if nxt else ''
             ev.save(update_fields=['host', 'host_image_url'])
             supabase_sync.upsert(ev)
 

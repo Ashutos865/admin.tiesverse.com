@@ -10,7 +10,7 @@ import {
   updateEventRegistration, getEventRegistrations,
   getFormQuestions, createFormQuestion, updateFormQuestion,
   deleteFormQuestion, reorderFormQuestions,
-  getEventGuests, createEventSpeaker,
+  getEventGuests, createEventSpeaker, deleteEventSpeaker,
   getWebinarRegistrationsFull, markAttended,
   webinarBroadcast, getWebinarSendHistory, getWebinarMyAccess,
   generateWebinarMeeting, getWebinarMeetingGuests,
@@ -511,7 +511,17 @@ function GuestSpeakerTab({ item }) {
   // A counter, not the message text: two saves with the same outcome must
   // still refresh the list, or the second guest looks like it never saved.
   const [reload, setReload]     = useState(0);
+  const [removingId, setRemovingId] = useState(null);
   const fileRef = useRef(null);
+
+  const removeSpeaker = async (s) => {
+    if (!window.confirm(`Remove ${s.name} from this ${badge(item.kind).toLowerCase()}?`)) return;
+    setRemovingId(s.id);
+    const res = await deleteEventSpeaker(s.id);
+    setRemovingId(null);
+    if (res?.error) setMsg(res.error);
+    else setReload(n => n + 1);
+  };
 
   useEffect(() => {
     getEventGuests(item.id).then(r => setSpeakers(Array.isArray(r) ? r : []));
@@ -556,13 +566,12 @@ function GuestSpeakerTab({ item }) {
         section automatically once the {badge(item.kind).toLowerCase()} ends.
       </p>
 
-      {/* Connected to the listing's Host/Speaker field */}
+      {/* Speakers are managed HERE — the listing has no separate host field. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 14px', padding: '9px 12px',
         background: 'var(--accent-soft, #fff7ed)', border: '1px solid var(--rule, #eadfce)', borderRadius: 10, fontSize: 12.5 }}>
         <Mic2 size={14} />
-        {item.host
-          ? <span><strong>Host / Speaker on the listing:</strong> {item.host}. Guests added here are separate people on the same {badge(item.kind).toLowerCase()}.</span>
-          : <span><strong>No Host / Speaker set yet</strong> — the first guest you add below fills it automatically (name + photo).</span>}
+        <span>This is the one place for speakers. <strong>The first speaker is shown as the host</strong> on
+        the website listing (name + photo) — add as many as the {badge(item.kind).toLowerCase()} has.</span>
       </div>
 
       {success && (
@@ -619,25 +628,31 @@ function GuestSpeakerTab({ item }) {
         </button>
       </div>
 
-      {/* This webinar's guests */}
+      {/* This webinar's speakers */}
       {speakers.length > 0 && (
         <div className="ww-speakers-recent">
-          <h4>Guests of this {badge(item.kind).toLowerCase()} ({speakers.length})</h4>
+          <h4>Speakers of this {badge(item.kind).toLowerCase()} ({speakers.length})</h4>
           <div className="ww-speakers-grid">
-            {speakers.map(s => (
-              <div key={s.id} className="ww-speaker-chip">
+            {speakers.map((s, i) => (
+              <div key={s.id} className="ww-speaker-chip" style={{ position: 'relative' }}>
                 {s.photo_url
                   ? <img src={s.photo_url} alt={s.name} />
                   : <div className="ww-speaker-initials">{s.name?.[0]}</div>
                 }
                 <div>
-                  <strong>{s.name}</strong>
+                  <strong>{s.name}</strong>{i === 0 && <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--primary, #f97316)', marginLeft: 5 }}>HOST</span>}
                   <span>{s.role}</span>
                   <span style={{ display: 'block', fontSize: 11, fontWeight: 600,
                     color: s.published ? '#059669' : '#b45309' }}>
                     {s.published ? '● Live on website' : '○ Goes live after it ends'}
                   </span>
                 </div>
+                <button type="button" title={`Remove ${s.name}`} onClick={() => removeSpeaker(s)}
+                  disabled={removingId === s.id}
+                  style={{ position: 'absolute', top: 6, right: 6, background: 'none', border: 'none',
+                    cursor: 'pointer', color: 'var(--text-muted, #8a8aa0)', padding: 2, lineHeight: 0 }}>
+                  <X size={13}/>
+                </button>
               </div>
             ))}
           </div>
@@ -1657,7 +1672,7 @@ const WebinarsWorkshops = () => {
             </div>
 
             <div className="ww-tab-content">
-              {activeTab === 'details'       && <DetailsTab item={selected.item} onSaved={load} showToast={showToast} />}
+              {activeTab === 'details'       && <DetailsTab item={selected.item} onSaved={load} showToast={showToast} onManageGuests={() => setActiveTab('speaker')} />}
               {activeTab === 'questions'     && <FormQuestionsTab item={selected.item} />}
               {activeTab === 'registrations' && <RegistrationsTab item={selected.item} />}
               {activeTab === 'meeting'       && <MeetingTab item={selected.item} showToast={showToast} />}
@@ -1759,24 +1774,11 @@ const WebinarsWorkshops = () => {
               </div>
               <div className="ww-two-col">
                 <div>
-                  <label>Host / Speaker
-                    <input value={form.host} onChange={e => setForm(f => ({...f, host: e.target.value}))} placeholder="Host or speaker name" />
-                  </label>
-                  <div className="ww-host-img-row">
-                    {form.host_image_url
-                      ? <img src={form.host_image_url} alt="" className="ww-host-thumb"/>
-                      : <div className="ww-host-thumb-empty"><Mic2 size={13}/></div>
-                    }
-                    <button type="button" className="ww-btn ww-btn-ghost ww-btn-sm" onClick={() => hostRef.current?.click()} disabled={uploadingHost || saving}>
-                      <Upload size={12}/> {uploadingHost ? 'Uploading…' : 'Host Photo'}
-                    </button>
-                    {form.host_image_url && (
-                      <button type="button" className="ww-btn-danger-sm" onClick={() => setForm(f => ({...f, host_image_url:''}))}>
-                        <X size={11}/>
-                      </button>
-                    )}
-                    <input type="file" ref={hostRef} accept="image/*" style={{display:'none'}} onChange={pickHostImg}/>
-                  </div>
+                  <div className="ww-field-label">Speakers</div>
+                  <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--text-muted)' }}>
+                    Added after saving, in the <strong>Guest Speaker</strong> tab — one or many.
+                    The first speaker becomes the host shown on the website listing.
+                  </p>
                 </div>
                 <label>Price (₹ — 0 for free)
                   <input type="number" min={0} value={form.price} onChange={e => setForm(f => ({...f, price: e.target.value}))} />
@@ -1848,13 +1850,16 @@ const WebinarsWorkshops = () => {
 };
 
 /* ─── DetailsTab (inline edit inside panel) ──────────────────── */
-function DetailsTab({ item, onSaved, showToast }) {
+function DetailsTab({ item, onSaved, showToast, onManageGuests }) {
   const [form, setForm]                     = useState({ ...item });
   const [saving, setSaving]                 = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
-  const [uploadingHost, setUploadingHost]   = useState(false);
+  const [guests, setGuests]                 = useState([]);   // this event's speakers
   const coverRef = useRef(null);
-  const hostRef  = useRef(null);
+
+  useEffect(() => {
+    getEventGuests(item.id).then(r => setGuests(Array.isArray(r) ? r : []));
+  }, [item.id]);
 
   const save = async () => {
     setSaving(true);
@@ -1873,17 +1878,6 @@ function DetailsTab({ item, onSaved, showToast }) {
     else showToast(res?.error || 'Cover upload failed.', 'error');
     setUploadingCover(false);
     if (coverRef.current) coverRef.current.value = '';
-  };
-
-  const pickHostImg = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingHost(true);
-    const res = await uploadImage(file);
-    if (res?.secure_url) setForm(f => ({ ...f, host_image_url: res.secure_url }));
-    else showToast(res?.error || 'Host image upload failed.', 'error');
-    setUploadingHost(false);
-    if (hostRef.current) hostRef.current.value = '';
   };
 
   return (
@@ -1917,25 +1911,32 @@ function DetailsTab({ item, onSaved, showToast }) {
         </label>
       </div>
       <div className="ww-two-col">
+        {/* Speakers come from the Guest Speaker tab — one place, any number. */}
         <div>
-          <label>Host / Speaker
-            <input value={form.host} onChange={e => setForm(f => ({...f, host: e.target.value}))} />
-          </label>
-          <div className="ww-host-img-row">
-            {form.host_image_url
-              ? <img src={form.host_image_url} alt="" className="ww-host-thumb"/>
-              : <div className="ww-host-thumb-empty"><Mic2 size={13}/></div>
-            }
-            <button type="button" className="ww-btn ww-btn-ghost ww-btn-sm" onClick={() => hostRef.current?.click()} disabled={uploadingHost || saving}>
-              <Upload size={12}/> {uploadingHost ? 'Uploading…' : 'Host Photo'}
-            </button>
-            {form.host_image_url && (
-              <button type="button" className="ww-btn-danger-sm" onClick={() => setForm(f => ({...f, host_image_url:''}))}>
-                <X size={11}/>
-              </button>
-            )}
-            <input type="file" ref={hostRef} accept="image/*" style={{display:'none'}} onChange={pickHostImg}/>
-          </div>
+          <div className="ww-field-label">Speakers</div>
+          {guests.length === 0 ? (
+            <p style={{ margin: '4px 0 6px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+              None yet — add one or more in the Guest Speaker tab. The first one becomes
+              the host shown on the website listing.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '4px 0 6px' }}>
+              {guests.map(g => (
+                <span key={g.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '4px 10px 4px 4px', border: '1px solid var(--rule, #eadfce)', borderRadius: 999, fontSize: 12.5 }}>
+                  {g.photo_url
+                    ? <img src={g.photo_url} alt="" style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }}/>
+                    : <span style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--accent-soft, #fff7ed)',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Mic2 size={11}/></span>}
+                  <strong>{g.name}</strong>
+                  <span style={{ color: 'var(--text-muted)' }}>{g.role}</span>
+                </span>
+              ))}
+            </div>
+          )}
+          <button type="button" className="ww-btn ww-btn-ghost ww-btn-sm" onClick={onManageGuests}>
+            <Mic2 size={12}/> {guests.length ? 'Manage speakers' : 'Add speakers'} →
+          </button>
         </div>
         <label>Price (₹)
           <input type="number" min={0} value={form.price} onChange={e => setForm(f => ({...f, price: e.target.value}))} />
@@ -1976,7 +1977,7 @@ function DetailsTab({ item, onSaved, showToast }) {
           Auto-generated from title · updates when you save a new title
         </small>
       </div>
-      <button className="ww-btn ww-btn-primary" onClick={save} disabled={saving || uploadingCover || uploadingHost} style={{marginTop: '8px'}}>
+      <button className="ww-btn ww-btn-primary" onClick={save} disabled={saving || uploadingCover} style={{marginTop: '8px'}}>
         <Save size={14}/> {saving ? 'Saving…' : 'Save Changes'}
       </button>
     </div>
