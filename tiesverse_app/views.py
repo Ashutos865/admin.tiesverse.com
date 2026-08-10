@@ -50,6 +50,21 @@ class EventViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, StaffModelPermissions]
 
 
+def _sync_listing_speakers(ev):
+    """Keep the listing's speaker line in step with the event's speakers.
+
+    Every speaker has the same standing — the listing shows them all,
+    joined ("A, B & C"). The image slot is single, so the first speaker
+    with a photo fills it; that is a display constraint, not a rank.
+    """
+    names = list(ev.guests.order_by('created_at').values_list('name', flat=True))
+    ev.host = (', '.join(names[:-1]) + ' & ' + names[-1]) if len(names) > 1 else (names[0] if names else '')
+    ev.host_image_url = ev.guests.exclude(photo_url='').order_by('created_at') \
+                          .values_list('photo_url', flat=True).first() or ''
+    ev.save(update_fields=['host', 'host_image_url'])
+    supabase_sync.upsert(ev)
+
+
 class EventSpeakerViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
     queryset = EventSpeaker.objects.all().order_by('-created_at')
     serializer_class = EventSpeakerSerializer
@@ -72,29 +87,15 @@ class EventSpeakerViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
                 instance.published = False
                 instance.save(update_fields=['published'])
         supabase_sync.upsert(instance)
-        # The listing's host is its first speaker — there is no separate host
-        # field in the UI any more, so keep the two in step here.
-        ev = instance.event
-        if ev and not (ev.host or '').strip():
-            ev.host = instance.name
-            if instance.photo_url and not (ev.host_image_url or '').strip():
-                ev.host_image_url = instance.photo_url
-            ev.save(update_fields=['host', 'host_image_url'])
-            supabase_sync.upsert(ev)
+        if instance.event:
+            _sync_listing_speakers(instance.event)
 
     def perform_destroy(self, instance):
         ev = instance.event
-        was_host = bool(ev and (ev.host or '').strip() == instance.name.strip())
         supabase_sync.delete(instance)
         instance.delete()
-        # If the host speaker was removed, the next-oldest speaker takes over
-        # on the listing (or it clears when none remain).
-        if was_host:
-            nxt = ev.guests.order_by('created_at').first()
-            ev.host = nxt.name if nxt else ''
-            ev.host_image_url = (nxt.photo_url or '') if nxt else ''
-            ev.save(update_fields=['host', 'host_image_url'])
-            supabase_sync.upsert(ev)
+        if ev:
+            _sync_listing_speakers(ev)
 
 
 class EventRegistrationViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):

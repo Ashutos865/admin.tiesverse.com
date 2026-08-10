@@ -570,8 +570,8 @@ function GuestSpeakerTab({ item }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 14px', padding: '9px 12px',
         background: 'var(--accent-soft, #fff7ed)', border: '1px solid var(--rule, #eadfce)', borderRadius: 10, fontSize: 12.5 }}>
         <Mic2 size={14} />
-        <span>This is the one place for speakers. <strong>The first speaker is shown as the host</strong> on
-        the website listing (name + photo) — add as many as the {badge(item.kind).toLowerCase()} has.</span>
+        <span>This is the one place for speakers — add as many as the {badge(item.kind).toLowerCase()} has.
+        <strong> All of them appear together on the website listing</strong>, with equal standing.</span>
       </div>
 
       {success && (
@@ -633,14 +633,14 @@ function GuestSpeakerTab({ item }) {
         <div className="ww-speakers-recent">
           <h4>Speakers of this {badge(item.kind).toLowerCase()} ({speakers.length})</h4>
           <div className="ww-speakers-grid">
-            {speakers.map((s, i) => (
+            {speakers.map(s => (
               <div key={s.id} className="ww-speaker-chip" style={{ position: 'relative' }}>
                 {s.photo_url
                   ? <img src={s.photo_url} alt={s.name} />
                   : <div className="ww-speaker-initials">{s.name?.[0]}</div>
                 }
                 <div>
-                  <strong>{s.name}</strong>{i === 0 && <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--primary, #f97316)', marginLeft: 5 }}>HOST</span>}
+                  <strong>{s.name}</strong>
                   <span>{s.role}</span>
                   <span style={{ display: 'block', fontSize: 11, fontWeight: 600,
                     color: s.published ? '#059669' : '#b45309' }}>
@@ -1776,8 +1776,8 @@ const WebinarsWorkshops = () => {
                 <div>
                   <div className="ww-field-label">Speakers</div>
                   <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--text-muted)' }}>
-                    Added after saving, in the <strong>Guest Speaker</strong> tab — one or many.
-                    The first speaker becomes the host shown on the website listing.
+                    Added after saving, in the <strong>Guest Speaker</strong> tab — one or many,
+                    all shown together on the website listing.
                   </p>
                 </div>
                 <label>Price (₹ — 0 for free)
@@ -1916,8 +1916,8 @@ function DetailsTab({ item, onSaved, showToast, onManageGuests }) {
           <div className="ww-field-label">Speakers</div>
           {guests.length === 0 ? (
             <p style={{ margin: '4px 0 6px', fontSize: 12.5, color: 'var(--text-muted)' }}>
-              None yet — add one or more in the Guest Speaker tab. The first one becomes
-              the host shown on the website listing.
+              None yet — add one or more in the Guest Speaker tab.
+              They all appear together on the website listing.
             </p>
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '4px 0 6px' }}>
