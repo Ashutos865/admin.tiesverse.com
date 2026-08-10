@@ -84,6 +84,9 @@
 
 .ww-card {
   position: relative;
+  /* Never let the flex column crush cards to fit — with a dozen items the
+     browser was squashing every card into an unreadable strip. */
+  flex-shrink: 0;
   border: 1px solid var(--outline-variant);
   border-radius: 12px;
   background: var(--surface-container-lowest);
@@ -94,7 +97,26 @@
 .ww-card:hover { border-color: var(--primary); box-shadow: 0 4px 16px color-mix(in srgb, var(--primary) 12%, transparent); }
 .ww-card.is-selected { border-color: var(--primary); background: var(--primary-fixed); }
 
-.ww-card-cover { width: 100%; height: 100px; object-fit: cover; display: block; }
+.ww-card-cover { width: 100%; height: 100px; object-fit: cover; display: block; flex-shrink: 0; }
+
+/* Cards without a cover get the same 100px band — a soft brand gradient with
+   the webinar's monogram — so every card has the same silhouette. */
+.ww-card-cover-ph {
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--primary) 14%, var(--surface-container-lowest)),
+    color-mix(in srgb, var(--primary) 38%, var(--surface-container-lowest)));
+  color: color-mix(in srgb, var(--primary) 80%, var(--text-main));
+}
+.ww-card-cover-ph b {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
 
 .ww-card-body { padding: 12px 14px 10px; }
 .ww-card-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }

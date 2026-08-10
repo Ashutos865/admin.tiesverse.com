@@ -1610,7 +1610,14 @@ const WebinarsWorkshops = () => {
                 className={`ww-card ${selected?.item?.id === item.id ? 'is-selected' : ''}`}
                 onClick={() => openManage(item)}
               >
-                {item.cover_url && <img src={item.cover_url} alt="" className="ww-card-cover" />}
+                {item.cover_url
+                  ? <img src={item.cover_url} alt="" className="ww-card-cover" />
+                  : (
+                    <div className="ww-card-cover-ph">
+                      {item.kind === 'webinar' ? <Video size={22}/> : <Mic2 size={22}/>}
+                      <b>{(item.title || '?').split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}</b>
+                    </div>
+                  )}
                 <div className="ww-card-body">
                   <div className="ww-card-badges">
                     <span className={`ww-badge ${item.kind === 'webinar' ? 'ww-badge-blue' : 'ww-badge-purple'}`}>
