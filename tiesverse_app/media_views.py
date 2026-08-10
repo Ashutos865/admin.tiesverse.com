@@ -19,9 +19,12 @@ import cloudinary.api
 # other raster image is re-encoded to WebP AND shrunk to stay under the size cap.
 _PASSTHROUGH_TYPES = {'image/svg+xml', 'image/gif'}
 _WEBP_QUALITY = 82
-_MAX_DIM = 1600                        # longest side kept for stored images
+# 2560 keeps a Retina/Mac full-screen screenshot at native sharpness; the old
+# 1600 cap halved them and they came back blurry when shown large.
+_MAX_DIM = 2560                        # longest side kept for stored images
 _MIN_DIM = 320                         # never shrink below this while capping
-_TARGET_MAX_BYTES = 820 * 1024         # hard cap: stored image is always < 820 KB
+_MIN_QUALITY = 60                      # floor — below this text in screenshots smears
+_TARGET_MAX_BYTES = 1536 * 1024        # hard cap: stored image is always < 1.5 MB
 _UPLOAD_HARD_LIMIT = 25 * 1024 * 1024  # reject before decoding (memory guard)
 
 
@@ -54,7 +57,7 @@ def to_webp(upload, max_dim=_MAX_DIM, target_bytes=_TARGET_MAX_BYTES):
     # 2) Encode; drop quality until under the cap (down to a still-readable floor).
     quality = _WEBP_QUALITY
     buf = _encode_webp(img, quality)
-    while buf.getbuffer().nbytes > target_bytes and quality > 40:
+    while buf.getbuffer().nbytes > target_bytes and quality > _MIN_QUALITY:
         quality -= 10
         buf = _encode_webp(img, quality)
 
