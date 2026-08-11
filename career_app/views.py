@@ -317,6 +317,36 @@ def _provision_member_account(sub, created_by_user):
 
     MemberAccount.objects.create(submission=sub, user=user, created_by=created_by_user)
 
+    # The photo approved during onboarding becomes their portal avatar.
+    # Without this a verified member starts with blank initials even though HR
+    # has just approved a perfectly good photograph.
+    #
+    # It is copied to Cloudinary rather than pointed at the private document
+    # endpoint: avatars render in plain <img> tags all over the panel, and an
+    # <img> cannot send the JWT the document endpoint requires. Only the
+    # headshot is copied; the ID documents stay private.
+    if sub.photo_key:
+        try:
+            import cloudinary.uploader
+            from django.conf import settings as dj_settings
+
+            from accounts_app.models import UserProfile
+            from .providers import R2Storage
+
+            prof, _ = UserProfile.objects.get_or_create(user_id=user.id)
+            if not prof.avatar_url:
+                res = cloudinary.uploader.upload(
+                    R2Storage().get_object(sub.photo_key),
+                    folder=getattr(dj_settings, 'CLOUDINARY_UPLOAD_FOLDER', ''),
+                    public_id=f'avatar-{sub.id}',
+                    overwrite=True, resource_type='image', format='webp',
+                )
+                if res.get('secure_url'):
+                    prof.avatar_url = res['secure_url']
+                    prof.save(update_fields=['avatar_url'])
+        except Exception as exc:  # noqa: BLE001 — never block provisioning
+            print(f'[ONBOARDING] avatar not set for {sub.candidate_email}: {exc}')
+
     # ── Crew ID Standard: mint a permanent Crew ID (once) ─────────────────────
     # Idempotent — a member already carrying a Crew ID (e.g. a rejoin) keeps it,
     # so a retried provision never burns a second number.
@@ -2571,6 +2601,15 @@ _ONBOARDING_MAX_BYTES = 5 * 1024 * 1024
 _ONBOARDING_ALLOWED_EXT = {'pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'bmp'}
 _DOC_LABELS = {'aadhaar': 'Aadhaar card', 'college_id': 'College ID', 'photo': 'Profile photo'}
 
+# A profile photo has no business being a PDF, and it is re-encoded to WebP
+# anyway, so it is held to a tighter limit and image types only. ID documents
+# may legitimately be a multi-page scan.
+_DOC_RULES = {
+    'photo': {'max_bytes': 3 * 1024 * 1024, 'ext': {'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'bmp'}},
+    'aadhaar': {'max_bytes': _ONBOARDING_MAX_BYTES, 'ext': _ONBOARDING_ALLOWED_EXT},
+    'college_id': {'max_bytes': _ONBOARDING_MAX_BYTES, 'ext': _ONBOARDING_ALLOWED_EXT},
+}
+
 
 class OnboardingPublicUploadView(APIView):
     authentication_classes = []
@@ -2596,17 +2635,20 @@ class OnboardingPublicUploadView(APIView):
                 # This endpoint is public (anyone with the link), so it must
                 # refuse oversized uploads rather than trust the browser: a
                 # phone photo is ~2-5 MB and a scanned PDF rarely exceeds 5 MB.
-                if file_obj.size and file_obj.size > _ONBOARDING_MAX_BYTES:
+                rules = _DOC_RULES.get(field_name, {
+                    'max_bytes': _ONBOARDING_MAX_BYTES, 'ext': _ONBOARDING_ALLOWED_EXT})
+                label = _DOC_LABELS.get(field_name, field_name)
+                if file_obj.size and file_obj.size > rules['max_bytes']:
                     return Response({
-                        'error': f'{_DOC_LABELS.get(field_name, field_name)} is '
-                                 f'{file_obj.size / 1024 / 1024:.1f} MB. The limit is '
-                                 f'{_ONBOARDING_MAX_BYTES // (1024 * 1024)} MB per file.',
+                        'error': f'{label} is {file_obj.size / 1024 / 1024:.1f} MB. The limit is '
+                                 f'{rules["max_bytes"] // (1024 * 1024)} MB.',
                     }, status=400)
                 ext = file_obj.name.rsplit('.', 1)[-1].lower() if '.' in file_obj.name else 'bin'
-                if ext not in _ONBOARDING_ALLOWED_EXT:
+                if ext not in rules['ext']:
+                    allowed = 'an image (JPG, PNG, WebP, HEIC)' if field_name == 'photo' \
+                        else 'a PDF or an image (JPG, PNG, WebP, HEIC)'
                     return Response({
-                        'error': f'{_DOC_LABELS.get(field_name, field_name)}: .{ext} files are not '
-                                 'accepted. Upload a PDF or an image (JPG, PNG, WebP, HEIC).',
+                        'error': f'{label}: .{ext} files are not accepted. Upload {allowed}.',
                     }, status=400)
                 content_type = file_obj.content_type or 'application/octet-stream'
                 data = file_obj.read()
