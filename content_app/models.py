@@ -68,7 +68,18 @@ PLATFORM_OPTIONS = [
 
 
 class ContentItem(models.Model):
+    # Legacy free-text brand. Kept so existing rows keep their value while the
+    # category FK below becomes the real field; the API mirrors the two.
     brand = models.CharField(max_length=200, blank=True)
+    category = models.ForeignKey(
+        'ContentCategory', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='items')
+    # Archived items leave the board but keep their record and their history.
+    archived_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    # Work delivered at the end: images plus where it went live. Optional, and
+    # the source for publishing this piece to the public Media page.
+    assets = models.JSONField(default=list, blank=True)      # [url, ...]
+    media_post_id = models.IntegerField(null=True, blank=True)
     title = models.CharField(max_length=500)
     content_type = models.CharField(
         max_length=20, choices=CONTENT_TYPE_CHOICES, default='other')
@@ -208,3 +219,26 @@ class ContentActivity(models.Model):
 
     def __str__(self):
         return f'{self.verb} · {self.item_id}'
+
+
+class ContentCategory(models.Model):
+    """A brand or project a content item belongs to (TIES, FPI, a campaign).
+
+    `brand` on ContentItem was free text, so every typo became a new "brand"
+    and nothing could be grouped reliably. Categories are created from the
+    panel itself (Notion-style: type a name, press create), so this stays a
+    real list without anyone having to visit a settings screen.
+    """
+    name = models.CharField(max_length=120, unique=True)
+    color = models.CharField(max_length=9, blank=True)      # '#fe7a00'
+    order = models.IntegerField(default=0)
+    archived = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'content_categories'
+        ordering = ['order', 'name']
+        verbose_name_plural = 'content categories'
+
+    def __str__(self):
+        return self.name

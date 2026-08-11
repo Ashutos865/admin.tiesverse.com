@@ -254,7 +254,13 @@ export default function ContentPanel({
     };
     const res = await onSave(isNew ? null : item.id, payload);
     setSaving(false);
-    if (res) setDirty(false);
+    // Close on success. Leaving the panel open made the row update behind it,
+    // which read as "nothing happened"; and because saving clears `dirty` the
+    // Save button then disabled itself, which read as "edit failed".
+    if (res) {
+      setDirty(false);
+      onClose();
+    }
   };
 
   const MemberChips = ({ k, title }) => (

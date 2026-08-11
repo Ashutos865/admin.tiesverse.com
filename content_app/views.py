@@ -20,9 +20,9 @@ from rest_framework.views import APIView
 from . import services
 from .models import (
     BOARD_ORDER, CONTENT_TYPE_CHOICES, EFFORT_CHOICES, PLATFORM_OPTIONS,
-    PRIORITY_CHOICES, STATUS_CHOICES, ContentItem,
+    PRIORITY_CHOICES, STATUS_CHOICES, ContentItem, ContentCategory,
 )
-from .serializers import ContentActivitySerializer, ContentItemSerializer
+from .serializers import ContentActivitySerializer, ContentItemSerializer, ContentCategorySerializer
 
 
 def _tier(user):
@@ -108,8 +108,15 @@ class ContentItemViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = (ContentItem.objects
               .prefetch_related('content_assignees', 'graphics_assignees', 'tasks', 'tasks__assigned_to')
+              .select_related('category')
               .all())
         p = self.request.query_params
+        # Archived work stays in the database but leaves the board; ?archived=true
+        # is how the Archive view asks for it.
+        if p.get('archived') in ('1', 'true', 'yes'):
+            qs = qs.filter(archived_at__isnull=False)
+        else:
+            qs = qs.filter(archived_at__isnull=True)
 
         if p.get('status'):
             qs = qs.filter(status=p['status'])
@@ -316,7 +323,14 @@ class ContentBoardView(APIView):
 
         qs = (ContentItem.objects
               .prefetch_related('content_assignees', 'graphics_assignees', 'tasks', 'tasks__assigned_to')
+              .select_related('category')
               .all())
+        # Archived work keeps its record but leaves the board; the Archive view
+        # asks for it explicitly with ?archived=true.
+        if request.query_params.get('archived') in ('1', 'true', 'yes'):
+            qs = qs.filter(archived_at__isnull=False)
+        else:
+            qs = qs.filter(archived_at__isnull=True)
         if request.query_params.get('mine') in ('1', 'true', 'yes') and member:
             qs = qs.filter(Q(content_assignees__id=member.id)
                            | Q(graphics_assignees__id=member.id)).distinct()
@@ -340,8 +354,13 @@ class ContentBoardView(APIView):
         except Exception:  # noqa: BLE001
             brands = []
 
+        categories = ContentCategorySerializer(
+            ContentCategory.objects.filter(archived=False), many=True).data
+
         return Response({
             'items': items,
+            'categories': categories,
+            'archived_count': ContentItem.objects.filter(archived_at__isnull=False).count(),
             'tier': tier,
             'me': _member_chip(member) if member else None,
             'choices': {
@@ -355,3 +374,79 @@ class ContentBoardView(APIView):
             },
             'members': [_member_chip(m, avatars) for m in members],
         })
+
+
+# ── Categories (brands / projects) ───────────────────────────────────────────
+class ContentCategoryViewSet(viewsets.ModelViewSet):
+    """Brands and projects. Created inline from the content panel, so this is
+    deliberately permissive about who may add one: anyone who can edit content
+    can name a project. Deleting is separate and rarer."""
+    serializer_class = ContentCategorySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ContentCategory.objects.all()
+        if self.request.query_params.get('include_archived') != 'true':
+            qs = qs.filter(archived=False)
+        return qs
+
+
+class ContentArchiveView(APIView):
+    """Archive or restore an item. Archiving keeps the row and its history but
+    takes it off the board, which is what "clear the board" should mean; real
+    deletion stays a separate, explicit action."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        from django.utils import timezone
+        item = ContentItem.objects.filter(pk=pk).first()
+        if not item:
+            return Response({'error': 'Not found.'}, status=404)
+        restore = bool(request.data.get('restore'))
+        item.archived_at = None if restore else timezone.now()
+        item.save(update_fields=['archived_at'])
+        return Response(ContentItemSerializer(item).data)
+
+
+class ContentPublishMediaView(APIView):
+    """Push a finished item's assets to the public Media page.
+
+    Deliberately manual: pressing this is how something reaches the public
+    site, so a status change alone can never publish by accident.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        from django.core.cache import cache
+        from tiesverse_app.models import MediaPost
+
+        item = ContentItem.objects.filter(pk=pk).first()
+        if not item:
+            return Response({'error': 'Not found.'}, status=404)
+        images = [str(u) for u in (item.assets or []) if u]
+        if not images:
+            return Response({'error': 'Add at least one image before publishing.'}, status=400)
+
+        tags = []
+        if item.category_id and item.category:
+            tags.append(item.category.name.upper())
+        if item.content_type:
+            tags.append(str(item.content_type).upper())
+
+        if item.media_post_id and MediaPost.objects.filter(id=item.media_post_id).exists():
+            post = MediaPost.objects.get(id=item.media_post_id)
+            post.title, post.tags, post.images = item.title, tags, images
+            post.link = item.posting_url or ''
+            post.save()
+            created = False
+        else:
+            post = MediaPost.objects.create(
+                title=item.title, tags=tags, images=images,
+                link=item.posting_url or '', order=0,
+            )
+            item.media_post_id = post.id
+            item.save(update_fields=['media_post_id'])
+            created = True
+
+        cache.delete('public_media_feed')
+        return Response({'media_post_id': post.id, 'created': created})

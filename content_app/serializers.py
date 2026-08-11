@@ -6,7 +6,7 @@ inline (never select_related — Task lives on turso_db but auth.User does not).
 """
 from rest_framework import serializers
 
-from .models import ContentActivity, ContentItem
+from .models import ContentActivity, ContentItem, ContentCategory
 
 
 class MemberChipSerializer(serializers.Serializer):
@@ -42,6 +42,19 @@ class ContentActivitySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class ContentCategorySerializer(serializers.ModelSerializer):
+    item_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ContentCategory
+        fields = ['id', 'name', 'color', 'order', 'archived', 'item_count']
+
+    def get_item_count(self, obj):
+        # Archived items are not shown on the board, so they must not inflate
+        # the count on the brand pills either.
+        return obj.items.filter(archived_at__isnull=True).count()
+
+
 class ContentItemSerializer(serializers.ModelSerializer):
     content_assignees_detail = MemberChipSerializer(
         source='content_assignees', many=True, read_only=True)
@@ -49,16 +62,18 @@ class ContentItemSerializer(serializers.ModelSerializer):
         source='graphics_assignees', many=True, read_only=True)
     task_detail = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
+    category_detail = ContentCategorySerializer(source='category', read_only=True)
 
     class Meta:
         model = ContentItem
         fields = [
-            'id', 'brand', 'title', 'content_type', 'status',
+            'id', 'brand', 'category', 'category_detail', 'title', 'content_type', 'status',
             'content_assignees', 'graphics_assignees',
             'content_assignees_detail', 'graphics_assignees_detail',
             'doc_url', 'extra_links', 'due_date', 'release_date',
             'platforms', 'posting_url', 'priority', 'effort', 'notes',
             'task', 'task_detail', 'order', 'is_overdue', 'notify_on_assign',
+            'assets', 'archived_at', 'media_post_id',
             'created_at', 'updated_at',
         ]
         # The task link is managed by services.ensure_task, never by the client.

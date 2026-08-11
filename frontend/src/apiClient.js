@@ -795,6 +795,13 @@ export const monitorCsvUrl        = ()          => `${API_URL}/api/nimble/export
 // ─────────────────────────────────────────────────────────────────────────────
 export const getContentBoard       = (mine)       => adminFetch(`/api/content/board${mine ? '?mine=1' : ''}`);
 export const listContentItems      = (params = '') => adminFetch(`/api/content/items${params ? `?${params}` : ''}`);
+
+// CONTENT CATEGORIES (brands / projects) + archive + publish-to-media
+export const getContentCategories  = ()         => adminFetch('/api/content/categories');
+export const createContentCategory = (data)     => adminFetch('/api/content/categories', 'POST', data);
+export const deleteContentCategory = (id)       => adminFetch('/api/content/categories/' + id, 'DELETE');
+export const archiveContentItem    = (id, restore = false) => adminFetch('/api/content/items/' + id + '/archive/', 'POST', { restore });
+export const publishContentToMedia = (id)       => adminFetch('/api/content/items/' + id + '/publish-media/', 'POST', {});
 export const createContentItem     = (data)       => adminFetch('/api/content/items', 'POST', data);
 export const updateContentItem     = (id, data)   => adminFetch(`/api/content/items/${id}`, 'PATCH', data);
 export const deleteContentItem     = (id)         => adminFetch(`/api/content/items/${id}`, 'DELETE');
