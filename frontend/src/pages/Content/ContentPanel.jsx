@@ -42,7 +42,7 @@ const field = { marginBottom: 13 };
 
 const EMPTY = {
   title: '', brand: '', category: null, assets: [], content_type: 'other', status: 'idea',
-  content_assignees: [], graphics_assignees: [], doc_url: '', extra_links: [],
+  content_assignees: [], editor_assignees: [], graphics_assignees: [], doc_url: '', extra_links: [],
   due_date: '', release_date: '', platforms: [], posting_url: '',
   priority: 'medium', effort: '', notes: '', notify_on_assign: true,
 };
@@ -249,6 +249,7 @@ export default function ContentPanel({
       title: form.title, brand: form.brand, category: form.category ?? null,
       assets: form.assets || [], content_type: form.content_type,
       status: form.status, content_assignees: form.content_assignees,
+      editor_assignees: form.editor_assignees || [],
       graphics_assignees: form.graphics_assignees, doc_url: form.doc_url,
       extra_links: form.extra_links, platforms: form.platforms,
       posting_url: form.posting_url, priority: form.priority,
@@ -337,7 +338,8 @@ export default function ContentPanel({
           </div>
         </div>
 
-        <MemberChips k="content_assignees" title="Assignee · Content (writer / editor)" />
+        <MemberChips k="content_assignees" title="Assignee · Writer" />
+        <MemberChips k="editor_assignees" title="Assignee · Editor" />
         <MemberChips k="graphics_assignees" title="Assignee · Graphics" />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

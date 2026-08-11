@@ -51,6 +51,7 @@ class ContentPermission(permissions.BasePermission):
         if member is None:
             return False
         return (obj.content_assignees.filter(pk=member.pk).exists()
+                or obj.editor_assignees.filter(pk=member.pk).exists()
                 or obj.graphics_assignees.filter(pk=member.pk).exists())
 
 
@@ -107,7 +108,7 @@ class ContentItemViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = (ContentItem.objects
-              .prefetch_related('content_assignees', 'graphics_assignees', 'tasks', 'tasks__assigned_to')
+              .prefetch_related('content_assignees', 'editor_assignees', 'graphics_assignees', 'tasks', 'tasks__assigned_to')
               .select_related('category')
               .all())
         p = self.request.query_params
@@ -128,11 +129,13 @@ class ContentItemViewSet(viewsets.ModelViewSet):
             qs = qs.filter(platforms__icontains=p['platform'])
         if p.get('assignee'):
             qs = qs.filter(Q(content_assignees__id=p['assignee'])
+                           | Q(editor_assignees__id=p['assignee'])
                            | Q(graphics_assignees__id=p['assignee'])).distinct()
         if p.get('mine') in ('1', 'true', 'yes'):
             _, member = _tier(self.request.user)
             if member is not None:
                 qs = qs.filter(Q(content_assignees__id=member.id)
+                               | Q(editor_assignees__id=member.id)
                                | Q(graphics_assignees__id=member.id)).distinct()
             else:
                 qs = qs.none()
@@ -322,7 +325,7 @@ class ContentBoardView(APIView):
         tier, member = _tier(request.user)
 
         qs = (ContentItem.objects
-              .prefetch_related('content_assignees', 'graphics_assignees', 'tasks', 'tasks__assigned_to')
+              .prefetch_related('content_assignees', 'editor_assignees', 'graphics_assignees', 'tasks', 'tasks__assigned_to')
               .select_related('category')
               .all())
         # Archived work keeps its record but leaves the board; the Archive view
@@ -333,6 +336,7 @@ class ContentBoardView(APIView):
             qs = qs.filter(archived_at__isnull=True)
         if request.query_params.get('mine') in ('1', 'true', 'yes') and member:
             qs = qs.filter(Q(content_assignees__id=member.id)
+                           | Q(editor_assignees__id=member.id)
                            | Q(graphics_assignees__id=member.id)).distinct()
 
         # Resolve every avatar the page needs in one batch, then hand the map to
@@ -341,6 +345,7 @@ class ContentBoardView(APIView):
         needed = {m.id for m in members}
         for it in qs:
             needed.update(a.id for a in it.content_assignees.all())
+            needed.update(a.id for a in it.editor_assignees.all())
             needed.update(a.id for a in it.graphics_assignees.all())
         avatars = avatar_map(needed)
 

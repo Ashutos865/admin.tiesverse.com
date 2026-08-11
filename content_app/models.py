@@ -91,6 +91,11 @@ class ContentItem(models.Model):
     content_assignees = models.ManyToManyField(
         'career_app.OnboardingSubmission', blank=True,
         related_name='content_items_writing')
+    # Editing is its own job, not a synonym for writing: one field for both
+    # meant you could not tell who wrote a piece from who edited it.
+    editor_assignees = models.ManyToManyField(
+        'career_app.OnboardingSubmission', blank=True,
+        related_name='content_items_editing')
     graphics_assignees = models.ManyToManyField(
         'career_app.OnboardingSubmission', blank=True,
         related_name='content_items_graphics')

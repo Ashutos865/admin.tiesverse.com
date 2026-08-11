@@ -55,14 +55,18 @@ def log(item, verb, detail='', actor=None):
 def assignees_of(item):
     """Everyone working on this item, with the track they are on.
 
-    Returns [(member, 'Content'|'Graphics')]. Somebody on both tracks appears
-    once (they only need one task), attributed to Content.
+    Returns [(member, 'Content'|'Editing'|'Graphics')]. Somebody on more than
+    one track appears once (they only need one task), attributed to the first.
     """
     seen, out = set(), []
     for m in item.content_assignees.all():
         if m.id not in seen:
             seen.add(m.id)
             out.append((m, 'Content'))
+    for m in item.editor_assignees.all():
+        if m.id not in seen:
+            seen.add(m.id)
+            out.append((m, 'Editing'))
     for m in item.graphics_assignees.all():
         if m.id not in seen:
             seen.add(m.id)

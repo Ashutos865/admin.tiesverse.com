@@ -446,9 +446,11 @@ function TableView({ items, onOpen, onArchive, archived = false, canEdit = false
               <span style={{ fontSize: 10.5, fontWeight: 800, color: '#b91c1c' }}>OVERDUE</span>
             )}
           </div>
-          {(i.content_assignees_detail?.length > 0 || i.graphics_assignees_detail?.length > 0) && (
+          {(i.content_assignees_detail?.length > 0 || i.editor_assignees_detail?.length > 0
+            || i.graphics_assignees_detail?.length > 0) && (
             <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
               <Avatars people={i.content_assignees_detail} />
+              <Avatars people={i.editor_assignees_detail} />
               <Avatars people={i.graphics_assignees_detail} />
             </div>
           )}
@@ -474,7 +476,7 @@ function TableView({ items, onOpen, onArchive, archived = false, canEdit = false
         <thead>
           <tr>
             <th style={th}>Content</th><th style={th}>Category</th><th style={th}>Type</th>
-            <th style={th}>Stage</th><th style={th}>Content</th><th style={th}>Graphics</th>
+            <th style={th}>Stage</th><th style={th}>Writer</th><th style={th}>Editor</th><th style={th}>Graphics</th>
             <th style={th}>Due</th><th style={th}>Release</th><th style={th}>Platforms</th>
             <th style={th}>Priority</th>
             {canEdit && onArchive && <th style={th} />}
@@ -493,6 +495,7 @@ function TableView({ items, onOpen, onArchive, archived = false, canEdit = false
               <td style={{ ...td, color: 'var(--text-muted)' }}>{i.content_type}</td>
               <td style={td}><Pill text={i.status} color={STATUS_COLOR[i.status] || '#7c7267'} /></td>
               <td style={td}><Avatars people={i.content_assignees_detail} /></td>
+              <td style={td}><Avatars people={i.editor_assignees_detail} /></td>
               <td style={td}><Avatars people={i.graphics_assignees_detail} /></td>
               <td style={{ ...td, color: i.is_overdue ? '#b91c1c' : 'var(--text-muted)', fontWeight: i.is_overdue ? 700 : 400 }}>
                 {fmtDay(i.due_date)}

@@ -58,6 +58,8 @@ class ContentCategorySerializer(serializers.ModelSerializer):
 class ContentItemSerializer(serializers.ModelSerializer):
     content_assignees_detail = MemberChipSerializer(
         source='content_assignees', many=True, read_only=True)
+    editor_assignees_detail = MemberChipSerializer(
+        source='editor_assignees', many=True, read_only=True)
     graphics_assignees_detail = MemberChipSerializer(
         source='graphics_assignees', many=True, read_only=True)
     task_detail = serializers.SerializerMethodField()
@@ -68,8 +70,8 @@ class ContentItemSerializer(serializers.ModelSerializer):
         model = ContentItem
         fields = [
             'id', 'brand', 'category', 'category_detail', 'title', 'content_type', 'status',
-            'content_assignees', 'graphics_assignees',
-            'content_assignees_detail', 'graphics_assignees_detail',
+            'content_assignees', 'editor_assignees', 'graphics_assignees',
+            'content_assignees_detail', 'editor_assignees_detail', 'graphics_assignees_detail',
             'doc_url', 'extra_links', 'due_date', 'release_date',
             'platforms', 'posting_url', 'priority', 'effort', 'notes',
             'task', 'task_detail', 'order', 'is_overdue', 'notify_on_assign',
