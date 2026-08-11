@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays, Table2, LayoutGrid, Plus, RefreshCw, Search, X, Loader2,
-  ChevronLeft, ChevronRight, ExternalLink, Trash2, Filter, User,
+  ChevronLeft, ChevronRight, ExternalLink, Trash2, Filter, User, Archive, RotateCcw,
 } from 'lucide-react';
 import {
   getContentBoard, createContentItem, updateContentItem, deleteContentItem,
   moveContentItem, rescheduleContentItem, getContentActivity,
+  createContentCategory, archiveContentItem, publishContentToMedia,
 } from '../../apiClient';
 import ContentPanel from './ContentPanel.jsx';
 
@@ -112,19 +113,26 @@ export default function ContentCalendar() {
   const [mine, setMine] = useState(false);
   const [fStatus, setFStatus] = useState('');
   const [fBrand, setFBrand] = useState('');
+  // Which category's pill is active at the top of the board ('' = all).
+  const [fCategory, setFCategory] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  // Long boards are unreadable in one go; show a slice with an explicit
+  // "show all" rather than paginating.
+  const [showAll, setShowAll] = useState(false);
+  const TOP_N = 12;
   const [month, setMonth] = useState(() => { const d = new Date(); d.setDate(1); return d; });
 
   const flash = (type, text) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 4000); };
 
-  const load = useCallback(async (mineOnly) => {
+  const load = useCallback(async (mineOnly, archived = false) => {
     setLoading(true);
-    const res = await getContentBoard(mineOnly);
+    const res = await getContentBoard(mineOnly, archived);
     if (res && !res.error) setData(res);
     else flash('error', res?.error || 'Could not load the calendar.');
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(mine); }, [load, mine]);
+  useEffect(() => { load(mine, showArchived); }, [load, mine, showArchived]);
 
   const choices = data?.choices || {};
   const canEdit = data?.tier === 'full' || data?.tier === 'member';
@@ -135,8 +143,14 @@ export default function ContentCalendar() {
     if (q) list = list.filter((i) => `${i.title} ${i.brand} ${i.notes}`.toLowerCase().includes(q));
     if (fStatus) list = list.filter((i) => i.status === fStatus);
     if (fBrand) list = list.filter((i) => i.brand === fBrand);
+    if (fCategory) list = list.filter((i) => String(i.category) === String(fCategory));
     return list;
-  }, [data, search, fStatus, fBrand]);
+  }, [data, search, fStatus, fBrand, fCategory]);
+
+  const categories = data?.categories || [];
+  // The slice the views actually render; `items` stays the full filtered set so
+  // the counter can say how many are hidden.
+  const visibleItems = showAll ? items : items.slice(0, TOP_N);
 
   const refreshItem = (updated) => {
     setData((d) => (d ? { ...d, items: d.items.map((i) => (i.id === updated.id ? updated : i)) } : d));
@@ -154,6 +168,41 @@ export default function ContentCalendar() {
     }
     flash('error', res?.error || 'Could not save.');
     return null;
+  };
+
+  // Creating a category from inside the panel; the new one is merged into
+  // local state so the picker shows it immediately.
+  const onCreateCategory = async (name) => {
+    const res = await createContentCategory({ name });
+    if (res && !res.error) {
+      setData((d) => (d ? { ...d, categories: [...(d.categories || []), res] } : d));
+      return res;
+    }
+    flash('error', res?.error || 'Could not create the category.');
+    return null;
+  };
+
+  const onArchive = async (id, restore = false) => {
+    const res = await archiveContentItem(id, restore);
+    if (res && !res.error) {
+      // The item leaves whichever list is on screen, since board and archive
+      // are opposite filters of the same data.
+      setData((d) => (d ? { ...d, items: d.items.filter((i) => i.id !== id) } : d));
+      setSelected(null);
+      flash('ok', restore ? 'Restored to the board.' : 'Archived.');
+    } else flash('error', res?.error || 'Could not archive.');
+  };
+
+  const onPublishMedia = async (id) => {
+    const res = await publishContentToMedia(id);
+    if (res && !res.error) {
+      setData((d) => (d ? {
+        ...d,
+        items: d.items.map((i) => (i.id === id ? { ...i, media_post_id: res.media_post_id } : i)),
+      } : d));
+      flash('ok', res.created ? 'Published to the Media page.' : 'Media post updated.');
+    } else flash('error', res?.error || 'Could not publish.');
+    return res;
   };
 
   const onDelete = async (id) => {
@@ -224,6 +273,52 @@ export default function ContentCalendar() {
         }}>{msg.text}</div>
       )}
 
+      {/* Categories — brands and projects, as pills across the top of the
+          board. This is the "group by project" row: one tap narrows every
+          view, and the counts say how much work each project is carrying. */}
+      {(categories.length > 0 || (data?.archived_count || 0) > 0) && (
+        <div className="cc-pills" style={{
+          display: 'flex', gap: 8, marginBottom: 12, overflowX: 'auto', paddingBottom: 4,
+        }}>
+          <button
+            type="button" onClick={() => setFCategory('')}
+            style={{
+              ...btn, flex: 'none', borderRadius: 999, padding: '7px 14px',
+              ...(fCategory === '' ? { background: 'var(--primary)', color: '#fff', border: 'none' } : {}),
+            }}
+          >
+            All <span style={{ opacity: .7, marginLeft: 4 }}>{data?.items?.length || 0}</span>
+          </button>
+          {categories.map((c) => (
+            <button
+              key={c.id} type="button"
+              onClick={() => setFCategory(String(fCategory) === String(c.id) ? '' : String(c.id))}
+              style={{
+                ...btn, flex: 'none', borderRadius: 999, padding: '7px 14px', whiteSpace: 'nowrap',
+                ...(String(fCategory) === String(c.id)
+                  ? { background: 'var(--primary)', color: '#fff', border: 'none' } : {}),
+              }}
+            >
+              {c.name}
+              <span style={{ opacity: .7, marginLeft: 4 }}>{c.item_count ?? 0}</span>
+            </button>
+          ))}
+          <button
+            type="button" onClick={() => { setShowArchived((v) => !v); setShowAll(false); }}
+            title="Archived items keep their record but leave the board"
+            style={{
+              ...btn, flex: 'none', borderRadius: 999, padding: '7px 14px', marginLeft: 'auto',
+              ...(showArchived ? { background: 'var(--primary)', color: '#fff', border: 'none' } : {}),
+            }}
+          >
+            <Archive size={13} /> Archive
+            {(data?.archived_count || 0) > 0 && (
+              <span style={{ opacity: .7, marginLeft: 4 }}>{data.archived_count}</span>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* filters */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 200, maxWidth: 340 }}>
@@ -261,12 +356,25 @@ export default function ContentCalendar() {
           <Loader2 size={22} className="nm-spin" /> Loading…
         </div>
       ) : view === 'table' ? (
-        <TableView items={items} onOpen={setSelected} />
+        <TableView items={visibleItems} onOpen={setSelected} onArchive={onArchive}
+          archived={showArchived} canEdit={canEdit} />
       ) : view === 'board' ? (
-        <BoardView items={items} choices={choices} onOpen={setSelected} onMove={onMove} canEdit={canEdit} />
+        <BoardView items={visibleItems} choices={choices} onOpen={setSelected} onMove={onMove} canEdit={canEdit} />
       ) : (
         <MonthView items={items} month={month} setMonth={setMonth}
           onOpen={setSelected} onReschedule={onReschedule} canEdit={canEdit} />
+      )}
+
+      {/* Long lists are shown a screenful at a time; the count makes the
+          truncation explicit rather than silently hiding work. */}
+      {!loading && view !== 'calendar' && items.length > TOP_N && (
+        <div style={{ textAlign: 'center', marginTop: 14 }}>
+          <button style={btn} onClick={() => setShowAll((v) => !v)}>
+            {showAll
+              ? `Show top ${TOP_N}`
+              : `Show all ${items.length} (${items.length - TOP_N} more)`}
+          </button>
+        </div>
       )}
 
       {(selected || creating) && (
@@ -279,16 +387,24 @@ export default function ContentCalendar() {
           onSave={onSave}
           onDelete={onDelete}
           loadActivity={getContentActivity}
+          categories={categories}
+          onCreateCategory={onCreateCategory}
+          onPublishMedia={onPublishMedia}
         />
       )}
 
-      <style>{`.nm-spin{animation:nmspin 1s linear infinite}@keyframes nmspin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`.nm-spin{animation:nmspin 1s linear infinite}@keyframes nmspin{to{transform:rotate(360deg)}}
+        .cc-pills::-webkit-scrollbar{height:0}
+        @media(max-width:900px){
+          .cc-table{display:none!important}
+          .cc-cards{display:flex!important}
+        }`}</style>
     </div>
   );
 }
 
 /* ── table ─────────────────────────────────────────────────────────────── */
-function TableView({ items, onOpen }) {
+function TableView({ items, onOpen, onArchive, archived = false, canEdit = false }) {
   const th = {
     textAlign: 'left', padding: '10px 12px', fontSize: 11, fontWeight: 800,
     textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)',
@@ -298,18 +414,70 @@ function TableView({ items, onOpen }) {
 
   if (!items.length) {
     return <div style={{ ...card, padding: 50, textAlign: 'center', color: 'var(--text-muted)' }}>
-      No content yet. Click <b>New</b> to plan the first piece.
+      {archived
+        ? 'Nothing archived yet.'
+        : <>No content yet. Click <b>New</b> to plan the first piece.</>}
     </div>;
   }
   return (
-    <div style={{ ...card, overflowX: 'auto' }}>
+    <>
+    {/* Phone: a table with ten columns is unusable at 390px, so the same rows
+        render as cards. One tap opens the panel, exactly as the row does. */}
+    <div className="cc-cards" style={{ display: 'none', flexDirection: 'column', gap: 10 }}>
+      {items.map((i) => (
+        <div key={i.id} onClick={() => onOpen(i)} style={{ ...card, padding: 14, cursor: 'pointer' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+            <strong style={{ fontSize: 14.5, lineHeight: 1.35, color: 'var(--text-main)' }}>{i.title}</strong>
+            <Pill text={i.status} color={STATUS_COLOR[i.status] || '#7c7267'} />
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginTop: 9 }}>
+            {i.category_detail?.name && (
+              <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--primary)' }}>
+                {i.category_detail.name}
+              </span>
+            )}
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{i.content_type}</span>
+            {i.release_date && (
+              <span style={{ fontSize: 12, color: 'var(--text-main)', fontWeight: 600 }}>
+                {fmtDay(i.release_date)}
+              </span>
+            )}
+            {i.is_overdue && (
+              <span style={{ fontSize: 10.5, fontWeight: 800, color: '#b91c1c' }}>OVERDUE</span>
+            )}
+          </div>
+          {(i.content_assignees_detail?.length > 0 || i.graphics_assignees_detail?.length > 0) && (
+            <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
+              <Avatars people={i.content_assignees_detail} />
+              <Avatars people={i.graphics_assignees_detail} />
+            </div>
+          )}
+          {canEdit && onArchive && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onArchive(i.id, archived); }}
+              style={{
+                marginTop: 12, minHeight: 40, width: '100%', borderRadius: 8, fontSize: 12.5,
+                fontWeight: 700, border: '1px solid var(--outline-variant)',
+                background: 'var(--surface-container-low)', color: 'var(--text-muted)', cursor: 'pointer',
+              }}
+            >
+              {archived ? 'Restore to board' : 'Archive'}
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+
+    <div className="cc-table" style={{ ...card, overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1050 }}>
         <thead>
           <tr>
-            <th style={th}>Content</th><th style={th}>Brand</th><th style={th}>Type</th>
+            <th style={th}>Content</th><th style={th}>Category</th><th style={th}>Type</th>
             <th style={th}>Stage</th><th style={th}>Content</th><th style={th}>Graphics</th>
             <th style={th}>Due</th><th style={th}>Release</th><th style={th}>Platforms</th>
             <th style={th}>Priority</th>
+            {canEdit && onArchive && <th style={th} />}
           </tr>
         </thead>
         <tbody>
@@ -321,7 +489,7 @@ function TableView({ items, onOpen }) {
                 {i.title}
                 {i.is_overdue && <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: '#b91c1c' }}>OVERDUE</span>}
               </td>
-              <td style={{ ...td, color: 'var(--text-muted)' }}>{i.brand || '—'}</td>
+              <td style={{ ...td, color: 'var(--text-muted)' }}>{i.category_detail?.name || i.brand || '—'}</td>
               <td style={{ ...td, color: 'var(--text-muted)' }}>{i.content_type}</td>
               <td style={td}><Pill text={i.status} color={STATUS_COLOR[i.status] || '#7c7267'} /></td>
               <td style={td}><Avatars people={i.content_assignees_detail} /></td>
@@ -334,11 +502,28 @@ function TableView({ items, onOpen }) {
                 {(i.platforms || []).join(', ') || '—'}
               </td>
               <td style={td}><Pill text={i.priority} color={PRIORITY_COLOR[i.priority] || '#7c7267'} /></td>
+              {canEdit && onArchive && (
+                <td style={td}>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onArchive(i.id, archived); }}
+                    title={archived ? 'Restore to the board' : 'Archive (keeps the record)'}
+                    style={{
+                      border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)',
+                      color: 'var(--text-muted)', borderRadius: 7, padding: '5px 9px',
+                      fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {archived ? 'Restore' : 'Archive'}
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 

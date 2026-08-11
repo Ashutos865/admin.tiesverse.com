@@ -793,7 +793,8 @@ export const monitorCsvUrl        = ()          => `${API_URL}/api/nimble/export
 // ─────────────────────────────────────────────────────────────────────────────
 // CONTENT CALENDAR (content_app) — the Content team's planning workspace.
 // ─────────────────────────────────────────────────────────────────────────────
-export const getContentBoard       = (mine)       => adminFetch(`/api/content/board${mine ? '?mine=1' : ''}`);
+export const getContentBoard = (mine = false, archived = false) =>
+    adminFetch('/api/content/board/?' + new URLSearchParams({ ...(mine ? { mine: '1' } : {}), ...(archived ? { archived: 'true' } : {}) }));
 export const listContentItems      = (params = '') => adminFetch(`/api/content/items${params ? `?${params}` : ''}`);
 
 // CONTENT CATEGORIES (brands / projects) + archive + publish-to-media

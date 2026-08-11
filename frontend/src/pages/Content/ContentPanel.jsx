@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import CategoryPicker from './CategoryPicker.jsx';
+import AssetsSection from './AssetsSection.jsx';
 import {
   X, Trash2, Save, Loader2, ExternalLink, History, ListChecks,
   Search, Check, ChevronDown, UserPlus,
@@ -39,7 +41,7 @@ const btnPrimary = { ...btn, background: 'var(--primary)', color: '#fff', border
 const field = { marginBottom: 13 };
 
 const EMPTY = {
-  title: '', brand: '', content_type: 'other', status: 'idea',
+  title: '', brand: '', category: null, assets: [], content_type: 'other', status: 'idea',
   content_assignees: [], graphics_assignees: [], doc_url: '', extra_links: [],
   due_date: '', release_date: '', platforms: [], posting_url: '',
   priority: 'medium', effort: '', notes: '', notify_on_assign: true,
@@ -211,6 +213,7 @@ function AssigneePicker({ title, members, selected, disabled, onToggle, onClear 
 
 export default function ContentPanel({
   item, choices, members, canEdit, onClose, onSave, onDelete, loadActivity,
+  categories = [], onCreateCategory, onPublishMedia,
 }) {
   const isNew = !item;
   const [form, setForm] = useState(() => (item ? { ...EMPTY, ...item } : EMPTY));
@@ -243,7 +246,8 @@ export default function ContentPanel({
   const save = async () => {
     setSaving(true);
     const payload = {
-      title: form.title, brand: form.brand, content_type: form.content_type,
+      title: form.title, brand: form.brand, category: form.category ?? null,
+      assets: form.assets || [], content_type: form.content_type,
       status: form.status, content_assignees: form.content_assignees,
       graphics_assignees: form.graphics_assignees, doc_url: form.doc_url,
       extra_links: form.extra_links, platforms: form.platforms,
@@ -298,12 +302,14 @@ export default function ContentPanel({
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div style={field}>
-            <label style={label}>Brand / Project</label>
-            <input style={input} list="content-brands" value={form.brand} disabled={!canEdit}
-              onChange={(e) => set('brand', e.target.value)} placeholder="e.g. .TIES" />
-            <datalist id="content-brands">
-              {(choices.brands || []).map((b) => <option key={b} value={b} />)}
-            </datalist>
+            <label style={label}>Category (brand / project)</label>
+            <CategoryPicker
+              categories={categories}
+              value={form.category}
+              disabled={!canEdit}
+              onChange={(id) => set('category', id)}
+              onCreate={onCreateCategory}
+            />
           </div>
           <div style={field}>
             <label style={label}>Content type</label>
@@ -393,6 +399,24 @@ export default function ContentPanel({
             )}
           </div>
         </div>
+
+        {/* Delivered work — the images this piece produced, and the route to
+            the public Media page. Only meaningful once there is something to
+            show, so it stays out of the way while the item is still planned. */}
+        {!isNew && (
+          <div style={field}>
+            <label style={label}>Assets</label>
+            <AssetsSection
+              assets={form.assets || []}
+              disabled={!canEdit}
+              isDone={['published', 'done'].includes(String(form.status).toLowerCase())}
+              mediaPostId={item?.media_post_id}
+              postingUrl={form.posting_url}
+              onChange={(next) => set('assets', next)}
+              onPublish={() => onPublishMedia(item.id)}
+            />
+          </div>
+        )}
 
         <div style={field}>
           <label style={label}>Notes</label>
