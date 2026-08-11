@@ -684,6 +684,10 @@ class MediaPost(models.Model):
     title = models.CharField(max_length=255)
     tags = models.JSONField(default=list, blank=True)     # ['BRANDING', 'REELS']
     images = models.JSONField(default=list, blank=True)   # [url, ...]
+    # Optional destination. Set it and the whole row becomes a link (YouTube,
+    # Instagram, an article); leave it blank and the row expands its gallery
+    # in place instead.
+    link = models.URLField(max_length=500, blank=True)
     order = models.IntegerField(default=0)                # lower shows first
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

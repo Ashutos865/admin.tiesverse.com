@@ -12,7 +12,7 @@ import {
  * the shared uploader; their order here is the order shown on the site.
  */
 const SUGGESTED_TAGS = ['BRANDING', 'FILMS', 'REELS', 'PODCAST', 'REPORTING', 'CAMPAIGN', 'SOCIAL', 'DESIGN'];
-const EMPTY = { title: '', tags: [], images: [], order: 0, is_active: true };
+const EMPTY = { title: '', tags: [], images: [], link: '', order: 0, is_active: true };
 
 const card = { background: 'var(--surface-container-low)', border: '1px solid var(--outline-variant)', borderRadius: 12, padding: 18 };
 const input = { width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--outline-variant)', background: 'var(--surface)', color: 'var(--text-main)', fontSize: 14, fontFamily: 'inherit', outline: 'none' };
@@ -45,7 +45,7 @@ export default function MediaPosts() {
 
     const startEdit = (p) => {
         setEditingId(p.id);
-        setForm({ title: p.title || '', tags: p.tags || [], images: p.images || [], order: p.order || 0, is_active: p.is_active !== false });
+        setForm({ title: p.title || '', tags: p.tags || [], images: p.images || [], link: p.link || '', order: p.order || 0, is_active: p.is_active !== false });
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -184,6 +184,12 @@ export default function MediaPosts() {
                     <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
                 </div>
 
+                <label style={{ ...label, marginTop: 18 }}>
+                    Link (optional) <span style={{ fontWeight: 400 }}>— set it and the whole row opens this URL instead of expanding</span>
+                </label>
+                <input style={input} value={form.link} placeholder="https://youtube.com/watch?v=…  or  https://instagram.com/p/…"
+                    onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))} />
+
                 <div style={{ display: 'flex', gap: 20, alignItems: 'flex-end', marginTop: 14, flexWrap: 'wrap' }}>
                     <div>
                         <label style={label}>Order (lower shows first)</label>
@@ -223,6 +229,12 @@ export default function MediaPosts() {
                                     <strong style={{ fontSize: 15 }}>{p.title}</strong>
                                     {(p.tags || []).map((t) => <span key={t} style={{ ...chip, gap: 0 }}>{t}</span>)}
                                     {p.is_active === false && <span style={{ fontSize: 11, color: '#b45309', fontWeight: 700 }}>HIDDEN</span>}
+                                    {p.link && (
+                                        <a href={p.link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+                                            style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)' }}>
+                                            LINKED ↗
+                                        </a>
+                                    )}
                                 </div>
                                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                                     {(p.images || []).slice(0, 6).map((u, i) => (

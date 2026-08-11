@@ -161,6 +161,7 @@ def public_media_feed(request):
                     'id': p.id, 'title': p.title,
                     'tags': [str(t) for t in (p.tags or [])],
                     'images': [str(u) for u in (p.images or [])],
+                    'link': p.link or '',
                 }
                 for p in MediaPost.objects.using('turso_db').filter(is_active=True).order_by('order', '-created_at')
             ]
