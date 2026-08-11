@@ -1673,3 +1673,62 @@ def webinar_access_admin(request):
         return Response({'member_id': member.id, 'capabilities': wa.capabilities})
     WebinarAccess.objects.filter(member=member).delete()
     return Response({'member_id': member.id, 'capabilities': []})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])   # authenticated below: <img> cannot send headers
+def webinar_registration_qr(request):
+    """PNG QR code for an event's registration link.
+
+    Generated server-side so the download is print-resolution: a QR scaled up
+    from a small on-screen canvas blurs on a poster. `?size=` sets the box
+    scale, so the same endpoint serves both the panel preview and a print file.
+    """
+    import io
+
+    import qrcode
+    from django.http import HttpResponse
+    from rest_framework_simplejwt.authentication import JWTAuthentication
+
+    # An <img> tag cannot set an Authorization header, so the token may arrive
+    # as ?token=. Staff-only either way: an unauthenticated request is refused.
+    if not (request.user and request.user.is_authenticated):
+        raw = request.query_params.get('token') or ''
+        try:
+            validated = JWTAuthentication().get_validated_token(raw)
+            JWTAuthentication().get_user(validated)
+        except Exception:  # noqa: BLE001
+            return Response({'error': 'Authentication required.'}, status=401)
+
+    obj = _find_event_registration(
+        request.query_params.get('event_key'), request.query_params.get('event_pk'))
+    if obj is None:
+        return Response({'error': 'Webinar not found.'}, status=404)
+
+    url = (obj.register_url or '').strip()
+    if not url:
+        return Response({'error': 'This listing has no registration URL yet. Save it first.'}, status=400)
+
+    try:
+        box = max(4, min(int(request.query_params.get('size') or 10), 40))
+    except (TypeError, ValueError):
+        box = 10
+
+    img = qrcode.QRCode(
+        # High correction: posters get creased and printed small, and this
+        # still scans with a chunk of the code damaged.
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=box, border=2,
+    )
+    img.add_data(url)
+    img.make(fit=True)
+
+    buf = io.BytesIO()
+    img.make_image(fill_color='#1d160d', back_color='white').save(buf, format='PNG')
+    buf.seek(0)
+
+    res = HttpResponse(buf.getvalue(), content_type='image/png')
+    if request.query_params.get('download'):
+        name = slugify(obj.title or 'registration') or 'registration'
+        res['Content-Disposition'] = f'attachment; filename="qr-{name}.png"'
+    return res

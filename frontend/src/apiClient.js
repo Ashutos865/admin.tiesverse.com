@@ -329,6 +329,12 @@ export const updateCoupon = (id, data) => adminFetch(`/api/webinar/coupons/${id}
 export const deleteCoupon = (id) => adminFetch(`/api/webinar/coupons/${id}`, 'DELETE');
 export const validateCoupon = (data) => adminFetch('/api/webinar/validate-coupon', 'POST', data);
 
+// Registration QR (PNG). Rendered in an <img>, so the token rides in the
+// query string; the endpoint refuses unauthenticated requests.
+export const webinarRegistrationQrUrl = (eventPk, size = 10, download = false) =>
+    `${API_URL}/api/webinar/registration-qr/?event_pk=${encodeURIComponent(eventPk)}&size=${size}`
+    + (download ? '&download=1' : '') + `&token=${encodeURIComponent(getApiToken() || '')}`;
+
 // WEBINAR — Registrations (extended, with attended column)
 export const getWebinarRegistrationsFull = (event_key = '', event_pk = '') =>
   adminFetch(`/api/webinar/registrations-full/${event_key ? `?event_key=${encodeURIComponent(event_key)}${event_pk ? `&event_pk=${encodeURIComponent(event_pk)}` : ''}` : ''}`)

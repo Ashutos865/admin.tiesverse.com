@@ -2,15 +2,15 @@ import './WebinarsWorkshops.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Award, ChevronDown, ChevronUp, ClipboardList, Edit2, FileQuestion, Mail, Mic2,
-  Plus, Save, Send, Trash2, Upload, Users, Video, X,
+  ArrowLeft, Award, ChevronDown, ChevronUp, ClipboardList, Download, Edit2, FileQuestion,
+  Mail, Mic2, Plus, Save, Send, Trash2, Upload, Users, Video, X,
 } from 'lucide-react';
 import {
   createEventRegistration, deleteEventRegistration,
   updateEventRegistration, getEventRegistrations,
   getFormQuestions, createFormQuestion, updateFormQuestion,
   deleteFormQuestion, reorderFormQuestions,
-  getEventGuests, createEventSpeaker, deleteEventSpeaker,
+  getEventGuests, createEventSpeaker, deleteEventSpeaker, webinarRegistrationQrUrl,
   getWebinarRegistrationsFull, markAttended,
   webinarBroadcast, getWebinarSendHistory, getWebinarMyAccess,
   generateWebinarMeeting, getWebinarMeetingGuests,
@@ -1857,6 +1857,8 @@ const WebinarsWorkshops = () => {
 };
 
 /* ─── DetailsTab (inline edit inside panel) ──────────────────── */
+const qrUrl = (id, size, download) => webinarRegistrationQrUrl(id, size, download);
+
 function DetailsTab({ item, onSaved, showToast, onManageGuests }) {
   const [form, setForm]                     = useState({ ...item });
   const [saving, setSaving]                 = useState(false);
@@ -1984,6 +1986,46 @@ function DetailsTab({ item, onSaved, showToast, onManageGuests }) {
           Auto-generated from title · updates when you save a new title
         </small>
       </div>
+
+      {/* QR for the registration link — for posters, slides and print. The
+          image is generated server-side so the download is print-resolution
+          rather than an upscaled screen canvas. */}
+      <div className="ww-field-label" style={{marginBottom: 6, marginTop: 18}}>Registration QR</div>
+      <div style={{display:'flex', gap:16, alignItems:'flex-start', flexWrap:'wrap'}}>
+        <img
+          src={qrUrl(item.id, 6)}
+          alt="QR code for the registration link"
+          width={132}
+          height={132}
+          style={{
+            borderRadius:10, border:'1px solid var(--outline-variant)',
+            background:'#fff', padding:6, flex:'none',
+          }}
+        />
+        <div style={{minWidth:200, flex:1}}>
+          <p style={{margin:'0 0 10px', fontSize:12.5, color:'var(--text-muted)', lineHeight:1.5}}>
+            Scanning this opens the registration page. Download it at print size
+            for posters, or copy the link above for anything digital.
+          </p>
+          <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+            <a
+              className="ww-btn ww-btn-ghost"
+              href={qrUrl(item.id, 20, true)}
+              style={{textDecoration:'none'}}
+            >
+              <Download size={14}/> Download PNG
+            </a>
+            <button
+              type="button"
+              className="ww-btn ww-btn-ghost"
+              onClick={() => window.open(qrUrl(item.id, 20), '_blank', 'noopener')}
+            >
+              Open full size
+            </button>
+          </div>
+        </div>
+      </div>
+
       <button className="ww-btn ww-btn-primary" onClick={save} disabled={saving || uploadingCover} style={{marginTop: '8px'}}>
         <Save size={14}/> {saving ? 'Saving…' : 'Save Changes'}
       </button>

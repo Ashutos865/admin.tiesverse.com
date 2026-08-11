@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
+    webinar_registration_qr,
     WebinarEventViewSet, CalendarEventViewSet,
     register_for_event, list_registrations,
     create_payment_order, verify_payment, razorpay_webhook, payment_reminder,
@@ -58,6 +59,9 @@ urlpatterns = [
     # Meeting (one Google Meet per event)
     path('generate-meeting/', generate_webinar_meeting, name='webinar-generate-meeting'),
     path('meeting-guests/', webinar_meeting_guests, name='webinar-meeting-guests'),
+
+    # Registration QR (PNG) for posters and slides
+    path('registration-qr/', webinar_registration_qr, name='webinar-registration-qr'),
 
     # Granular access control
     path('my-access/', webinar_my_access, name='webinar-my-access'),
