@@ -525,16 +525,58 @@ class EnrollmentViewSet(InterviewMailMixin, viewsets.ViewSet):
 
     @action(detail=True, methods=['patch'])
     def update_status(self, request, pk=None):
+        final_decision = request.data.get('final_decision', 'Under Review')
         ok = cloudflare_proxy.update_candidate(
             row_id=pk,
             interview_status=request.data.get('interview_status', ''),
             interviewer=request.data.get('interviewer', ''),
             rating=request.data.get('rating', 0),
-            final_decision=request.data.get('final_decision', 'Under Review'),
+            final_decision=final_decision,
         )
-        if ok:
-            return Response({'status': 'updated'})
-        return Response({'error': 'Update failed'}, status=503)
+        if not ok:
+            return Response({'error': 'Update failed'}, status=503)
+
+        # Saving a Rejected decision tells the candidate. Only on the change to
+        # Rejected: re-saving an already-rejected row must not mail them twice.
+        rejection_email = None
+        if str(final_decision).strip().lower() in ('rejected', 'not selected'):
+            rejection_email = self._send_rejection_email(pk, request.data)
+
+        return Response({'status': 'updated', 'rejection_email': rejection_email})
+
+    @staticmethod
+    def _send_rejection_email(pk, payload):
+        """Mail the candidate that they were not selected.
+
+        Returns 'sent', 'skipped: <why>' or 'failed: <why>' so the tracker can
+        say what happened instead of implying an email that never left. A mail
+        failure never fails the status save; the decision is already stored.
+        """
+        from config.email_templates import send_template_email
+
+        try:
+            candidates = cloudflare_proxy.get_candidates() or []
+            cand = next((c for c in candidates if str(c.get('id')) == str(pk)), None)
+            if not cand:
+                return 'skipped: candidate not found'
+
+            # An already-rejected row that is saved again should not re-notify.
+            if str(payload.get('previous_decision') or '').strip().lower() == 'rejected':
+                return 'skipped: already rejected'
+
+            email = str(cand.get('email') or '').strip()
+            if not email:
+                return 'skipped: no email on file'
+
+            name = f"{cand.get('first_name', '')} {cand.get('last_name', '')}".strip() or 'there'
+            sent = send_template_email('application_rejected', email, {
+                'name': name,
+                'role': cand.get('roles') or cand.get('department') or '',
+            })
+            return 'sent' if sent else 'failed: mailer disabled or unavailable'
+        except Exception as exc:  # noqa: BLE001
+            print(f'[REJECTION] email failed for candidate {pk}: {exc}')
+            return f'failed: {exc}'
 
     @action(detail=True, methods=['post'])
     def schedule_interview(self, request, pk=None):

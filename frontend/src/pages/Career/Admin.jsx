@@ -857,9 +857,25 @@ const CareerAdmin = ({ tab = 'positions' }) => {
     const saveApplicationEvaluation = async (application) => {
         const id = getApplicationId(application);
         const draft = getApplicationDraft(application);
+        const name = `${application.first_name || ''} ${application.last_name || ''}`.trim() || 'this applicant';
+        const wasRejected = String(application.final_decision || '').toLowerCase() === 'rejected';
+        const nowRejected = String(draft.final_decision || '').toLowerCase() === 'rejected';
+
+        // Saving a rejection emails the candidate, and an email cannot be
+        // recalled. Confirm the send before it happens, naming the person and
+        // the address so a wrong row is caught here rather than in their inbox.
+        if (nowRejected && !wasRejected) {
+            const to = application.email ? ` (${application.email})` : '';
+            const ok = window.confirm(
+                `Save this as Rejected?\n\n${name}${to} will immediately receive the rejection email. `
+                + 'This cannot be undone.',
+            );
+            if (!ok) return;
+        }
+
         setSavingApplication(id);
         try {
-            const result = await updateCandidateStatus(id, draft);
+            const result = await updateCandidateStatus(id, { ...draft, previous_decision: application.final_decision || '' });
             if (result?.error) throw new Error(result.error);
             setItems((current) => current.map((item) => (
                 String(getApplicationId(item)) === String(id) ? { ...item, ...draft } : item
@@ -869,7 +885,19 @@ const CareerAdmin = ({ tab = 'positions' }) => {
                 delete next[id];
                 return next;
             });
-            showNotice(`Evaluation saved for ${application.first_name || 'applicant'}.`);
+
+            // Report what actually happened to the email, rather than letting
+            // a silent failure look like a successful notification.
+            const mail = result?.rejection_email;
+            if (mail === 'sent') {
+                showNotice(`Evaluation saved. Rejection email sent to ${application.email || name}.`);
+            } else if (mail && mail.startsWith('failed')) {
+                showNotice(`Evaluation saved, but the rejection email did not send: ${mail.replace('failed: ', '')}`, 'error');
+            } else if (mail && mail.startsWith('skipped')) {
+                showNotice(`Evaluation saved. No email sent: ${mail.replace('skipped: ', '')}.`);
+            } else {
+                showNotice(`Evaluation saved for ${application.first_name || 'applicant'}.`);
+            }
         } catch (error) {
             showNotice(`Could not save evaluation: ${error?.message || 'Unknown error'}`, 'error');
         } finally {
