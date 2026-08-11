@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Department, TeamMember, TeamMemberSocial, Event, EventSpeaker, EventRegistration, WebinarListing, TechProduct, Brand
+from .models import Department, TeamMember, TeamMemberSocial, Event, EventSpeaker, EventRegistration, WebinarListing, TechProduct, Brand, MediaPost
 
 
 class TechProductSerializer(serializers.ModelSerializer):
@@ -46,6 +46,12 @@ class WebinarListingSerializer(serializers.ModelSerializer):
     class Meta:
         model = WebinarListing
         fields = '__all__'
+
+class MediaPostSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MediaPost
+        fields = '__all__'
+
 
 # aliases for views that still use old names
 ArticleSerializer = DepartmentSerializer

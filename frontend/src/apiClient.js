@@ -270,6 +270,12 @@ export const createEventSpeaker = (data) => adminFetch('/api/landing/event_speak
 export const updateEventSpeaker = (id, data) => adminFetch(`/api/landing/event_speakers/${id}`, 'PATCH', data);
 export const deleteEventSpeaker = (id) => adminFetch(`/api/landing/event_speakers/${id}`, 'DELETE');
 
+// MEDIA POSTS (tiesverse.com /media showcase)
+export const getMediaPosts = () => adminFetch('/api/landing/media_posts');
+export const createMediaPost = (data) => adminFetch('/api/landing/media_posts', 'POST', data);
+export const updateMediaPost = (id, data) => adminFetch(`/api/landing/media_posts/${id}`, 'PATCH', data);
+export const deleteMediaPost = (id) => adminFetch(`/api/landing/media_posts/${id}`, 'DELETE');
+
 // EVENT REGISTRATIONS
 export const getEventRegistrations = () => adminFetch('/api/landing/event_registrations');
 export const createEventRegistration = (data) => adminFetch('/api/landing/event_registrations', 'POST', data);

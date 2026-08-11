@@ -2,12 +2,12 @@ from rest_framework import viewsets
 from rest_framework.permissions import DjangoModelPermissions, IsAuthenticated
 from .models import (
     Department, Event, EventSpeaker, EventRegistration,
-    TeamMember, TeamMemberSocial, WebinarListing, TechProduct, Brand,
+    TeamMember, TeamMemberSocial, WebinarListing, TechProduct, Brand, MediaPost,
 )
 from .serializers import (
     DepartmentSerializer, EventSerializer, EventSpeakerSerializer,
     EventRegistrationSerializer, TeamMemberSerializer, TeamMemberSocialSerializer,
-    WebinarListingSerializer, TechProductSerializer, BrandSerializer,
+    WebinarListingSerializer, TechProductSerializer, BrandSerializer, MediaPostSerializer,
 )
 from . import supabase_sync
 
@@ -220,3 +220,29 @@ def site_image_upload(request):
     SiteImage.objects.update_or_create(key=key, defaults={'image_url': url, 'mode': 'manual'})
     cache.delete('public_site_images')
     return Response({'image_url': url})
+
+
+class MediaPostViewSet(viewsets.ModelViewSet):
+    """Image posts for the website's Media showcase. No Supabase mirror: the
+    site reads these straight from the public feed."""
+    queryset = MediaPost.objects.all()
+    serializer_class = MediaPostSerializer
+    permission_classes = [IsAuthenticated, StaffModelPermissions]
+
+    def perform_create(self, serializer):
+        serializer.save()
+        self._bust()
+
+    def perform_update(self, serializer):
+        serializer.save()
+        self._bust()
+
+    def perform_destroy(self, instance):
+        instance.delete()
+        self._bust()
+
+    @staticmethod
+    def _bust():
+        # The public feed caches for 2 minutes; edits should show now.
+        from django.core.cache import cache
+        cache.delete('public_media_feed')

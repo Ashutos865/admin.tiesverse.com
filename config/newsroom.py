@@ -150,6 +150,28 @@ def public_guests_feed(request):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+def public_media_feed(request):
+    """Image posts for the website's /media showcase. Cached ~2 min."""
+    cached = cache.get('public_media_feed')
+    if cached is None:
+        try:
+            from tiesverse_app.models import MediaPost
+            cached = [
+                {
+                    'id': p.id, 'title': p.title,
+                    'tags': [str(t) for t in (p.tags or [])],
+                    'images': [str(u) for u in (p.images or [])],
+                }
+                for p in MediaPost.objects.using('turso_db').filter(is_active=True).order_by('order', '-created_at')
+            ]
+        except Exception:  # noqa: BLE001
+            cached = []
+        cache.set('public_media_feed', cached, 120)
+    return JsonResponse({'posts': cached})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def public_tech_products(request):
     """Admin-managed Technology-section products for the website. Cached ~2 min."""
     cached = cache.get('public_tech_products')

@@ -671,3 +671,26 @@ class DataSequence(models.Model):
 
     def __str__(self):
         return f"{self.store_id}:{self.name}={self.value}"
+
+
+# ── MediaPost (tiesverse.com /media showcase) ─────────────────────────────────
+class MediaPost(models.Model):
+    """An image-based work post on the website's Media page.
+
+    No body text by design: a post is a title, a few tags and 2-5 images that
+    the page lays out row-by-row (Dorst & Lesser style, on the site's white
+    ground). Images are Cloudinary URLs from the admin uploader.
+    """
+    title = models.CharField(max_length=255)
+    tags = models.JSONField(default=list, blank=True)     # ['BRANDING', 'REELS']
+    images = models.JSONField(default=list, blank=True)   # [url, ...]
+    order = models.IntegerField(default=0)                # lower shows first
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'media_posts'
+        ordering = ['order', '-created_at']
+
+    def __str__(self):
+        return self.title

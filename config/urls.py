@@ -26,7 +26,7 @@ from config.wordpress_proxy import wordpress_proxy
 from config.newsroom import (
     public_newsroom_nav, public_newsroom_articles,
     public_events_feed, public_guests_feed, public_tech_products, public_brands, public_site_images,
-    public_site_image,
+    public_site_image, public_media_feed,
 )
 from config.certificate_workflow import (
     certificate_import_records,
@@ -68,6 +68,7 @@ urlpatterns = [
     path('api/public/events/', public_events_feed, name='public-events-feed'),
     path('api/public/guests/', public_guests_feed, name='public-guests-feed'),
     path('api/public/tech-products/', public_tech_products, name='public-tech-products'),
+    path('api/public/media-posts/', public_media_feed, name='public-media-posts'),
     path('api/public/brands/', public_brands, name='public-brands'),
     path('api/public/verify-certificate/', verify_certificate, name='verify-certificate'),
     path('api/public/verify-certificate/photo/', verify_certificate_photo, name='verify-certificate-photo'),
