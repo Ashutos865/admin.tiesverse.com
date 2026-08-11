@@ -1000,9 +1000,13 @@ class OnboardingDocView(APIView):
         except Exception as exc:
             return HttpResponse(str(exc), status=500)
         ext = key.rsplit('.', 1)[-1].lower() if '.' in key else 'bin'
+        # webp was missing here, so every profile photo (uploads are converted
+        # to webp) fell through to octet-stream and the browser downloaded it
+        # instead of showing it.
         content_type = {
             'pdf': 'application/pdf', 'jpg': 'image/jpeg',
             'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif',
+            'webp': 'image/webp', 'heic': 'image/heic', 'bmp': 'image/bmp',
         }.get(ext, 'application/octet-stream')
         resp = HttpResponse(content, content_type=content_type)
         resp['Content-Disposition'] = f'inline; filename="{doc_type}.{ext}"'
@@ -2560,6 +2564,14 @@ class OnboardingPublicInfoView(APIView):
         })
 
 
+# Onboarding uploads come from a public link, so the limits live server-side.
+# 5 MB covers a phone photo or a scanned document; anything larger is a mistake
+# or an attempt to fill the bucket.
+_ONBOARDING_MAX_BYTES = 5 * 1024 * 1024
+_ONBOARDING_ALLOWED_EXT = {'pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'bmp'}
+_DOC_LABELS = {'aadhaar': 'Aadhaar card', 'college_id': 'College ID', 'photo': 'Profile photo'}
+
+
 class OnboardingPublicUploadView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -2581,7 +2593,21 @@ class OnboardingPublicUploadView(APIView):
         ]:
             file_obj = request.FILES.get(field_name)
             if file_obj:
+                # This endpoint is public (anyone with the link), so it must
+                # refuse oversized uploads rather than trust the browser: a
+                # phone photo is ~2-5 MB and a scanned PDF rarely exceeds 5 MB.
+                if file_obj.size and file_obj.size > _ONBOARDING_MAX_BYTES:
+                    return Response({
+                        'error': f'{_DOC_LABELS.get(field_name, field_name)} is '
+                                 f'{file_obj.size / 1024 / 1024:.1f} MB. The limit is '
+                                 f'{_ONBOARDING_MAX_BYTES // (1024 * 1024)} MB per file.',
+                    }, status=400)
                 ext = file_obj.name.rsplit('.', 1)[-1].lower() if '.' in file_obj.name else 'bin'
+                if ext not in _ONBOARDING_ALLOWED_EXT:
+                    return Response({
+                        'error': f'{_DOC_LABELS.get(field_name, field_name)}: .{ext} files are not '
+                                 'accepted. Upload a PDF or an image (JPG, PNG, WebP, HEIC).',
+                    }, status=400)
                 content_type = file_obj.content_type or 'application/octet-stream'
                 data = file_obj.read()
                 # The profile photo is always an image → store it as WebP (smaller,
