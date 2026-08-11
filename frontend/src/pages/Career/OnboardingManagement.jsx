@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getOnboardingList, verifyOnboarding, getHRDepartments, getOnboardingDocUrl, initiateOnboarding } from '../../apiClient';
+import { getOnboardingList, verifyOnboarding, getHRDepartments, getOnboardingDocUrl, initiateOnboarding, viewDoc } from '../../apiClient';
 import { ClipboardCheck, CheckCircle, XCircle, Clock, Copy, Eye, Building2, X, UserCheck, RefreshCw } from 'lucide-react';
 
 const STATUS_META = {
@@ -294,9 +294,19 @@ export default function OnboardingManagement() {
                                                 <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: uploaded ? 'var(--text-main)' : 'var(--text-muted)' }}>{label}</span>
                                             </div>
                                             {uploaded ? (
-                                                <a href={getOnboardingDocUrl(profileModal.id, key)} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', textDecoration: 'none', padding: '4px 0' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        // A plain link navigates without the JWT, so the API 401s and
+                                                        // the browser lands on the raw DRF page. Fetch with the token
+                                                        // and open the file itself.
+                                                        const res = await viewDoc(getOnboardingDocUrl(profileModal.id, key));
+                                                        if (res?.error) showNotice(res.error, 'error');
+                                                    }}
+                                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', background: 'none', border: 'none', padding: '4px 0', cursor: 'pointer' }}
+                                                >
                                                     <Eye size={12} /> View Document
-                                                </a>
+                                                </button>
                                             ) : (
                                                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Not yet uploaded</span>
                                             )}
