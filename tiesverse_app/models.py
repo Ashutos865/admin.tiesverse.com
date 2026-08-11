@@ -231,7 +231,10 @@ class EventRegistration(models.Model):
 
     def save(self, *args, **kwargs):
         if self.title:
-            kind_path = 'webinar' if self.kind == 'webinar' else 'workshop'
+            # Plural: the website routes are /webinars/<slug> and
+            # /workshops/<slug>. The singular forms 404, so every registration
+            # link generated before this was a dead link.
+            kind_path = 'webinars' if self.kind == 'webinar' else 'workshops'
             self.register_url = f'https://tiesverse.com/{kind_path}/{_slugify(self.title)}'
         super().save(*args, **kwargs)
 
