@@ -9,7 +9,7 @@ from .views import site_images_admin, site_image_upload
 from .podcast_views import podcasts_admin, podcast_detail, podcast_audio_upload
 from .contact_views import contact_messages, contact_message_detail
 from .talent_views import talent_admin, talent_detail, talent_logo_upload
-from .research_views import research_page_admin
+from .research_views import research_page_admin, research_reports_admin, research_report_admin_detail
 from .data_api import (
     data_stores, data_store_detail, data_store_records, data_keys, data_key_detail,
 )
@@ -30,6 +30,8 @@ urlpatterns = [
     path('site-images/', site_images_admin, name='site-images-admin'),
     path('talent-pool/', talent_admin, name='talent-admin'),
     path('research-page/', research_page_admin, name='research-page-admin'),
+    path('research-reports/', research_reports_admin, name='research-reports-admin'),
+    path('research-reports/<int:pk>/', research_report_admin_detail, name='research-report-admin-detail'),
     path('talent-pool/<int:pk>/', talent_detail, name='talent-detail'),
     path('talent-pool/<int:pk>/logo/', talent_logo_upload, name='talent-logo-upload'),
     path('contact-messages/', contact_messages, name='contact-messages'),

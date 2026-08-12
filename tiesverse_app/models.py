@@ -719,3 +719,31 @@ class ResearchPage(models.Model):
 
     def __str__(self):
         return f'Research page (updated {self.updated_at:%Y-%m-%d})'
+
+
+class ResearchReport(models.Model):
+    """A full research report on tiesverse.com/research/<slug>.
+
+    Blocks are the parsed document (see gdoc_import): h2/h3 sections,
+    paragraphs, tables, images and references, in reading order. The report
+    reader renders them and builds its contents rail from the h2 blocks.
+    """
+    slug = models.SlugField(max_length=220, unique=True)
+    title = models.CharField(max_length=300)
+    eyebrow = models.CharField(max_length=200, blank=True)   # 'A Report by ...'
+    dek = models.TextField(blank=True)                       # one-line standfirst
+    kind = models.CharField(max_length=40, default='Report')
+    date_label = models.CharField(max_length=60, blank=True) # 'August 2026'
+    cover_url = models.URLField(max_length=500, blank=True)
+    source_url = models.URLField(max_length=500, blank=True) # the Google Doc it came from
+    blocks = models.JSONField(default=list, blank=True)
+    is_active = models.BooleanField(default=True)
+    order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'research_reports'
+        ordering = ['order', '-created_at']
+
+    def __str__(self):
+        return self.title

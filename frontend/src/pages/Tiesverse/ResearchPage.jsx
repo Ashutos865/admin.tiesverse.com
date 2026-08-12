@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     BookOpen, Plus, Upload, X, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, Save,
+    FileText, Link2, ExternalLink,
 } from 'lucide-react';
-import { getResearchPage, saveResearchPage, uploadImage } from '../../apiClient';
+import {
+    getResearchPage, saveResearchPage, uploadImage,
+    getResearchReports, importResearchReport, updateResearchReport, deleteResearchReport,
+} from '../../apiClient';
 
 /**
  * Content manager for tiesverse.com/research.
@@ -13,7 +17,6 @@ import { getResearchPage, saveResearchPage, uploadImage } from '../../apiClient'
  * admin has filled in, so a blank document still renders a complete page.
  */
 
-const EMPTY_AREA = { tag: '', title: '', desc: '', is_active: '1' };
 const EMPTY_PUB = { kind: 'Report', title: '', dek: '', date: '', link: '', is_active: '1' };
 const PUB_KINDS = ['Report', 'Brief', 'Deep dive', 'Paper', 'Explainer'];
 
@@ -32,6 +35,82 @@ const Field = ({ l, children }) => (
         {children}
     </div>
 );
+
+/** Full reports imported from Google Docs — each becomes /research/<slug>. */
+function ReportsCard({ flash }) {
+    const [reports, setReports] = useState(null);
+    const [url, setUrl] = useState('');
+    const [date, setDate] = useState('');
+    const [dek, setDek] = useState('');
+    const [importing, setImporting] = useState(false);
+
+    const load = useCallback(async () => {
+        const res = await getResearchReports();
+        setReports(Array.isArray(res?.reports) ? res.reports : []);
+    }, []);
+    useEffect(() => { load(); }, [load]);
+
+    const doImport = async () => {
+        if (!url.trim()) return flash('Paste a Google Doc link first.');
+        setImporting(true);
+        const res = await importResearchReport({ url: url.trim(), date: date.trim(), dek: dek.trim() });
+        setImporting(false);
+        if (res?.slug) {
+            flash(`Imported "${res.title}" (${res.blocks_count} blocks). Live within two minutes.`);
+            setUrl(''); setDate(''); setDek('');
+            load();
+        } else flash(res?.error || 'Import failed.');
+    };
+
+    const toggle = async (r) => {
+        const res = await updateResearchReport(r.id, { is_active: !r.is_active });
+        if (res?.error) flash(res.error); else load();
+    };
+
+    const remove = async (r) => {
+        if (!window.confirm(`Delete "${r.title}"? Its page on the website goes away.`)) return;
+        const res = await deleteResearchReport(r.id);
+        if (res?.error) flash(res.error); else { flash('Report deleted.'); load(); }
+    };
+
+    return (
+        <div style={card}>
+            <h2 style={h2}>Research reports</h2>
+            <p style={hint}>
+                Paste a Google Doc link and it becomes a full report page at tiesverse.com/research/… —
+                sections, tables and images included. The doc must be shared as “anyone with the link can view”.
+                Imported reports also appear automatically under “What we published”.
+            </p>
+            <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
+                <input style={input} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://docs.google.com/document/d/…" />
+                <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 10 }}>
+                    <input style={input} value={date} onChange={(e) => setDate(e.target.value)} placeholder="August 2026" />
+                    <input style={input} value={dek} onChange={(e) => setDek(e.target.value)} placeholder="One-line standfirst shown under the title (optional)" />
+                </div>
+                <button style={{ ...btn('var(--primary, #fe7a00)', '#fff'), justifyContent: 'center' }} disabled={importing} onClick={doImport}>
+                    <Link2 size={15} /> {importing ? 'Importing… (fetching the doc)' : 'Import from Google Doc'}
+                </button>
+            </div>
+
+            {reports === null && <p style={{ ...hint, margin: 0 }}>Loading reports…</p>}
+            {Array.isArray(reports) && reports.length === 0 && <p style={{ ...hint, margin: 0 }}>No reports yet.</p>}
+            {Array.isArray(reports) && reports.map((r) => (
+                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid var(--outline-variant)', borderRadius: 10, padding: '10px 12px', marginBottom: 8, background: 'var(--surface)', opacity: r.is_active ? 1 : 0.55 }}>
+                    <FileText size={16} style={{ flex: 'none', color: 'var(--text-muted)' }} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{r.kind}{r.date ? ` · ${r.date}` : ''} · {r.blocks_count} blocks</div>
+                    </div>
+                    <a href={`https://www.tiesverse.com/research/${r.slug}`} target="_blank" rel="noreferrer" style={{ ...iconBtn, textDecoration: 'none' }} title="Open on the website"><ExternalLink size={14} /></a>
+                    <button style={iconBtn} title={r.is_active ? 'Shown on the site — click to hide' : 'Hidden — click to show'} onClick={() => toggle(r)}>
+                        {r.is_active ? <Eye size={15} /> : <EyeOff size={15} />}
+                    </button>
+                    <button style={{ ...iconBtn, color: '#dc2626' }} title="Delete" onClick={() => remove(r)}><Trash2 size={15} /></button>
+                </div>
+            ))}
+        </div>
+    );
+}
 
 function ItemList({ title, hintText, items, setItems, empty, render }) {
     const move = (i, d) => {
@@ -192,26 +271,11 @@ export default function ResearchPage() {
                 </Field>
             </div>
 
-            <ItemList
-                title="What we research"
-                hintText="Focus-area cards. The tag is a small uppercase chip (e.g. GEOPOLITICS); order here is the order on the site."
-                items={doc.areas}
-                setItems={(areas) => set({ areas })}
-                empty={EMPTY_AREA}
-                render={(it, patch) => (
-                    <>
-                        <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 10, marginBottom: 10 }}>
-                            <input style={input} value={it.tag || ''} onChange={(e) => patch({ tag: e.target.value.toUpperCase() })} placeholder="TAG" />
-                            <input style={input} value={it.title || ''} onChange={(e) => patch({ title: e.target.value })} placeholder="Area title" />
-                        </div>
-                        <textarea style={{ ...area, minHeight: 56 }} value={it.desc || ''} onChange={(e) => patch({ desc: e.target.value })} placeholder="One or two sentences on what this area covers." />
-                    </>
-                )}
-            />
+            <ReportsCard flash={flash} />
 
             <ItemList
                 title="What we published"
-                hintText="Selected publications. A link makes the row clickable (a report page, PDF or article); leave it blank to list without a link."
+                hintText="Extra hand-curated rows shown alongside the imported reports (a PDF, an external article). Imported reports list themselves automatically — no need to repeat them here."
                 items={doc.publications}
                 setItems={(publications) => set({ publications })}
                 empty={EMPTY_PUB}

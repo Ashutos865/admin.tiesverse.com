@@ -21,7 +21,9 @@ from accounts_app.views import (
     CustomTokenObtainPairView, SettingViewSet, PublicFeaturedView, PublicEmailTemplateView,
 )
 from tiesverse_app.media_views import MediaUploadView, CloudinaryImageListView, DocumentUploadView
-from tiesverse_app.research_views import public_research_page
+from tiesverse_app.research_views import (
+    public_research_page, public_research_reports, public_research_report_detail,
+)
 from config.certificate_proxy import certificate_generator_proxy
 from config.wordpress_proxy import wordpress_proxy
 from config.newsroom import (
@@ -71,6 +73,8 @@ urlpatterns = [
     path('api/public/tech-products/', public_tech_products, name='public-tech-products'),
     path('api/public/media-posts/', public_media_feed, name='public-media-posts'),
     path('api/public/research-page/', public_research_page, name='public-research-page'),
+    path('api/public/research-reports/', public_research_reports, name='public-research-reports'),
+    path('api/public/research-reports/<slug:slug>/', public_research_report_detail, name='public-research-report'),
     path('api/public/brands/', public_brands, name='public-brands'),
     path('api/public/verify-certificate/', verify_certificate, name='verify-certificate'),
     path('api/public/verify-certificate/photo/', verify_certificate_photo, name='verify-certificate-photo'),

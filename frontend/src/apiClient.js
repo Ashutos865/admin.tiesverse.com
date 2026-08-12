@@ -280,6 +280,12 @@ export const deleteMediaPost = (id) => adminFetch(`/api/landing/media_posts/${id
 export const getResearchPage = () => adminFetch('/api/landing/research-page');
 export const saveResearchPage = (data) => adminFetch('/api/landing/research-page', 'PUT', { data });
 
+// RESEARCH REPORTS (full documents imported from Google Docs)
+export const getResearchReports = () => adminFetch('/api/landing/research-reports');
+export const importResearchReport = (data) => adminFetch('/api/landing/research-reports', 'POST', data);
+export const updateResearchReport = (id, data) => adminFetch(`/api/landing/research-reports/${id}`, 'PATCH', data);
+export const deleteResearchReport = (id) => adminFetch(`/api/landing/research-reports/${id}`, 'DELETE');
+
 // EVENT REGISTRATIONS
 export const getEventRegistrations = () => adminFetch('/api/landing/event_registrations');
 export const createEventRegistration = (data) => adminFetch('/api/landing/event_registrations', 'POST', data);
