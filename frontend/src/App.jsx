@@ -40,6 +40,7 @@ const Coupons = lazy(() => import('./pages/Webinar/Coupons.jsx'));
 const EventsManagement = lazy(() => import('./pages/Tiesverse/EventsManagement'));
 const TiesverseAdminPanel = lazy(() => import('./pages/Tiesverse/Admin.jsx'));
 const MediaPosts = lazy(() => import('./pages/Tiesverse/MediaPosts.jsx'));
+const ResearchPageManager = lazy(() => import('./pages/Tiesverse/ResearchPage.jsx'));
 const TechProducts = lazy(() => import('./pages/Tiesverse/TechProducts.jsx'));
 const Brands = lazy(() => import('./pages/Tiesverse/Brands.jsx'));
 const WebsiteImages = lazy(() => import('./pages/Tiesverse/WebsiteImages.jsx'));
@@ -198,6 +199,7 @@ function App() {
               <Route path="/tiesverse/team_members" element={<TiesverseAdminPanel tab="team_members" />} />
               <Route path="/tiesverse/homepage" element={<Navigate to="/tiesverse/website-images" replace />} />
               <Route path="/tiesverse/media-showcase" element={<MediaPosts />} />
+              <Route path="/tiesverse/research-page" element={<ResearchPageManager />} />
               <Route path="/tiesverse/tech-products" element={<TechProducts />} />
               <Route path="/tiesverse/brands" element={<Brands />} />
               <Route path="/tiesverse/website-images" element={<WebsiteImages />} />

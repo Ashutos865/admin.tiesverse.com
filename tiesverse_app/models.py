@@ -701,3 +701,21 @@ class MediaPost(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class ResearchPage(models.Model):
+    """The whole tiesverse.com/research page as one editable document.
+
+    The page is a single bounded layout (hero, photo, statement, areas,
+    publications), so unlike MediaPost there is nothing to gain from a row per
+    item: one JSON blob, one save, one public fetch. The website ships its own
+    default copy and only overrides what the admin has actually filled in.
+    """
+    data = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'research_page'
+
+    def __str__(self):
+        return f'Research page (updated {self.updated_at:%Y-%m-%d})'
