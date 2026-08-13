@@ -132,6 +132,14 @@ def setup_tables():
         ('refund_status',       'TEXT'),                # processed | pending | failed
         ('refunded_at',         'TEXT'),
         ('refund_notes',        'TEXT'),
+        # Where the registration actually came from. `source` is what the
+        # visitor says; these are what the link they clicked says, which is the
+        # half you can act on when deciding where to post next time.
+        ('utm_source',          'TEXT'),
+        ('utm_medium',          'TEXT'),
+        ('utm_campaign',        'TEXT'),
+        ('utm_content',         'TEXT'),
+        ('referrer',            'TEXT'),
     ]:
         if col in existing_columns:
             continue

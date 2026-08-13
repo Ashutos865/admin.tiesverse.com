@@ -354,9 +354,11 @@ def register_for_event(request):
             turso_client.execute(
                 """INSERT INTO registrations
                    (event_id, event_title, event_type, event_date, name, email, phone,
-                    role, organization, country, city, source, expectations, speaker_question, registered_at)
+                    role, organization, country, city, source, expectations, speaker_question,
+                    utm_source, utm_medium, utm_campaign, utm_content, referrer, registered_at)
                    VALUES (:event_id, :event_title, :event_type, :event_date, :name, :email, :phone,
-                           :role, :organization, :country, :city, :source, :expectations, :speaker_question, :registered_at)""",
+                           :role, :organization, :country, :city, :source, :expectations, :speaker_question,
+                           :utm_source, :utm_medium, :utm_campaign, :utm_content, :referrer, :registered_at)""",
                 {
                     'event_id':        str(data.get('event_id') or ''),
                     'event_title':     event_title,
@@ -372,6 +374,12 @@ def register_for_event(request):
                     'source':          str(data.get('source') or ''),
                     'expectations':    str(data.get('expectations') or ''),
                     'speaker_question':str(data.get('speaker_question') or ''),
+                    # Trimmed: these arrive from a query string anyone can edit.
+                    'utm_source':      str(data.get('utm_source') or '')[:80],
+                    'utm_medium':      str(data.get('utm_medium') or '')[:80],
+                    'utm_campaign':    str(data.get('utm_campaign') or '')[:120],
+                    'utm_content':     str(data.get('utm_content') or '')[:120],
+                    'referrer':        str(data.get('referrer') or '')[:300],
                     'registered_at':   now,
                 },
             )
@@ -500,6 +508,19 @@ def create_payment_order(request):
         'discount_amount': int(round(discount_amount * 100)),
         'final_amount': int(round(final_amount * 100)),
         'coupon_redeemed': 1 if coupon else 0,
+        # Same attribution the free path records, so a paid registration is
+        # just as traceable back to the link that produced it.
+        'utm_source':   str(data.get('utm_source') or '')[:80],
+        'utm_medium':   str(data.get('utm_medium') or '')[:80],
+        'utm_campaign': str(data.get('utm_campaign') or '')[:120],
+        'utm_content':  str(data.get('utm_content') or '')[:120],
+        'referrer':     str(data.get('referrer') or '')[:300],
+        'role':         str(data.get('role') or ''),
+        'organization': str(data.get('organization') or ''),
+        'country':      str(data.get('country') or ''),
+        'source':       str(data.get('source') or ''),
+        'expectations': str(data.get('expectations') or ''),
+        'speaker_question': str(data.get('speaker_question') or ''),
     }
 
     # A 100% coupon completes registration without opening Razorpay.
@@ -509,10 +530,14 @@ def create_payment_order(request):
                 """INSERT INTO registrations
                    (event_id,event_title,event_type,event_date,name,email,phone,city,registered_at,
                     payment_required,amount,payment_status,coupon_code,discount_amount,
-                    final_amount,coupon_redeemed)
+                    final_amount,coupon_redeemed,
+                    role,organization,country,source,expectations,speaker_question,
+                    utm_source,utm_medium,utm_campaign,utm_content,referrer)
                    VALUES (:event_id,:event_title,:event_type,:event_date,:name,:email,:phone,:city,
                            :registered_at,0,:amount,'free',:coupon_code,:discount_amount,
-                           :final_amount,:coupon_redeemed)""",
+                           :final_amount,:coupon_redeemed,
+                           :role,:organization,:country,:source,:expectations,:speaker_question,
+                           :utm_source,:utm_medium,:utm_campaign,:utm_content,:referrer)""",
                 registration_params,
             )
         except turso_client.TursoError as exc:
@@ -566,11 +591,15 @@ def create_payment_order(request):
                    (event_id, event_title, event_type, event_date, name, email,
                     phone, city, registered_at,
                     payment_required, amount, razorpay_order_id, payment_status,
-                    coupon_code,discount_amount,final_amount,coupon_redeemed)
+                    coupon_code,discount_amount,final_amount,coupon_redeemed,
+                    role,organization,country,source,expectations,speaker_question,
+                    utm_source,utm_medium,utm_campaign,utm_content,referrer)
                    VALUES (:event_id,:event_title,:event_type,:event_date,:name,:email,
                            :phone,:city,:registered_at,
                            1,:amount,:razorpay_order_id,'pending',
-                           :coupon_code,:discount_amount,:final_amount,:coupon_redeemed)""",
+                           :coupon_code,:discount_amount,:final_amount,:coupon_redeemed,
+                           :role,:organization,:country,:source,:expectations,:speaker_question,
+                           :utm_source,:utm_medium,:utm_campaign,:utm_content,:referrer)""",
                 {
                     **registration_params,
                     'razorpay_order_id': order['order_id'],

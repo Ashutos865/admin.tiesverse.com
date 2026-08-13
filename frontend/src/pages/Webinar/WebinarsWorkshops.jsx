@@ -146,6 +146,41 @@ const badge = (kind) => kind === 'webinar' ? 'Webinar' : 'Workshop';
    Sub-component: RegistrationsTab
    ═══════════════════════════════════════════════════════════════ */
 /**
+ * Which channels actually brought people in.
+ *
+ * Counts the tagged link each registrant arrived through. Untagged arrivals
+ * are shown as "direct or untagged" rather than hidden, so the numbers always
+ * add up to the total and a channel is never credited by omission.
+ */
+function SourceBreakdown({ rows }) {
+  if (!rows.length) return null;
+  const tally = new Map();
+  rows.forEach((r) => {
+    const key = String(r.utm_source || '').trim().toLowerCase() || 'direct or untagged';
+    tally.set(key, (tally.get(key) || 0) + 1);
+  });
+  const sorted = [...tally.entries()].sort((a, b) => b[1] - a[1]);
+  if (sorted.length === 1 && sorted[0][0] === 'direct or untagged') return null;
+
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 12px' }}>
+      <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.04em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+        Came from
+      </span>
+      {sorted.map(([src, n]) => (
+        <span key={src} style={{
+          display: 'inline-flex', alignItems: 'baseline', gap: 6, padding: '4px 11px', borderRadius: 20,
+          border: '1px solid var(--outline-variant)', background: 'var(--surface)', fontSize: 12,
+        }}>
+          <strong style={{ color: 'var(--text-main)' }}>{src}</strong>
+          <span style={{ color: 'var(--text-muted)' }}>{n}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Refund controls for one registration.
  *
  * Money leaves the account here, so nothing happens on a single click: the
@@ -309,6 +344,9 @@ function RegistrationsTab({ item }) {
       </div>
 
       {msg && <p className="ww-err" style={{ margin: '0 0 12px' }}>{msg}</p>}
+
+      <SourceBreakdown rows={rows} />
+
       <p className="ww-tab-hint" style={{ margin: '0 0 12px' }}>
         Mark who attended here. To issue certificates, go to the <strong>Emails</strong> tab and turn on <strong>“Attach a certificate PDF.”</strong>
       </p>
@@ -405,6 +443,16 @@ function RegistrationsTab({ item }) {
                               {r.city      && <div><label>City</label><span>{r.city}</span></div>}
                               {r.source    && <div><label>How they heard</label><span>{r.source}</span></div>}
                               {r.registered_at && <div><label>Registered</label><span>{fmtDate(r.registered_at)}</span></div>}
+                              {(r.utm_source || r.referrer) && (
+                                <div>
+                                  <label>Came from</label>
+                                  <span>
+                                    {r.utm_source || '—'}
+                                    {r.utm_medium ? ` · ${r.utm_medium}` : ''}
+                                    {r.utm_campaign ? ` · ${r.utm_campaign}` : ''}
+                                  </span>
+                                </div>
+                              )}
                               {r.razorpay_payment_id && <div><label>Payment ID</label><span>{r.razorpay_payment_id}</span></div>}
                               {r.coupon_code && <div><label>Coupon</label><span>{r.coupon_code}{discount > 0 ? ` (−₹${discount.toLocaleString('en-IN')})` : ''}</span></div>}
                               {paid && <div><label>Paid (after coupon)</label><span>₹{amt.toLocaleString('en-IN')}</span></div>}
@@ -1997,6 +2045,133 @@ const WebinarsWorkshops = () => {
 /* ─── DetailsTab (inline edit inside panel) ──────────────────── */
 const qrUrl = (id, size, download) => webinarRegistrationQrUrl(id, size, download);
 
+/* Channels worth their own link out of the box. `medium` follows the usual
+   convention so the numbers stay comparable with anything else you measure:
+   social for a post, chat for a message someone forwards. */
+const SHARE_CHANNELS = [
+  { key: 'whatsapp',  label: 'WhatsApp',  medium: 'chat' },
+  { key: 'instagram', label: 'Instagram', medium: 'social' },
+  { key: 'linkedin',  label: 'LinkedIn',  medium: 'social' },
+  { key: 'x',         label: 'X',         medium: 'social' },
+  { key: 'telegram',  label: 'Telegram',  medium: 'chat' },
+  { key: 'email',     label: 'Email',     medium: 'email' },
+  { key: 'poster',    label: 'Poster QR', medium: 'print' },
+];
+
+const utmSlug = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+function buildUtmUrl(base, { source, medium, campaign, content }) {
+  if (!base) return '';
+  const url = new URL(base, 'https://www.tiesverse.com');
+  // Set rather than append: rebuilding a link that already had tags should
+  // replace them, not stack a second copy.
+  if (source) url.searchParams.set('utm_source', utmSlug(source));
+  if (medium) url.searchParams.set('utm_medium', utmSlug(medium));
+  if (campaign) url.searchParams.set('utm_campaign', utmSlug(campaign));
+  if (content) url.searchParams.set('utm_content', utmSlug(content));
+  return url.toString();
+}
+
+/**
+ * Share links that say where a registration came from.
+ *
+ * Each channel gets the registration URL with campaign tags attached; the site
+ * records them on arrival and stores them with the registration, so the
+ * Registrations tab can total them by source. Custom channels cover anything
+ * not listed (a newsletter, a partner, a specific person's story).
+ */
+function SharePanel({ item, baseUrl }) {
+  const defaultCampaign = utmSlug(item.title || '').slice(0, 60);
+  const [campaign, setCampaign] = useState(defaultCampaign);
+  const [custom, setCustom] = useState('');
+  const [extras, setExtras] = useState([]);          // custom source names
+  const [copied, setCopied] = useState('');
+  const [open, setOpen] = useState(false);
+
+  const channels = [
+    ...SHARE_CHANNELS,
+    ...extras.map((e) => ({ key: e, label: e, medium: 'referral', custom: true })),
+  ];
+
+  const copy = async (text, key) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      window.setTimeout(() => setCopied(''), 1600);
+    } catch { /* clipboard blocked */ }
+  };
+
+  const addCustom = () => {
+    const name = utmSlug(custom);
+    if (!name) return;
+    if (!extras.includes(name) && !SHARE_CHANNELS.some((c) => c.key === name)) {
+      setExtras((x) => [...x, name]);
+    }
+    setCustom('');
+  };
+
+  const plain = buildUtmUrl(baseUrl, {});
+
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div className="ww-field-label" style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span>Share links</span>
+        <button type="button" className="ww-btn ww-btn-ghost" style={{ padding: '3px 10px', fontSize: 11.5 }}
+          onClick={() => setOpen((o) => !o)}>
+          {open ? 'Hide' : 'Show'}
+        </button>
+      </div>
+      <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        Copy a channel's link and post it there. Registrations that arrive through it are
+        counted against that channel in the Registrations tab.
+      </p>
+
+      {open && (
+        <>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>Campaign name</label>
+            <input value={campaign} onChange={(e) => setCampaign(e.target.value)}
+              placeholder="e.g. water-war-and-words"
+              style={{ flex: 1, minWidth: 220, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--outline-variant)', background: 'var(--surface)', color: 'var(--text-main)', fontSize: 13 }} />
+          </div>
+
+          <div style={{ display: 'grid', gap: 6 }}>
+            {channels.map((c) => {
+              const url = buildUtmUrl(baseUrl, { source: c.key, medium: c.medium, campaign });
+              return (
+                <div key={c.key} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
+                  border: '1px solid var(--outline-variant)', borderRadius: 9, padding: '7px 10px', background: 'var(--surface)' }}>
+                  <strong style={{ fontSize: 12.5, minWidth: 88, color: 'var(--text-main)' }}>{c.label}</strong>
+                  <span style={{ flex: 1, minWidth: 200, fontSize: 11.5, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{url}</span>
+                  <button type="button" className="ww-btn ww-btn-ghost" style={{ padding: '4px 11px', fontSize: 11.5 }}
+                    onClick={() => copy(url, c.key)}>
+                    {copied === c.key ? 'Copied' : 'Copy'}
+                  </button>
+                  {c.custom && (
+                    <button type="button" className="ww-btn-danger-sm" title="Remove"
+                      onClick={() => setExtras((x) => x.filter((e) => e !== c.key))}>×</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <input value={custom} onChange={(e) => setCustom(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }}
+              placeholder="Add your own source (newsletter, a partner, a person…)"
+              style={{ flex: 1, minWidth: 240, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--outline-variant)', background: 'var(--surface)', color: 'var(--text-main)', fontSize: 13 }} />
+            <button type="button" className="ww-btn ww-btn-ghost" onClick={addCustom} style={{ padding: '6px 14px', fontSize: 12.5 }}>Add</button>
+            <button type="button" className="ww-btn ww-btn-ghost" onClick={() => copy(plain, 'plain')} style={{ padding: '6px 14px', fontSize: 12.5 }}>
+              {copied === 'plain' ? 'Copied' : 'Copy plain link'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function DetailsTab({ item, onSaved, showToast, onManageGuests, canEdit = true }) {
   const [form, setForm]                     = useState({ ...item });
   const [saving, setSaving]                 = useState(false);
@@ -2160,6 +2335,8 @@ function DetailsTab({ item, onSaved, showToast, onManageGuests, canEdit = true }
           Auto-generated from title · updates when you save a new title
         </small>
       </div>
+
+      <SharePanel item={item} baseUrl={item.register_url || previewUrl(item.kind, item.title)} />
 
       {/* QR for the registration link — for posters, slides and print. The
           image is generated server-side so the download is print-resolution
