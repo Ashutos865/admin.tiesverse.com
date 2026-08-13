@@ -817,25 +817,49 @@ def list_public_events(request):
     if cached is not None:
         return Response(cached)
     try:
+        from tiesverse_app.models import EventSpeaker
         qs = EventRegistration.objects.using('turso_db').all()
         if status_filter in ('upcoming', 'past'):
             qs = qs.filter(status=status_filter)
-        data = [
-            {
+        events = list(qs)
+
+        # Speakers live in their own table, one row per person, so a session can
+        # have several. They ship regardless of `published` — that flag governs
+        # the standalone Past Guests page, not the event's own billing, and a
+        # speaker nobody can see is the whole reason to register.
+        by_event = {}
+        for s in EventSpeaker.objects.using('turso_db').filter(
+            event_id__in=[e.id for e in events]
+        ).order_by('id'):
+            by_event.setdefault(s.event_id, []).append({
+                'name': s.name or '',
+                'role': s.role or '',
+                'org': s.org or '',
+                'photo_url': s.photo_url or '',
+            })
+
+        data = []
+        for e in events:
+            speakers = by_event.get(e.id, [])
+            lead = speakers[0] if speakers else None
+            data.append({
                 'kind':           e.kind or 'webinar',
                 'title':          e.title or '',
                 'description':    e.description or '',
                 'date':           e.date or '',
                 'time_tz':        e.time_tz or '',
-                'host':           e.host or '',
-                'host_image_url': e.host_image_url or '',
+                # Fall back to the lead speaker so listings that only understand
+                # a single host still name somebody.
+                'host':           e.host or (lead['name'] if lead else ''),
+                'host_image_url': e.host_image_url or (lead['photo_url'] if lead else ''),
+                'host_role':      lead['role'] if lead else '',
+                'host_org':       lead['org'] if lead else '',
+                'speakers':       speakers,
                 'price':          int(e.price or 0),
                 'cover_url':      e.cover_url or '',
                 'status':         e.status or 'upcoming',
                 'slug':           slugify(e.title or ''),
-            }
-            for e in qs
-        ]
+            })
         cache.set(cache_key, data, 60)   # 60s — new events appear within a minute
         return Response(data)
     except Exception as exc:
@@ -1539,11 +1563,12 @@ def generate_webinar_meeting(request):
     obj.meeting_guests_see_each_other = guests_see
     obj.meeting_moderation = moderation
     obj.meeting_auto_record = auto_record
+    from django.utils import timezone as dj_timezone
     from django.utils.dateparse import parse_datetime
     dt = parse_datetime(start)
     if dt is not None:
-        if timezone.is_naive(dt):
-            dt = timezone.make_aware(dt, timezone.get_current_timezone())
+        if dj_timezone.is_naive(dt):
+            dt = dj_timezone.make_aware(dt, dj_timezone.get_current_timezone())
         obj.meeting_start = dt
     obj.save()
     return Response({

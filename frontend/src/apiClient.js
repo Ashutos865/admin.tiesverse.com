@@ -77,24 +77,44 @@ const adminFetch = async (path, method = 'GET', body = null) => {
 };
 
 // MEDIA (Cloudinary image upload) — multipart, so no JSON Content-Type.
+// Both nginx and the media view stop at 25 MB. Checking here means a too-big
+// file is named and refused instantly instead of uploading for a minute and
+// coming back as nginx's bare HTML 413, which the JSON parse below can only
+// report as an opaque status code.
+export const IMAGE_UPLOAD_MAX_MB = 25;
+
 export const uploadImage = async (file) => {
+    if (file && file.size > IMAGE_UPLOAD_MAX_MB * 1024 * 1024) {
+        return {
+            error: `That image is ${(file.size / 1024 / 1024).toFixed(1)} MB. `
+                + `The limit is ${IMAGE_UPLOAD_MAX_MB} MB — please compress it or export at a smaller size.`,
+        };
+    }
     const form = new FormData();
     form.append('file', file);
-    const res = await fetch(`${API_URL}/api/media/upload/`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${getToken()}` },
-        body: form,
-    });
+    let res;
+    try {
+        res = await fetch(`${API_URL}/api/media/upload/`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${getToken()}` },
+            body: form,
+        });
+    } catch {
+        return { error: 'Upload failed — check your connection and try again.' };
+    }
     if (res.status === 401) {
         setApiToken(null);
         window.location.href = '/login';
         return { error: 'Session expired. Please log in again.' };
     }
+    if (res.status === 413) {
+        return { error: `That image is too large. The limit is ${IMAGE_UPLOAD_MAX_MB} MB.` };
+    }
     const text = await res.text();
     try {
         return JSON.parse(text);
     } catch {
-        return { error: `Upload failed (${res.status}).` };
+        return { error: `Upload failed (${res.status}). The image was not saved.` };
     }
 };
 // Upload a document/PDF (email attachment) — keeps the original file (no WebP

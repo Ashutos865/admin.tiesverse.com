@@ -1870,11 +1870,21 @@ function DetailsTab({ item, onSaved, showToast, onManageGuests }) {
     getEventGuests(item.id).then(r => setGuests(Array.isArray(r) ? r : []));
   }, [item.id]);
 
+  // An uploaded cover only reaches the database on Save. Warn before the tab
+  // closes so a picture that looks attached is never quietly thrown away.
+  const dirty = JSON.stringify({ ...item, ...form }) !== JSON.stringify({ ...item });
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+
   const save = async () => {
     setSaving(true);
     const res = await updateEventRegistration(item.id, { ...form, price: Number(form.price) || 0 });
     if (res?.id || res?.title) { showToast('Saved.'); onSaved(); }
-    else showToast(res?.error || 'Save failed.', 'error');
+    else showToast(res?.error || 'Save failed — nothing was changed. Please try again.', 'error');
     setSaving(false);
   };
 
