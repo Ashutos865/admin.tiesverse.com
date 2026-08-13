@@ -53,6 +53,8 @@ const EventsManagement = () => {
   const [deleteModal, setDeleteModal] = useState({ open: false, id: null, title: '' });
   const [formModalOpen, setFormModalOpen] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  // Internal form vs a link to somebody else's registration page.
+  const [regMode, setRegMode] = useState('internal');
   const [page, setPage] = useState(1);
 
   const showToast = useCallback((message, type = 'success') => {
@@ -134,6 +136,7 @@ const EventsManagement = () => {
   const openCreateModal = () => {
     setEditingId(null);
     setFormData({ ...EMPTY_EVENT });
+    setRegMode('internal');
     setFormModalOpen(true);
   };
 
@@ -156,6 +159,8 @@ const EventsManagement = () => {
       flagship: Boolean(event.flagship),
       past: Boolean(event.past),
     });
+    // An event already pointing somewhere else opens on the external option.
+    setRegMode(/^https?:\/\//i.test((event.register_url || '').trim()) ? 'external' : 'internal');
     setFormModalOpen(true);
   };
 
@@ -307,7 +312,34 @@ const EventsManagement = () => {
                 <FormField label="Capacity" name="capacity" type="number" value={formData.capacity} onChange={handleChange} placeholder="Optional" />
               </div>
               <ImageUploadField label="Cover Image URL" name="cover_url" value={formData.cover_url} onChange={handleChange} placeholder="https://…" onFile={handleCoverUpload} uploading={uploadingImage} />
-              <FormField label="Registration URL" name="register_url" value={formData.register_url} onChange={handleChange} placeholder="https://…" />
+              {/* Where "Register" goes on tiesverse.com. Internal keeps our own
+                  form (registrants land in this panel); external hands the
+                  visitor to a partner or ticketing site instead. */}
+              <label className="event-field">
+                <span>Registration handled by</span>
+                <select
+                  name="reg_mode"
+                  value={regMode}
+                  onChange={(e) => {
+                    const mode = e.target.value;
+                    setRegMode(mode);
+                    if (mode === 'internal') handleChange({ target: { name: 'register_url', value: '' } });
+                  }}
+                >
+                  <option value="internal">This website — use the built-in registration form</option>
+                  <option value="external">Another website — send visitors to a link</option>
+                </select>
+              </label>
+              {regMode === 'external' && (
+                <>
+                  <FormField label="External registration URL" name="register_url" value={formData.register_url} onChange={handleChange} placeholder="https://partner-site.com/register" />
+                  <p style={{ margin: '-6px 0 12px', fontSize: 12.5, color: /^https?:\/\//i.test((formData.register_url || '').trim()) ? 'var(--text-muted)' : '#b45309' }}>
+                    {/^https?:\/\//i.test((formData.register_url || '').trim())
+                      ? 'The Register button will open this link in a new tab. No registrations are collected here.'
+                      : 'Enter a full link starting with https:// — without it the built-in form is used.'}
+                  </p>
+                </>
+              )}
               <label className="event-field">
                 <span>Description / Note</span>
                 <textarea name="note" value={formData.note} onChange={handleChange} placeholder="Short blurb shown on the event card." />
