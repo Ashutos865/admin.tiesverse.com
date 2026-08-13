@@ -722,6 +722,226 @@ def razorpay_webhook(request):
         except turso_client.TursoError:
             pass
 
+    # Refunds issued anywhere — our own admin, the Razorpay dashboard, or an
+    # automatic one — land here, so the registration reflects reality without
+    # anybody re-keying it.
+    elif event.startswith('refund.') and turso_client.is_configured():
+        refund = payload.get('payload', {}).get('refund', {}).get('entity', {}) or {}
+        r_payment_id = refund.get('payment_id') or payment_id
+        if r_payment_id:
+            _apply_refund_to_registration(
+                payment_id=r_payment_id,
+                refund_id=refund.get('id', ''),
+                refund_amount=int(refund.get('amount') or 0),
+                refund_status=str(refund.get('status') or ''),
+                notes='Razorpay webhook: ' + event,
+            )
+
+    # Razorpay retries anything that is not a 2xx, so always acknowledge.
+    return HttpResponse(status=200)
+
+
+def _apply_refund_to_registration(*, payment_id, refund_id, refund_amount,
+                                  refund_status, notes=''):
+    """Write a refund onto the matching registration row.
+
+    Marks 'refunded' only when the whole captured amount came back; a partial
+    refund stays distinguishable so the till still balances. Returns the new
+    payment_status, or '' when no row matched.
+    """
+    from django.utils import timezone as dj_tz
+    try:
+        rows = turso_client.execute(
+            """SELECT id, amount, final_amount, refund_amount, payment_status
+               FROM registrations WHERE razorpay_payment_id=:pid LIMIT 1""",
+            {'pid': payment_id},
+        ) or []
+    except turso_client.TursoError as exc:
+        logger.warning('Refund lookup failed for %s: %s', payment_id, exc)
+        return ''
+    if not rows:
+        logger.info('Refund %s has no matching registration (payment %s)', refund_id, payment_id)
+        return ''
+
+    row = rows[0]
+    # Amounts are stored in rupees on the row but Razorpay speaks paise.
+    charged_paise = int(row.get('final_amount') or row.get('amount') or 0) * 100
+    already = int(row.get('refund_amount') or 0)
+    total_refunded = already + int(refund_amount or 0) if refund_status != 'failed' else already
+
+    if refund_status == 'failed':
+        new_status = row.get('payment_status') or 'paid'
+    elif charged_paise and total_refunded >= charged_paise:
+        new_status = 'refunded'
+    else:
+        new_status = 'partially_refunded'
+
+    try:
+        turso_client.execute(
+            """UPDATE registrations
+               SET payment_status=:st, refund_id=:rid, refund_amount=:ramt,
+                   refund_status=:rst, refunded_at=:rat, refund_notes=:notes
+               WHERE id=:id""",
+            {'st': new_status, 'rid': refund_id or '', 'ramt': total_refunded,
+             'rst': refund_status or '', 'rat': dj_tz.now().isoformat(),
+             'notes': (notes or '')[:400], 'id': row.get('id')},
+        )
+        logger.info('Registration %s -> %s (refund %s, %s paise)',
+                    row.get('id'), new_status, refund_id, total_refunded)
+    except turso_client.TursoError as exc:
+        logger.warning('Refund write failed for registration %s: %s', row.get('id'), exc)
+        return ''
+    return new_status
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_registrations')
+def refund_registration(request):
+    """Refund one registration's payment, fully or partly.
+
+    Body: { registration_id, amount (rupees, optional = full), reason }
+    Money leaves the account here, so this is deliberately explicit: the
+    amount is re-read from Razorpay rather than trusted from the browser, and
+    a registration that is already fully refunded is refused rather than
+    double-refunded.
+    """
+    reg_id = request.data.get('registration_id')
+    if not reg_id:
+        return Response({'error': 'registration_id is required.'}, status=400)
+    if not razorpay_client.is_configured():
+        return Response({'error': 'Razorpay is not configured on the server.'}, status=400)
+
+    try:
+        rows = turso_client.execute(
+            """SELECT id, name, email, amount, final_amount, payment_status,
+                      razorpay_payment_id, refund_amount
+               FROM registrations WHERE id=:id LIMIT 1""",
+            {'id': reg_id},
+        ) or []
+    except turso_client.TursoError as exc:
+        return Response({'error': f'Could not read the registration: {exc}'}, status=502)
+    if not rows:
+        return Response({'error': 'Registration not found.'}, status=404)
+
+    row = rows[0]
+    payment_id = str(row.get('razorpay_payment_id') or '').strip()
+    if not payment_id:
+        return Response({'error': 'This registration has no captured payment to refund.'}, status=400)
+    if str(row.get('payment_status') or '') == 'refunded':
+        return Response({'error': 'This payment has already been refunded in full.'}, status=400)
+
+    # Ask Razorpay what is actually left; our row can be stale if somebody
+    # refunded from their dashboard.
+    live = razorpay_client.fetch_payment(payment_id) or {}
+    captured_paise = int(live.get('amount') or 0) or int(row.get('final_amount') or row.get('amount') or 0) * 100
+    already_paise = int(live.get('amount_refunded') or row.get('refund_amount') or 0)
+    remaining = max(0, captured_paise - already_paise)
+    if remaining <= 0:
+        # Nothing left at Razorpay: record that and stop.
+        _apply_refund_to_registration(
+            payment_id=payment_id, refund_id=str(live.get('id') or ''),
+            refund_amount=0, refund_status='processed',
+            notes='Reconciled: already refunded at Razorpay.',
+        )
+        return Response({'error': 'Razorpay reports this payment is already fully refunded.'}, status=400)
+
+    amount_rupees = request.data.get('amount')
+    if amount_rupees in (None, '', 0, '0'):
+        amount_paise = remaining
+    else:
+        try:
+            amount_paise = int(round(float(amount_rupees) * 100))
+        except (TypeError, ValueError):
+            return Response({'error': 'Amount must be a number of rupees.'}, status=400)
+        if amount_paise <= 0:
+            return Response({'error': 'Amount must be more than zero.'}, status=400)
+        if amount_paise > remaining:
+            return Response(
+                {'error': f'Only ₹{remaining / 100:.2f} is still refundable on this payment.'},
+                status=400,
+            )
+
+    reason = str(request.data.get('reason') or '').strip()[:200]
+    try:
+        refund = razorpay_client.refund_payment(
+            payment_id, amount_paise=amount_paise,
+            notes={'reason': reason or 'Refunded from the Tiesverse admin',
+                   'registration_id': str(reg_id),
+                   'by': getattr(request.user, 'username', '')[:60]},
+        )
+    except RuntimeError as exc:
+        return Response({'error': f'Razorpay refused the refund: {exc}'}, status=502)
+
+    who = getattr(request.user, 'username', '') or 'admin'
+    new_status = _apply_refund_to_registration(
+        payment_id=payment_id,
+        refund_id=str(refund.get('id') or ''),
+        refund_amount=int(refund.get('amount') or amount_paise),
+        refund_status=str(refund.get('status') or 'processed'),
+        notes=f'Refunded by {who}' + (f': {reason}' if reason else ''),
+    )
+    return Response({
+        'success': True,
+        'registration_id': reg_id,
+        'refund_id': refund.get('id', ''),
+        'refund_amount': int(refund.get('amount') or amount_paise),
+        'refund_status': refund.get('status', ''),
+        'payment_status': new_status or 'partially_refunded',
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_registrations')
+def sync_registration_payment(request):
+    """Re-read one registration's payment from Razorpay and store what it says.
+
+    For rows that drifted — a refund issued from the Razorpay dashboard before
+    webhooks were configured, say — so the table can be corrected without
+    touching the database by hand.
+    """
+    reg_id = request.data.get('registration_id')
+    if not reg_id:
+        return Response({'error': 'registration_id is required.'}, status=400)
+    if not razorpay_client.is_configured():
+        return Response({'error': 'Razorpay is not configured on the server.'}, status=400)
+    try:
+        rows = turso_client.execute(
+            'SELECT id, razorpay_payment_id FROM registrations WHERE id=:id LIMIT 1',
+            {'id': reg_id},
+        ) or []
+    except turso_client.TursoError as exc:
+        return Response({'error': str(exc)}, status=502)
+    if not rows or not str(rows[0].get('razorpay_payment_id') or '').strip():
+        return Response({'error': 'This registration has no Razorpay payment to check.'}, status=400)
+
+    payment_id = str(rows[0]['razorpay_payment_id']).strip()
+    live = razorpay_client.fetch_payment(payment_id)
+    if not live:
+        return Response({'error': 'Could not reach Razorpay for this payment.'}, status=502)
+
+    refunded = int(live.get('amount_refunded') or 0)
+    if refunded > 0:
+        # Overwrite rather than add: this is the authoritative total.
+        try:
+            turso_client.execute(
+                'UPDATE registrations SET refund_amount=0 WHERE id=:id', {'id': reg_id})
+        except turso_client.TursoError:
+            pass
+        status_txt = _apply_refund_to_registration(
+            payment_id=payment_id, refund_id='', refund_amount=refunded,
+            refund_status='processed', notes='Synced from Razorpay',
+        )
+    else:
+        status_txt = str(live.get('status') or '')
+    return Response({
+        'success': True, 'payment_status': status_txt,
+        'amount': int(live.get('amount') or 0),
+        'amount_refunded': refunded,
+        'razorpay_status': live.get('status', ''),
+    })
+
 
 # ─── Form Questions ───────────────────────────────────────────────────────────
 

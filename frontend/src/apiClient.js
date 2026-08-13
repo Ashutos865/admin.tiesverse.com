@@ -403,6 +403,11 @@ export const getWebinarSendHistory = (event_key) =>
   adminFetch(`/api/webinar/send-history/?event_key=${encodeURIComponent(event_key)}`)
     .catch(() => ({ summary: {}, recipients: [], log: [] }));
 
+// Refunds (Razorpay). The server re-reads the payment before refunding, so
+// the browser never decides how much money moves.
+export const refundRegistration = (payload) => adminFetch(`/api/webinar/refund/`, 'POST', payload);
+export const syncRegistrationPayment = (payload) => adminFetch(`/api/webinar/sync-payment/`, 'POST', payload);
+
 // Webinar granular access control
 export const getWebinarMyAccess = () =>
   adminFetch('/api/webinar/my-access/').catch(() => ({ capabilities: [], can_grant: false, all_capabilities: [] }));

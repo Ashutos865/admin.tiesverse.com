@@ -124,6 +124,14 @@ def setup_tables():
         ('source',              'TEXT'),
         ('expectations',        'TEXT'),
         ('speaker_question',    'TEXT'),
+        # Refunds. Kept separate from payment_status so the original payment is
+        # still legible after a refund: status becomes 'refunded' (or
+        # 'partially_refunded') while amount/final_amount keep what was charged.
+        ('refund_id',           'TEXT'),
+        ('refund_amount',       'INTEGER DEFAULT 0'),   # paise, matching Razorpay
+        ('refund_status',       'TEXT'),                # processed | pending | failed
+        ('refunded_at',         'TEXT'),
+        ('refund_notes',        'TEXT'),
     ]:
         if col in existing_columns:
             continue

@@ -8,6 +8,7 @@ import {
 import {
   createEventRegistration, deleteEventRegistration,
   updateEventRegistration, getEventRegistrations,
+  refundRegistration, syncRegistrationPayment,
   getFormQuestions, createFormQuestion, updateFormQuestion,
   deleteFormQuestion, reorderFormQuestions,
   getEventGuests, createEventSpeaker, deleteEventSpeaker, webinarRegistrationQrUrl,
@@ -144,6 +145,103 @@ const badge = (kind) => kind === 'webinar' ? 'Webinar' : 'Workshop';
 /* ═══════════════════════════════════════════════════════════════
    Sub-component: RegistrationsTab
    ═══════════════════════════════════════════════════════════════ */
+/**
+ * Refund controls for one registration.
+ *
+ * Money leaves the account here, so nothing happens on a single click: the
+ * amount is shown, a reason is asked for, and the confirm step names the
+ * person and the sum. "Check with Razorpay" re-reads the payment for rows that
+ * drifted (a refund issued from Razorpay's own dashboard, say).
+ */
+function RefundPanel({ row, paidAmount, onDone, setMsg }) {
+  const [open, setOpen]     = useState(false);
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy]     = useState(false);
+
+  const refundedRupees = Math.round(Number(row.refund_amount || 0) / 100);
+  const remaining = Math.max(0, paidAmount - refundedRupees);
+  const fullyRefunded = String(row.payment_status || '') === 'refunded' || remaining <= 0;
+
+  const doRefund = async () => {
+    const asked = amount.trim() === '' ? remaining : Number(amount);
+    if (!Number.isFinite(asked) || asked <= 0) return setMsg('Enter a refund amount in rupees.');
+    if (asked > remaining) return setMsg(`Only ₹${remaining.toLocaleString('en-IN')} is still refundable.`);
+    if (!window.confirm(
+      `Refund ₹${asked.toLocaleString('en-IN')} to ${row.name || row.email}?\n\n`
+      + 'This sends the money back through Razorpay and cannot be undone.',
+    )) return;
+    setBusy(true);
+    const res = await refundRegistration({
+      registration_id: row.id,
+      amount: amount.trim() === '' ? undefined : asked,
+      reason: reason.trim(),
+    });
+    setBusy(false);
+    if (res?.success) {
+      setMsg(`Refunded ₹${Math.round((res.refund_amount || 0) / 100).toLocaleString('en-IN')} — ${res.payment_status.replace(/_/g, ' ')}.`);
+      setOpen(false); setAmount(''); setReason('');
+      onDone?.();
+    } else setMsg(res?.error || 'Refund failed.');
+  };
+
+  const doSync = async () => {
+    setBusy(true);
+    const res = await syncRegistrationPayment({ registration_id: row.id });
+    setBusy(false);
+    if (res?.success) {
+      setMsg(`Razorpay says: ${res.razorpay_status || '—'}`
+        + (res.amount_refunded ? `, ₹${Math.round(res.amount_refunded / 100).toLocaleString('en-IN')} refunded.` : ', nothing refunded.'));
+      onDone?.();
+    } else setMsg(res?.error || 'Could not reach Razorpay.');
+  };
+
+  return (
+    <div className="ww-reg-exp-qa" style={{ borderTop: '1px solid var(--outline-variant)', paddingTop: 12, marginTop: 4 }}>
+      <label>Payment</label>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 6 }}>
+        <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+          Paid ₹{paidAmount.toLocaleString('en-IN')}
+          {refundedRupees > 0 && ` · refunded ₹${refundedRupees.toLocaleString('en-IN')}`}
+          {!fullyRefunded && refundedRupees > 0 && ` · ₹${remaining.toLocaleString('en-IN')} left`}
+        </span>
+        <button type="button" className="ww-btn ww-btn-ghost" onClick={doSync} disabled={busy} style={{ padding: '5px 11px', fontSize: 12 }}>
+          Check with Razorpay
+        </button>
+        {!fullyRefunded && (
+          <button type="button" className="ww-btn ww-btn-ghost" onClick={() => setOpen((o) => !o)} disabled={busy}
+            style={{ padding: '5px 11px', fontSize: 12, color: '#dc2626', borderColor: '#dc2626' }}>
+            {open ? 'Cancel' : 'Refund…'}
+          </button>
+        )}
+        {fullyRefunded && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>FULLY REFUNDED</span>
+        )}
+      </div>
+      {row.refund_notes && (
+        <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--text-muted)' }}>{row.refund_notes}</p>
+      )}
+      {open && (
+        <div style={{ display: 'grid', gap: 8, marginTop: 10, maxWidth: 460 }}>
+          <input
+            value={amount} onChange={(e) => setAmount(e.target.value)}
+            placeholder={`Amount in ₹ (blank = full ₹${remaining.toLocaleString('en-IN')})`}
+            style={{ padding: '8px 11px', borderRadius: 8, border: '1px solid var(--outline-variant)', background: 'var(--surface)', color: 'var(--text-main)', fontSize: 13.5 }}
+          />
+          <input
+            value={reason} onChange={(e) => setReason(e.target.value)}
+            placeholder="Reason (kept with the refund, e.g. could not attend)"
+            style={{ padding: '8px 11px', borderRadius: 8, border: '1px solid var(--outline-variant)', background: 'var(--surface)', color: 'var(--text-main)', fontSize: 13.5 }}
+          />
+          <button type="button" className="ww-btn ww-btn-primary" onClick={doRefund} disabled={busy} style={{ justifySelf: 'start' }}>
+            {busy ? 'Refunding…' : `Refund ₹${(amount.trim() === '' ? remaining : Number(amount) || 0).toLocaleString('en-IN')}`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RegistrationsTab({ item }) {
   const eKey  = toSlug(item.title || '');
 
@@ -266,8 +364,11 @@ function RegistrationsTab({ item }) {
                       <td><span className="ww-reg-country">{r.country || r.city || '—'}</span></td>
                       <td>
                         {paid ? (
-                          <span className={`ww-badge ww-badge-${status === 'paid' ? 'green' : 'amber'}`}>
-                            {fmtMoney(amt)} · {status}
+                          <span className={`ww-badge ww-badge-${
+                            status === 'paid' ? 'green'
+                              : status === 'refunded' ? 'gray'
+                              : status === 'partially_refunded' ? 'amber' : 'amber'}`}>
+                            {fmtMoney(amt)} · {status.replace(/_/g, ' ')}
                           </span>
                         ) : r.coupon_code && discount > 0 ? (
                           <span className="ww-badge ww-badge-gray" title={`Coupon ${r.coupon_code} covered the full price`}>Free · coupon</span>
@@ -277,6 +378,11 @@ function RegistrationsTab({ item }) {
                         {paid && discount > 0 && (
                           <span className="ww-reg-sub" title={`Coupon ${r.coupon_code || ''}`}>
                             after coupon −₹{discount.toLocaleString('en-IN')}
+                          </span>
+                        )}
+                        {Number(r.refund_amount) > 0 && (
+                          <span className="ww-reg-sub" title={r.refund_notes || ''}>
+                            refunded ₹{Math.round(Number(r.refund_amount) / 100).toLocaleString('en-IN')}
                           </span>
                         )}
                       </td>
@@ -314,6 +420,9 @@ function RegistrationsTab({ item }) {
                                 <label>Question for the speaker</label>
                                 <p>{r.speaker_question}</p>
                               </div>
+                            )}
+                            {r.razorpay_payment_id && (
+                              <RefundPanel row={r} paidAmount={amt} onDone={load} setMsg={setMsg} />
                             )}
                           </div>
                         </td>
