@@ -2,7 +2,7 @@ import './WebinarsWorkshops.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Award, ChevronDown, ChevronUp, ClipboardList, Download, Edit2, FileQuestion,
+  ArrowLeft, Award, BarChart3, ChevronDown, ChevronUp, ClipboardList, Download, Edit2, FileQuestion,
   Mail, Mic2, Plus, Save, Send, Trash2, Upload, Users, Video, X,
 } from 'lucide-react';
 import {
@@ -128,6 +128,7 @@ const FIELD_TYPES = [
 const TAB_CAP = {
   details: 'view', questions: 'manage_questions', registrations: 'manage_registrations',
   meeting: 'manage_meeting', emails: 'send_emails', speaker: 'manage_speakers',
+  analytics: 'view',
 };
 const TABS = [
   { key: 'details',       label: 'Details',        icon: Edit2 },
@@ -136,6 +137,7 @@ const TABS = [
   { key: 'meeting',       label: 'Meeting',        icon: Video },
   { key: 'emails',        label: 'Emails',         icon: Mail },
   { key: 'speaker',       label: 'Guest Speaker',  icon: Mic2 },
+  { key: 'analytics',     label: 'Analytics',      icon: BarChart3 },
 ];
 
 /* ─── helpers ────────────────────────────────────────────────── */
@@ -145,6 +147,204 @@ const badge = (kind) => kind === 'webinar' ? 'Webinar' : 'Workshop';
 /* ═══════════════════════════════════════════════════════════════
    Sub-component: RegistrationsTab
    ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   Sub-component: AnalyticsTab — one screen answering "how is this going?"
+   ═══════════════════════════════════════════════════════════════ */
+
+// Enough hues to tell channels apart, ordered so the first few stay distinct.
+const CHART_COLOURS = ['#fe7a00', '#2563eb', '#10b981', '#a855f7', '#f43f5e', '#0891b2', '#eab308', '#64748b'];
+
+/** A donut drawn as SVG arcs — no chart library, so nothing else to ship. */
+function Donut({ slices, total, size = 168, label }) {
+  const stroke = 22;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  let offset = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={label}>
+      <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--outline-variant)" strokeWidth={stroke} />
+        {total > 0 && slices.map((s, i) => {
+          const len = (s.value / total) * c;
+          const el = (
+            <circle key={s.label} cx={size / 2} cy={size / 2} r={r} fill="none"
+              stroke={s.colour} strokeWidth={stroke}
+              strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset}>
+              <title>{`${s.label}: ${s.value}`}</title>
+            </circle>
+          );
+          offset += len;
+          return el;
+        })}
+      </g>
+      <text x="50%" y="47%" textAnchor="middle" fontSize="26" fontWeight="800" fill="var(--text-main)">{total}</text>
+      <text x="50%" y="62%" textAnchor="middle" fontSize="10.5" fill="var(--text-muted)"
+        style={{ letterSpacing: '.08em', textTransform: 'uppercase' }}>registered</text>
+    </svg>
+  );
+}
+
+const Stat = ({ label, value, sub, tone }) => (
+  <div style={{
+    border: '1px solid var(--outline-variant)', borderRadius: 12, padding: '14px 16px',
+    background: 'var(--surface)', minWidth: 0,
+  }}>
+    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{label}</div>
+    <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.15, marginTop: 4, color: tone || 'var(--text-main)' }}>{value}</div>
+    {sub && <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
+  </div>
+);
+
+function AnalyticsTab({ item }) {
+  const eKey = toSlug(item.title || '');
+  const [rows, setRows] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    getWebinarRegistrationsFull(eKey, item.id)
+      .then((r) => { if (alive) setRows(Array.isArray(r) ? r : []); })
+      .catch(() => { if (alive) setRows([]); });
+    return () => { alive = false; };
+  }, [eKey, item.id]);
+
+  if (rows === null) return <div className="ww-tab-body"><p className="ww-tab-hint">Loading…</p></div>;
+
+  const total = rows.length;
+  const isPaidRow = (r) => (!Number(r.payment_required) ? true : String(r.payment_status || '').toLowerCase() === 'paid');
+  const paid = rows.filter(isPaidRow).length;
+  const pending = rows.filter((r) => String(r.payment_status || '').toLowerCase() === 'pending').length;
+  const failed = rows.filter((r) => String(r.payment_status || '').toLowerCase() === 'failed').length;
+  const refunded = rows.filter((r) => String(r.payment_status || '').toLowerCase().includes('refund')).length;
+  const attended = rows.filter((r) => Number(r.attended) === 1).length;
+
+  // Revenue: final_amount is stored in paise and already reflects coupons.
+  const grossPaise = rows.filter(isPaidRow)
+    .reduce((s, r) => s + Number(r.final_amount || r.amount || 0), 0);
+  const refundedPaise = rows.reduce((s, r) => s + Number(r.refund_amount || 0), 0);
+  const inr = (paise) => `₹${Math.round(paise / 100).toLocaleString('en-IN')}`;
+
+  // Where they came from — the campaign tag, else the self-reported answer.
+  const tally = new Map();
+  rows.forEach((r) => {
+    const key = String(r.utm_source || '').trim().toLowerCase()
+      || String(r.source || '').trim().toLowerCase()
+      || 'direct / untagged';
+    tally.set(key, (tally.get(key) || 0) + 1);
+  });
+  const sources = [...tally.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, value], i) => ({ label, value, colour: CHART_COLOURS[i % CHART_COLOURS.length] }));
+  const topCount = sources[0]?.value || 1;
+
+  // Registrations per day, most recent fortnight, so a push is visible.
+  const byDay = new Map();
+  rows.forEach((r) => {
+    const d = String(r.registered_at || '').slice(0, 10);
+    if (d) byDay.set(d, (byDay.get(d) || 0) + 1);
+  });
+  const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-14);
+  const dayMax = Math.max(1, ...days.map(([, n]) => n));
+
+  const pct = (n) => (total ? Math.round((n / total) * 100) : 0);
+
+  return (
+    <div className="ww-tab-body">
+      <p className="ww-tab-hint" style={{ margin: '0 0 14px' }}>
+        Everything about this {badge(item.kind).toLowerCase()} at a glance — who registered, who paid,
+        who turned up, and which link brought them.
+      </p>
+
+      {total === 0 ? (
+        <p style={{ fontSize: 13.5, color: 'var(--text-muted)' }}>No registrations yet. Share a link from the Details tab and the numbers appear here.</p>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 18 }}>
+            <Stat label="Registered" value={total} />
+            <Stat label="Paid / confirmed" value={paid} sub={`${pct(paid)}% of registrations`} tone="#10b981" />
+            <Stat label="Pending payment" value={pending} sub={pending ? 'Not yet paid' : 'Nothing outstanding'} tone={pending ? '#d97706' : undefined} />
+            <Stat label="Attended" value={attended} sub={`${pct(attended)}% turned up`} />
+            <Stat label="Collected" value={inr(grossPaise - refundedPaise)}
+              sub={refundedPaise ? `after ${inr(refundedPaise)} refunded` : (failed ? `${failed} failed` : 'net of refunds')} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 260px) minmax(0, 1fr)', gap: 18, alignItems: 'start' }}>
+            <div style={{ border: '1px solid var(--outline-variant)', borderRadius: 12, padding: 16, background: 'var(--surface)' }}>
+              <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 800, color: 'var(--text-main)' }}>Where they came from</h4>
+              <div style={{ display: 'grid', placeItems: 'center' }}>
+                <Donut slices={sources} total={total} label="Registrations by source" />
+              </div>
+              <div style={{ display: 'grid', gap: 6, marginTop: 12 }}>
+                {sources.slice(0, 8).map((s) => (
+                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 3, background: s.colour, flex: 'none' }} />
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-main)' }}>{s.label}</span>
+                    <strong style={{ color: 'var(--text-main)' }}>{s.value}</strong>
+                    <span style={{ color: 'var(--text-muted)', minWidth: 34, textAlign: 'right' }}>{pct(s.value)}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 18 }}>
+              <div style={{ border: '1px solid var(--outline-variant)', borderRadius: 12, padding: 16, background: 'var(--surface)' }}>
+                <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 800, color: 'var(--text-main)' }}>Registrations by channel</h4>
+                <div style={{ display: 'grid', gap: 9 }}>
+                  {sources.map((s) => (
+                    <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '130px 1fr 40px', gap: 10, alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</span>
+                      <span style={{ height: 9, borderRadius: 6, background: 'var(--outline-variant)', overflow: 'hidden' }}>
+                        <span style={{ display: 'block', height: '100%', width: `${(s.value / topCount) * 100}%`, background: s.colour, borderRadius: 6 }} />
+                      </span>
+                      <strong style={{ fontSize: 12.5, textAlign: 'right', color: 'var(--text-main)' }}>{s.value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ border: '1px solid var(--outline-variant)', borderRadius: 12, padding: 16, background: 'var(--surface)' }}>
+                <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 800, color: 'var(--text-main)' }}>Sign-ups per day</h4>
+                <p style={{ margin: '0 0 12px', fontSize: 11.5, color: 'var(--text-muted)' }}>Last {days.length} day{days.length === 1 ? '' : 's'} with registrations</p>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 110 }}>
+                  {days.map(([d, n]) => (
+                    <div key={d} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                      <span style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{n}</span>
+                      <span title={`${d}: ${n}`} style={{
+                        width: '100%', maxWidth: 34, height: `${(n / dayMax) * 76}px`, minHeight: 4,
+                        background: 'var(--primary, #fe7a00)', borderRadius: '5px 5px 0 0',
+                      }} />
+                      <span style={{ fontSize: 9.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{d.slice(8)}/{d.slice(5, 7)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ border: '1px solid var(--outline-variant)', borderRadius: 12, padding: 16, background: 'var(--surface)' }}>
+                <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 800, color: 'var(--text-main)' }}>Payment status</h4>
+                <div style={{ display: 'flex', height: 12, borderRadius: 7, overflow: 'hidden', background: 'var(--outline-variant)' }}>
+                  {[['Paid', paid, '#10b981'], ['Pending', pending, '#d97706'], ['Failed', failed, '#dc2626'], ['Refunded', refunded, '#64748b']]
+                    .filter(([, n]) => n > 0)
+                    .map(([label, n, colour]) => (
+                      <span key={label} title={`${label}: ${n}`} style={{ width: `${(n / total) * 100}%`, background: colour }} />
+                    ))}
+                </div>
+                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 10, fontSize: 12 }}>
+                  {[['Paid', paid, '#10b981'], ['Pending', pending, '#d97706'], ['Failed', failed, '#dc2626'], ['Refunded', refunded, '#64748b']]
+                    .map(([label, n, colour]) => (
+                      <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)' }}>
+                        <span style={{ width: 9, height: 9, borderRadius: 3, background: colour }} />
+                        {label} <strong style={{ color: 'var(--text-main)' }}>{n}</strong>
+                      </span>
+                    ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /**
  * Which channels actually brought people in.
  *
@@ -1871,6 +2071,7 @@ const WebinarsWorkshops = () => {
               {activeTab === 'meeting'       && <MeetingTab key={selected.item.id} item={selected.item} showToast={showToast} />}
               {activeTab === 'emails'        && <EmailsTab key={selected.item.id} item={selected.item} showToast={showToast} />}
               {activeTab === 'speaker'       && <GuestSpeakerTab key={selected.item.id} item={selected.item} />}
+              {activeTab === 'analytics'     && <AnalyticsTab key={selected.item.id} item={selected.item} />}
             </div>
           </div>
         ) : (
