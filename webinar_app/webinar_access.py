@@ -1,10 +1,15 @@
 """Granular Webinar-portal access control.
 
 Capabilities are per-member:
-  * Admin / Advisory / HR / superuser  → everything
-  * The 'Webinar' department's lead     → everything
-  * 'Webinar' department members        → 'view' by default
+  * Superuser                           → everything, and may grant to others
+  * Admin / Advisory / HR               → everything
+  * A Webinar/Workshop department lead  → everything for their portal
+  * Webinar or Workshop dept members    → 'view' only (read-only)
   * Anyone else                         → exactly what's granted in WebinarAccess
+
+Granting is deliberately narrower than using the portal: only a superadmin (or
+a department lead, for their own team) hands out capabilities, so a member with
+'edit_event' cannot quietly widen their own access.
 
 The Webinar admin views were previously open to any authenticated user; these
 gates tighten that without affecting the public registration endpoints.
@@ -19,6 +24,9 @@ from career_app.models import HRDepartment, WebinarAccess
 from career_app import access
 
 WEBINAR_DEPT = 'Webinar'
+# Both portals live behind the same gate: whoever sits in either department
+# can read the listings, and neither can change anything without a grant.
+PORTAL_DEPTS = ('Webinar', 'Workshop', 'Workshops', 'Webinars')
 
 # (key, label) — labels are shown in the grant UI.
 CAPABILITIES = [
@@ -43,19 +51,35 @@ def _is_org_admin(user):
 
 
 def _leads_webinar(member):
+    """Leads or co-leads either portal department."""
     if not member:
         return False
-    dept = HRDepartment.objects.filter(name__iexact=WEBINAR_DEPT).first()
-    if not dept:
-        return False
     name = (member.candidate_name or '').strip().lower()
-    return bool(name and name in {(dept.lead_name or '').strip().lower(),
-                                  (dept.co_lead_name or '').strip().lower()})
+    if not name:
+        return False
+    for dept in HRDepartment.objects.filter(name__in=PORTAL_DEPTS):
+        if name in {(dept.lead_name or '').strip().lower(),
+                    (dept.co_lead_name or '').strip().lower()}:
+            return True
+    return False
+
+
+def _in_portal_dept(member):
+    """Sits in the Webinar or Workshop department (read-only by default)."""
+    if not member:
+        return False
+    assigned = {str(d).strip().lower() for d in (member.assigned_departments or [])}
+    return bool(assigned & {d.lower() for d in PORTAL_DEPTS})
 
 
 def can_grant(user):
-    """Who may grant/revoke webinar access to others: admins + the Webinar lead."""
-    if _is_org_admin(user):
+    """Who may grant/revoke portal access to others.
+
+    Deliberately tighter than `_is_org_admin`: giving out capabilities is a
+    superadmin action, plus the portal's own lead for their team. An HR or
+    advisory member can use the portal fully but cannot widen anyone's access.
+    """
+    if getattr(user, 'is_superuser', False):
         return True
     return _leads_webinar(access.get_member_for_user(user))
 
@@ -72,8 +96,8 @@ def member_capabilities(user):
     if _leads_webinar(member):
         return set(CAP_KEYS)
     caps = set()
-    if WEBINAR_DEPT in (member.assigned_departments or []):
-        caps.add('view')
+    if _in_portal_dept(member):
+        caps.add('view')   # read-only until a lead or superadmin grants more
     wa = WebinarAccess.objects.filter(member=member).first()
     if wa:
         granted = {c for c in (wa.capabilities or []) if c in CAP_KEYS}

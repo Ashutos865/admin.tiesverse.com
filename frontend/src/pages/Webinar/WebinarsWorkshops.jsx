@@ -1708,7 +1708,7 @@ const WebinarsWorkshops = () => {
                 webinar's state and fields look empty (or stale) after
                 switching events or saving. */}
             <div className="ww-tab-content">
-              {activeTab === 'details'       && <DetailsTab key={selected.item.id} item={selected.item} onSaved={load} showToast={showToast} onManageGuests={() => setActiveTab('speaker')} />}
+              {activeTab === 'details'       && <DetailsTab key={selected.item.id} item={selected.item} onSaved={load} showToast={showToast} canEdit={can('edit_event')} onManageGuests={() => setActiveTab('speaker')} />}
               {activeTab === 'questions'     && <FormQuestionsTab key={selected.item.id} item={selected.item} />}
               {activeTab === 'registrations' && <RegistrationsTab key={selected.item.id} item={selected.item} />}
               {activeTab === 'meeting'       && <MeetingTab key={selected.item.id} item={selected.item} showToast={showToast} />}
@@ -1888,7 +1888,7 @@ const WebinarsWorkshops = () => {
 /* ─── DetailsTab (inline edit inside panel) ──────────────────── */
 const qrUrl = (id, size, download) => webinarRegistrationQrUrl(id, size, download);
 
-function DetailsTab({ item, onSaved, showToast, onManageGuests }) {
+function DetailsTab({ item, onSaved, showToast, onManageGuests, canEdit = true }) {
   const [form, setForm]                     = useState({ ...item });
   const [saving, setSaving]                 = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -1944,6 +1944,10 @@ function DetailsTab({ item, onSaved, showToast, onManageGuests }) {
 
   return (
     <div className="ww-tab-body">
+      {/* One disabled fieldset makes the whole form read-only for members who
+          only have 'view': every control inside inherits it, so nothing can be
+          typed into a form whose save would be refused by the server anyway. */}
+      <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div className="ww-two-col">
         <label>Type
           <select value={form.kind} onChange={e => setForm(f => ({...f, kind: e.target.value}))}>
@@ -2087,9 +2091,16 @@ function DetailsTab({ item, onSaved, showToast, onManageGuests }) {
         </div>
       </div>
 
-      <button className="ww-btn ww-btn-primary" onClick={save} disabled={saving || uploadingCover} style={{marginTop: '8px'}}>
-        <Save size={14}/> {saving ? 'Saving…' : 'Save Changes'}
-      </button>
+      </fieldset>
+      {canEdit ? (
+        <button className="ww-btn ww-btn-primary" onClick={save} disabled={saving || uploadingCover} style={{marginTop: '8px'}}>
+          <Save size={14}/> {saving ? 'Saving…' : 'Save Changes'}
+        </button>
+      ) : (
+        <p style={{marginTop: 10, fontSize: 12.5, color: 'var(--text-muted)'}}>
+          You have read-only access to this portal. Ask a team lead or an admin to make changes.
+        </p>
+      )}
     </div>
   );
 }

@@ -1715,7 +1715,7 @@ def webinar_access_admin(request):
     set a member's webinar capabilities (empty list = revoke all)."""
     from career_app.models import OnboardingSubmission, WebinarAccess
     if not can_grant(request.user):
-        return Response({'error': 'Only the Webinar lead or an admin can manage webinar access.'},
+        return Response({'error': 'Only a superadmin or the portal lead can manage webinar access.'},
                         status=status.HTTP_403_FORBIDDEN)
     if request.method == 'GET':
         rows = [{
