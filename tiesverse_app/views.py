@@ -105,12 +105,25 @@ class EventRegistrationViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         was_upcoming = serializer.instance.status == 'upcoming'
+        before = {'date': serializer.instance.date, 'time_tz': serializer.instance.time_tz}
         instance = serializer.save()
         supabase_sync.upsert(instance)
         # Marking an event past by hand publishes its guests, same as the cron.
         if was_upcoming and instance.status == 'past':
             from .guests import publish_event_guests
             publish_event_guests(instance)
+        # A moved session has to move everywhere: the Google Calendar event (same
+        # Meet link), the stored start the site reads, and the inboxes of people
+        # who already registered. Failures here are logged, never fatal — the
+        # edit itself is already saved.
+        after = {'date': instance.date, 'time_tz': instance.time_tz}
+        from webinar_app.reschedule import handle_schedule_change, schedule_fields_changed
+        if schedule_fields_changed(before, after):
+            try:
+                self._reschedule_result = handle_schedule_change(instance, request=self.request)
+            except Exception:  # noqa: BLE001
+                import logging
+                logging.getLogger(__name__).exception('Webinar reschedule follow-up failed')
 
 
 class TeamMemberViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):

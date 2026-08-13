@@ -1,6 +1,7 @@
 import datetime
 import json
 import logging
+import re
 from decimal import Decimal, InvalidOperation
 
 from django.views.decorators.csrf import csrf_exempt
@@ -926,9 +927,14 @@ def list_registrations_extended(request):
     event_pk = request.query_params.get('event_pk', '').strip()
     try:
         if event_key:
+            # Accept every slug spelling this title has been stored under; see
+            # _slug_variants for why more than one exists.
+            _vars = _slug_variants(event_key)
+            _ph = ', '.join(f':k{i}' for i in range(len(_vars)))
             rows = turso_client.execute(
-                "SELECT * FROM registrations WHERE event_id=:ek ORDER BY registered_at DESC LIMIT 1000",
-                {'ek': event_key},
+                f"SELECT * FROM registrations WHERE event_id IN ({_ph}) "
+                "ORDER BY registered_at DESC LIMIT 1000",
+                {f'k{i}': v for i, v in enumerate(_vars)},
             )
             # Registrations are keyed by title slug, so two events that ever
             # shared a title share registrations. A registration cannot predate
@@ -1018,23 +1024,60 @@ def event_certificate_link(request):
 
 # ─── Per-webinar mail automation (broadcast) + send analytics ─────────────────
 
+def _has_paid(row):
+    """True when this registrant has actually paid.
+
+    A free webinar has no payment step, so `payment_required` being falsy is
+    itself a completed registration — treating those as unpaid would exclude
+    every registrant of every free session.
+    """
+    if not int(row.get('payment_required') or 0):
+        return True
+    return str(row.get('payment_status') or '').lower() == 'paid'
+
+
+def _slug_variants(text):
+    """Every event_id spelling a registration might have been stored under.
+
+    The browser slugifies "Pakistan’s" to `pakistan-s` (punctuation becomes a
+    hyphen) while Django's slugify drops the apostrophe entirely, giving
+    `pakistans`. Registrations are keyed by whichever ran, so a lookup that
+    assumes one spelling silently finds nobody.
+    """
+    raw = str(text or '')
+    out = []
+    js_style = re.sub(r'^-|-$', '', re.sub(r'[^a-z0-9]+', '-', raw.lower().strip()))
+    for candidate in (raw, slugify(raw), js_style):
+        c = str(candidate or '').strip()
+        if c and c not in out:
+            out.append(c)
+    return out
+
+
 def _load_event_registrants(event_key, audience='all'):
     """Return this webinar's registrants from Turso, filtered by audience.
-    audience: 'all' | 'attended' | 'not_attended'."""
+    audience: 'all' | 'attended' | 'not_attended' | 'paid' | 'unpaid'."""
     if not turso_client.is_configured():
         return []
     try:
         turso_client.setup_tables()
     except turso_client.TursoError:
         pass
+    variants = _slug_variants(event_key)
+    placeholders = ', '.join(f':k{i}' for i in range(len(variants)))
     rows = turso_client.execute(
-        "SELECT * FROM registrations WHERE event_id=:ek ORDER BY registered_at DESC LIMIT 2000",
-        {'ek': str(event_key)},
+        f"SELECT * FROM registrations WHERE event_id IN ({placeholders}) "
+        "ORDER BY registered_at DESC LIMIT 2000",
+        {f'k{i}': v for i, v in enumerate(variants)},
     )
     if audience == 'attended':
         rows = [r for r in rows if int(r.get('attended') or 0) == 1]
     elif audience == 'not_attended':
         rows = [r for r in rows if int(r.get('attended') or 0) != 1]
+    elif audience == 'paid':
+        rows = [r for r in rows if _has_paid(r)]
+    elif audience == 'unpaid':
+        rows = [r for r in rows if not _has_paid(r)]
     return rows
 
 

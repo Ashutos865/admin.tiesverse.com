@@ -800,7 +800,11 @@ function EmailsTab({ item, showToast }) {
   const [subject, setSubject]     = useState('');
   const [audience, setAudience]   = useState('all');
   // The event's own Meet link, so mails carry the real link without pasting.
+  // Follows the record: generating (or regenerating) the link on the Meeting
+  // tab updates this without needing a page reload.
   const [joinLink, setJoinLink]   = useState(item.meeting_link || '');
+  useEffect(() => { setJoinLink(item.meeting_link || ''); }, [item.meeting_link]);
+  useEffect(() => { setTimeStr(item.time_tz || ''); }, [item.time_tz]);
   const [recLink, setRecLink]     = useState('');
   const [timeStr, setTimeStr]     = useState(item.time_tz || '');
   const [testEmail, setTestEmail] = useState('');
@@ -940,7 +944,13 @@ function EmailsTab({ item, showToast }) {
   const total    = rows.length;
   const attended = rows.filter(r => Number(r.attended) === 1).length;
   const noShow   = total - attended;
-  const audienceCount = audience === 'attended' ? attended : audience === 'not_attended' ? noShow : total;
+  // A free session has no payment step, so those registrants count as paid —
+  // otherwise every registrant of a free webinar looks unpaid. Mirrors
+  // _has_paid() on the server, which is what actually filters the send.
+  const hasPaid  = (r) => (!Number(r.payment_required) ? true : String(r.payment_status || '').toLowerCase() === 'paid');
+  const paid     = rows.filter(hasPaid).length;
+  const unpaid   = total - paid;
+  const audienceCount = { attended, not_attended: noShow, paid, unpaid }[audience] ?? total;
 
   const extraCtx = () => ({ join_link: joinLink, recording_link: recLink, time: timeStr, date: item.date || '' });
   const fmt = (iso) => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); };
@@ -1136,7 +1146,13 @@ function EmailsTab({ item, showToast }) {
 
         {recipMode === 'registrants' ? (
           <div style={S.row}>
-            {[['all', 'Everyone', total], ['attended', 'Attended only', attended], ['not_attended', 'Did not attend', noShow]].map(([v, l, n]) => (
+            {[
+              ['all', 'Everyone', total],
+              ['paid', 'Paid only', paid],
+              ['unpaid', 'Not paid yet', unpaid],
+              ['attended', 'Attended only', attended],
+              ['not_attended', 'Did not attend', noShow],
+            ].map(([v, l, n]) => (
               <div key={v} style={S.aud(audience === v)} onClick={() => setAudience(v)}>
                 <div style={S.audN}>{l}</div>
                 <div style={S.audL}>{n} recipient{n !== 1 ? 's' : ''}</div>
@@ -1456,7 +1472,16 @@ const WebinarsWorkshops = () => {
   const load = useCallback(async () => {
     setLoading(true);
     const res = await getEventRegistrations();
-    setItems(Array.isArray(res) ? res : []);
+    const list = Array.isArray(res) ? res : [];
+    setItems(list);
+    // Re-point the open detail pane at its refreshed row. Without this the
+    // pane keeps the snapshot it opened with, so a saved edit (or a Meet link
+    // generated on another tab) is invisible until the page is reloaded.
+    setSelected((s) => {
+      if (!s?.item?.id) return s;
+      const fresh = list.find((i) => i.id === s.item.id);
+      return fresh ? { ...s, item: fresh } : s;
+    });
     setLoading(false);
   }, []);
 
@@ -1678,13 +1703,17 @@ const WebinarsWorkshops = () => {
               })}
             </div>
 
+            {/* Keyed on the event id: every tab seeds its form state from the
+                item on mount, so without this React reuses the previous
+                webinar's state and fields look empty (or stale) after
+                switching events or saving. */}
             <div className="ww-tab-content">
-              {activeTab === 'details'       && <DetailsTab item={selected.item} onSaved={load} showToast={showToast} onManageGuests={() => setActiveTab('speaker')} />}
-              {activeTab === 'questions'     && <FormQuestionsTab item={selected.item} />}
-              {activeTab === 'registrations' && <RegistrationsTab item={selected.item} />}
-              {activeTab === 'meeting'       && <MeetingTab item={selected.item} showToast={showToast} />}
-              {activeTab === 'emails'        && <EmailsTab item={selected.item} showToast={showToast} />}
-              {activeTab === 'speaker'       && <GuestSpeakerTab item={selected.item} />}
+              {activeTab === 'details'       && <DetailsTab key={selected.item.id} item={selected.item} onSaved={load} showToast={showToast} onManageGuests={() => setActiveTab('speaker')} />}
+              {activeTab === 'questions'     && <FormQuestionsTab key={selected.item.id} item={selected.item} />}
+              {activeTab === 'registrations' && <RegistrationsTab key={selected.item.id} item={selected.item} />}
+              {activeTab === 'meeting'       && <MeetingTab key={selected.item.id} item={selected.item} showToast={showToast} />}
+              {activeTab === 'emails'        && <EmailsTab key={selected.item.id} item={selected.item} showToast={showToast} />}
+              {activeTab === 'speaker'       && <GuestSpeakerTab key={selected.item.id} item={selected.item} />}
             </div>
           </div>
         ) : (
@@ -1870,6 +1899,20 @@ function DetailsTab({ item, onSaved, showToast, onManageGuests }) {
     getEventGuests(item.id).then(r => setGuests(Array.isArray(r) ? r : []));
   }, [item.id]);
 
+  // Read the typed date/time exactly as the server will. Deliberately ignores
+  // meeting_start: a saved start would mask a typo in the field being edited.
+  const parsedStart = (() => {
+    const d = parseListingDate(form.date);
+    const t = parseListingTime(form.time_tz);
+    if (!d || !t) return '';
+    const dt = new Date(d.y, d.mo, d.d, t.h, t.min);
+    if (isNaN(dt.getTime())) return '';
+    return dt.toLocaleString('en-IN', {
+      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+    });
+  })();
+
   // An uploaded cover only reaches the database on Save. Warn before the tab
   // closes so a picture that looks attached is never quietly thrown away.
   const dirty = JSON.stringify({ ...item, ...form }) !== JSON.stringify({ ...item });
@@ -1923,12 +1966,20 @@ function DetailsTab({ item, onSaved, showToast, onManageGuests }) {
       </label>
       <div className="ww-two-col">
         <label>Date
-          <input value={form.date} onChange={e => setForm(f => ({...f, date: e.target.value}))} />
+          <input value={form.date} onChange={e => setForm(f => ({...f, date: e.target.value}))} placeholder="e.g. 27 August 2026" />
         </label>
         <label>Time (timezone)
-          <input value={form.time_tz} onChange={e => setForm(f => ({...f, time_tz: e.target.value}))} />
+          <input value={form.time_tz} onChange={e => setForm(f => ({...f, time_tz: e.target.value}))} placeholder="e.g. 11:00 AM IST" />
         </label>
       </div>
+      {/* These two fields drive the Meet link, the website listing and every
+          reminder mail, so show what the server will actually read from them
+          rather than letting a typo surface as a missing meeting later. */}
+      <p style={{ margin: '-6px 0 12px', fontSize: 12.5, color: parsedStart ? 'var(--text-muted)' : '#b45309' }}>
+        {parsedStart
+          ? <>Reads as <strong>{parsedStart}</strong>. Saving a new date moves the Google Meet and emails everyone who has paid.</>
+          : <>Date or time not understood yet — the meeting and reminders need both, e.g. “27 August 2026” and “11:00 AM IST”.</>}
+      </p>
       <div className="ww-two-col">
         {/* Speakers come from the Guest Speaker tab — one place, any number. */}
         <div>
