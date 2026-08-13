@@ -1718,13 +1718,29 @@ def webinar_access_admin(request):
         return Response({'error': 'Only a superadmin or the portal lead can manage webinar access.'},
                         status=status.HTTP_403_FORBIDDEN)
     if request.method == 'GET':
+        from .webinar_access import _in_portal_dept
         rows = [{
             'member_id': wa.member_id,
             'member_name': (wa.member.candidate_name if wa.member_id else ''),
             'capabilities': wa.capabilities or [],
             'updated_at': wa.updated_at,
         } for wa in WebinarAccess.objects.select_related('member').all()]
-        return Response({'grants': rows,
+        granted = {r['member_id'] for r in rows}
+        # Everyone who could be granted, not just those already holding a grant:
+        # without this the UI can only edit existing rows and there is no way to
+        # give a new person access at all.
+        members = [{
+            'id': m.id,
+            'name': m.candidate_name or m.candidate_email or f'Member {m.id}',
+            'email': m.candidate_email or '',
+            'departments': m.assigned_departments or [],
+            'in_portal_dept': _in_portal_dept(m),
+            'capabilities': [],
+        } for m in OnboardingSubmission.objects.filter(status='verified').order_by('candidate_name')]
+        by_id = {r['member_id']: r['capabilities'] for r in rows}
+        for m in members:
+            m['capabilities'] = by_id.get(m['id'], [])
+        return Response({'grants': rows, 'members': members, 'granted_ids': sorted(granted),
                          'all_capabilities': [{'key': k, 'label': label} for k, label in CAPABILITIES]})
 
     mid = request.data.get('member_id') or request.data.get('member')

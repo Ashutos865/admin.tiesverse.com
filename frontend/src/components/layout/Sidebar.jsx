@@ -37,6 +37,7 @@ import {
   Shield,
   Tag,
   TicketPercent,
+  ShieldCheck,
   UserCheck,
   Users,
   Video,
@@ -218,6 +219,9 @@ export const portals = [
       { name: 'Speakers',             path: '/webinar/event_speakers',     icon: Users,           perms: ['view_eventspeaker', 'add_eventspeaker'] },
       { name: 'Registrations',        path: '/webinar/registrations',      icon: FileText,        perms: ['view_registrationform'] },
       { name: 'Coupons',              path: '/webinar/coupons',            icon: TicketPercent,   perms: ['view_webinarevent'] },
+      // Superadmins see the entry; portal leads reach it by URL and the page
+      // checks can_grant itself, so nobody else can use it either way.
+      { name: 'Portal Access',        path: '/webinar/access',             icon: ShieldCheck,     perms: [], superuserOnly: true },
     ],
   },
   {
