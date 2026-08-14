@@ -124,6 +124,11 @@ def setup_tables():
         ('source',              'TEXT'),
         ('expectations',        'TEXT'),
         ('speaker_question',    'TEXT'),
+        # Answers to questions the admin added beyond the built-in fields,
+        # as a JSON object of {question label: answer}. Kept in one column
+        # because the set of questions differs per webinar and changes
+        # whenever somebody edits the form.
+        ('custom_answers',      'TEXT'),
         # Refunds. Kept separate from payment_status so the original payment is
         # still legible after a refund: status becomes 'refunded' (or
         # 'partially_refunded') while amount/final_amount keep what was charged.

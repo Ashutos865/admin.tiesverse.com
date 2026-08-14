@@ -355,9 +355,11 @@ def register_for_event(request):
                 """INSERT INTO registrations
                    (event_id, event_title, event_type, event_date, name, email, phone,
                     role, organization, country, city, source, expectations, speaker_question,
+                    custom_answers,
                     utm_source, utm_medium, utm_campaign, utm_content, referrer, registered_at)
                    VALUES (:event_id, :event_title, :event_type, :event_date, :name, :email, :phone,
                            :role, :organization, :country, :city, :source, :expectations, :speaker_question,
+                           :custom_answers,
                            :utm_source, :utm_medium, :utm_campaign, :utm_content, :referrer, :registered_at)""",
                 {
                     'event_id':        str(data.get('event_id') or ''),
@@ -374,6 +376,7 @@ def register_for_event(request):
                     'source':          str(data.get('source') or ''),
                     'expectations':    str(data.get('expectations') or ''),
                     'speaker_question':str(data.get('speaker_question') or ''),
+                    'custom_answers':  _custom_answers_json(data),
                     # Trimmed: these arrive from a query string anyone can edit.
                     'utm_source':      str(data.get('utm_source') or '')[:80],
                     'utm_medium':      str(data.get('utm_medium') or '')[:80],
@@ -521,6 +524,7 @@ def create_payment_order(request):
         'source':       str(data.get('source') or ''),
         'expectations': str(data.get('expectations') or ''),
         'speaker_question': str(data.get('speaker_question') or ''),
+        'custom_answers': _custom_answers_json(data),
     }
 
     # A 100% coupon completes registration without opening Razorpay.
@@ -531,12 +535,12 @@ def create_payment_order(request):
                    (event_id,event_title,event_type,event_date,name,email,phone,city,registered_at,
                     payment_required,amount,payment_status,coupon_code,discount_amount,
                     final_amount,coupon_redeemed,
-                    role,organization,country,source,expectations,speaker_question,
+                    role,organization,country,source,expectations,speaker_question,custom_answers,
                     utm_source,utm_medium,utm_campaign,utm_content,referrer)
                    VALUES (:event_id,:event_title,:event_type,:event_date,:name,:email,:phone,:city,
                            :registered_at,0,:amount,'free',:coupon_code,:discount_amount,
                            :final_amount,:coupon_redeemed,
-                           :role,:organization,:country,:source,:expectations,:speaker_question,
+                           :role,:organization,:country,:source,:expectations,:speaker_question,:custom_answers,
                            :utm_source,:utm_medium,:utm_campaign,:utm_content,:referrer)""",
                 registration_params,
             )
@@ -592,13 +596,13 @@ def create_payment_order(request):
                     phone, city, registered_at,
                     payment_required, amount, razorpay_order_id, payment_status,
                     coupon_code,discount_amount,final_amount,coupon_redeemed,
-                    role,organization,country,source,expectations,speaker_question,
+                    role,organization,country,source,expectations,speaker_question,custom_answers,
                     utm_source,utm_medium,utm_campaign,utm_content,referrer)
                    VALUES (:event_id,:event_title,:event_type,:event_date,:name,:email,
                            :phone,:city,:registered_at,
                            1,:amount,:razorpay_order_id,'pending',
                            :coupon_code,:discount_amount,:final_amount,:coupon_redeemed,
-                           :role,:organization,:country,:source,:expectations,:speaker_question,
+                           :role,:organization,:country,:source,:expectations,:speaker_question,:custom_answers,
                            :utm_source,:utm_medium,:utm_campaign,:utm_content,:referrer)""",
                 {
                     **registration_params,
@@ -645,6 +649,26 @@ def _add_paid_registrant_to_meeting(row):
     except Exception:  # noqa: BLE001
         logger.exception('Could not add %s to the meeting', email)
         return ''
+
+
+def _custom_answers_json(data):
+    """The answers to any admin-added questions, as JSON text.
+
+    Stored in one column because the set of questions differs per webinar and
+    changes whenever the form is edited; a column per question would mean a
+    migration every time somebody adds one.
+    """
+    raw = data.get('custom_answers')
+    if not isinstance(raw, dict) or not raw:
+        return ''
+    clean = {}
+    for key, value in list(raw.items())[:40]:          # a form, not a payload
+        label = str(key).strip()[:200]
+        text = ', '.join(str(v) for v in value) if isinstance(value, list) else str(value)
+        text = text.strip()[:2000]
+        if label and text:
+            clean[label] = text
+    return json.dumps(clean, ensure_ascii=False) if clean else ''
 
 
 # ── Razorpay: verify payment ───────────────────────────────────────────────────
@@ -1009,7 +1033,7 @@ def sync_registration_payment(request):
 
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
-@require_webinar_cap('manage_questions')
+@require_webinar_cap('manage_questions', public_read=True)
 def form_questions(request):
     """List or create form questions for an event/webinar.
     GET is public (website reads form schema). POST requires a logged-in admin.

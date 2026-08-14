@@ -159,11 +159,21 @@ class EventSpeakerPermission(BasePermission):
         return bool(perm and user.has_perm(perm))
 
 
-def require_webinar_cap(cap):
-    """Decorator for @api_view functions — 403 unless the caller has `cap`."""
+def require_webinar_cap(cap, public_read=False):
+    """Decorator for @api_view functions — 403 unless the caller has `cap`.
+
+    public_read=True leaves GET open to anyone. Some of these endpoints serve
+    the public website as well as the admin: the form schema has to be
+    readable by a visitor filling the registration form, while only an admin
+    may change it. Without this the capability check ran on every method and
+    silently 403'd the website, which then fell back to its built-in fields
+    and never showed the custom questions.
+    """
     def deco(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
+            if public_read and request.method in ('GET', 'HEAD', 'OPTIONS'):
+                return view(request, *args, **kwargs)
             if not webinar_can(request.user, cap):
                 return Response(
                     {'error': f'You do not have permission to {cap.replace("_", " ")} for webinars.'},
