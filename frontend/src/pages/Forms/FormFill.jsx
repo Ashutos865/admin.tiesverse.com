@@ -139,7 +139,7 @@ export default function FormFill({ form, submitFn, askIdentity, initialValues, e
         <div style={{ position: 'relative', zIndex: 1, maxWidth: 680, margin: '0 auto', padding: '40px 16px 60px' }}>
           <div style={{ background: '#fff', borderRadius: 20, boxShadow: '0 30px 80px -30px rgba(0,0,0,.45)', borderTop: `6px solid ${theme.accent}`, overflow: 'hidden' }}>
             <div style={{ padding: '26px 28px 6px' }}>
-              <h2 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 6px', color: '#161616' }}>{editing ? 'Check your changes' : 'Check your answers'}</h2>
+              <h2 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 6px', color: '#161616' }}>{editing ? 'Check your changes' : 'Check your details'}</h2>
               <p style={{ fontSize: 14.5, color: '#555', lineHeight: 1.6, margin: 0 }}>
                 {editing
                   ? 'Nothing has been saved yet. Read it over, and go back if you want to change anything.'
