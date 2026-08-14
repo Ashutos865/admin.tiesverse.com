@@ -218,7 +218,18 @@ function AnalyticsTab({ item }) {
   const attended = rows.filter((r) => Number(r.attended) === 1).length;
 
   // Revenue: final_amount is stored in paise and already reflects coupons.
-  const grossPaise = rows.filter(isPaidRow)
+  //
+  // Gross is every payment that was actually taken, INCLUDING the ones later
+  // refunded — money has to be counted in before it can be counted back out.
+  // Netting refunds off a gross that excluded refunded rows produced a
+  // negative "Collected": three 99-rupee refunds were subtracted from a gross
+  // that had never contained them.
+  const tookMoney = (r) => {
+    if (!Number(r.payment_required)) return false;   // free seats are not revenue
+    const st = String(r.payment_status || '').toLowerCase();
+    return st === 'paid' || st.includes('refund');
+  };
+  const grossPaise = rows.filter(tookMoney)
     .reduce((s, r) => s + Number(r.final_amount || r.amount || 0), 0);
   const refundedPaise = rows.reduce((s, r) => s + Number(r.refund_amount || 0), 0);
   const inr = (paise) => `₹${Math.round(paise / 100).toLocaleString('en-IN')}`;
@@ -263,8 +274,12 @@ function AnalyticsTab({ item }) {
             <Stat label="Paid / confirmed" value={paid} sub={`${pct(paid)}% of registrations`} tone="#10b981" />
             <Stat label="Pending payment" value={pending} sub={pending ? 'Not yet paid' : 'Nothing outstanding'} tone={pending ? '#d97706' : undefined} />
             <Stat label="Attended" value={attended} sub={`${pct(attended)}% turned up`} />
+            {/* Both halves of the sum, so the net figure can be checked at a
+                glance rather than taken on trust. */}
             <Stat label="Collected" value={inr(grossPaise - refundedPaise)}
-              sub={refundedPaise ? `after ${inr(refundedPaise)} refunded` : (failed ? `${failed} failed` : 'net of refunds')} />
+              sub={refundedPaise
+                ? `${inr(grossPaise)} in, ${inr(refundedPaise)} refunded to ${refunded}`
+                : (failed ? `${failed} failed` : 'net of refunds')} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 260px) minmax(0, 1fr)', gap: 18, alignItems: 'start' }}>
