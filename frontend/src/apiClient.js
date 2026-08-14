@@ -303,6 +303,7 @@ export const saveResearchPage = (data) => adminFetch('/api/landing/research-page
 // RESEARCH REPORTS (full documents imported from Google Docs)
 export const getResearchReports = () => adminFetch('/api/landing/research-reports');
 export const importResearchReport = (data) => adminFetch('/api/landing/research-reports', 'POST', data);
+export const getResearchReport = (id) => adminFetch(`/api/landing/research-reports/${id}`);
 export const updateResearchReport = (id, data) => adminFetch(`/api/landing/research-reports/${id}`, 'PATCH', data);
 export const deleteResearchReport = (id) => adminFetch(`/api/landing/research-reports/${id}`, 'DELETE');
 

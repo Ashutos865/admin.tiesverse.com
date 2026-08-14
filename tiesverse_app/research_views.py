@@ -18,10 +18,10 @@ PUBLIC_CACHE_KEY = 'public_research_page'
 
 # Keys the admin form is allowed to store. Anything else in a PUT is dropped,
 # so a stale client can't grow the document into an unbounded dumping ground.
+# The statement and about-columns were dropped from the page: keeping them
+# writable would let the admin fill in copy that nothing renders.
 ALLOWED_KEYS = {
     'hero_ghost', 'hero_note', 'photo_url', 'photo_caption',
-    'statement', 'statement_soft',
-    'about_heading', 'about_body_1', 'about_body_2', 'about_body_3',
     'areas', 'publications',
 }
 MAX_ITEMS = 40          # areas + publications each; the page is curated, not a feed
@@ -191,7 +191,48 @@ def research_reports_admin(request):
     return Response(dict(_report_summary(r), id=r.id, is_active=True, blocks_count=len(blocks)), status=201)
 
 
-@api_view(['PATCH', 'DELETE'])
+BLOCK_TYPES = {'lead', 'p', 'h2', 'h3', 'img', 'table', 'ref', 'pull', 'quote'}
+MAX_BLOCKS_EDIT = 1200
+
+
+def _clean_blocks(raw):
+    """Validate blocks coming back from the editor.
+
+    The reader renders whatever is stored, so an unknown type would simply
+    vanish from the page. Dropping them here means what the editor saved is
+    exactly what a reader sees.
+    """
+    out = []
+    for b in (raw or [])[:MAX_BLOCKS_EDIT]:
+        if not isinstance(b, dict):
+            continue
+        btype = str(b.get('type') or '').strip()
+        if btype not in BLOCK_TYPES:
+            continue
+        if btype == 'table':
+            rows = b.get('rows')
+            if not isinstance(rows, list) or not rows:
+                continue
+            out.append({'type': 'table', 'rows': [
+                [str(c)[:600] for c in row[:12]] for row in rows[:200] if isinstance(row, list)
+            ]})
+        elif btype == 'img':
+            src = str(b.get('src') or '').strip()
+            if not src:
+                continue
+            out.append({'type': 'img', 'src': src[:600], 'caption': str(b.get('caption') or '')[:300]})
+        else:
+            text = str(b.get('text') or '').strip()
+            if not text:
+                continue
+            block = {'type': btype, 'text': text[:20000]}
+            if b.get('strong'):
+                block['strong'] = str(b['strong'])[:200]
+            out.append(block)
+    return out
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def research_report_admin_detail(request, pk):
     if not _can_manage_site(request.user):
@@ -200,6 +241,11 @@ def research_report_admin_detail(request, pk):
     r = ResearchReport.objects.using('turso_db').filter(pk=pk).first()
     if r is None:
         return Response({'error': 'Not found.'}, status=404)
+
+    if request.method == 'GET':
+        return Response(dict(_report_summary(r), id=r.id, eyebrow=r.eyebrow,
+                             is_active=r.is_active, source_url=r.source_url,
+                             blocks=r.blocks or []))
 
     if request.method == 'DELETE':
         slug = r.slug
@@ -217,6 +263,8 @@ def research_report_admin_detail(request, pk):
             r.order = int(request.data.get('order'))
         except (TypeError, ValueError):
             pass
+    if 'blocks' in request.data:
+        r.blocks = _clean_blocks(request.data.get('blocks'))
     r.save(using='turso_db')
     _bust_reports(r.slug)
     return Response(dict(_report_summary(r), id=r.id, is_active=r.is_active))

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     BookOpen, Plus, Upload, X, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, Save,
-    FileText, Link2, ExternalLink,
+    FileText, Link2, ExternalLink, Pencil,
 } from 'lucide-react';
 import {
     getResearchPage, saveResearchPage, uploadImage,
     getResearchReports, importResearchReport, updateResearchReport, deleteResearchReport,
 } from '../../apiClient';
+import ReportEditor from './ReportEditor';
 
 /**
  * Content manager for tiesverse.com/research.
@@ -37,7 +38,7 @@ const Field = ({ l, children }) => (
 );
 
 /** Full reports imported from Google Docs — each becomes /research/<slug>. */
-function ReportsCard({ flash }) {
+function ReportsCard({ flash, onEdit }) {
     const [reports, setReports] = useState(null);
     const [url, setUrl] = useState('');
     const [date, setDate] = useState('');
@@ -101,6 +102,7 @@ function ReportsCard({ flash }) {
                         <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</div>
                         <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{r.kind}{r.date ? ` · ${r.date}` : ''} · {r.blocks_count} blocks</div>
                     </div>
+                    <button style={iconBtn} title="Edit the report's contents" onClick={() => onEdit(r.id)}><Pencil size={14} /></button>
                     <a href={`https://www.tiesverse.com/research/${r.slug}`} target="_blank" rel="noreferrer" style={{ ...iconBtn, textDecoration: 'none' }} title="Open on the website"><ExternalLink size={14} /></a>
                     <button style={iconBtn} title={r.is_active ? 'Shown on the site — click to hide' : 'Hidden — click to show'} onClick={() => toggle(r)}>
                         {r.is_active ? <Eye size={15} /> : <EyeOff size={15} />}
@@ -151,6 +153,8 @@ export default function ResearchPage() {
     const [busy, setBusy] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [toast, setToast] = useState('');
+    // When set, the editor takes over the page instead of the settings form.
+    const [editingId, setEditingId] = useState(null);
     const fileRef = useRef(null);
 
     const flash = (m) => { setToast(m); setTimeout(() => setToast(''), 3500); };
@@ -163,12 +167,6 @@ export default function ResearchPage() {
             hero_note: d.hero_note || '',
             photo_url: d.photo_url || '',
             photo_caption: d.photo_caption || '',
-            statement: d.statement || '',
-            statement_soft: d.statement_soft || '',
-            about_heading: d.about_heading || '',
-            about_body_1: d.about_body_1 || '',
-            about_body_2: d.about_body_2 || '',
-            about_body_3: d.about_body_3 || '',
             areas: Array.isArray(d.areas) ? d.areas : [],
             publications: Array.isArray(d.publications) ? d.publications : [],
         });
@@ -195,6 +193,8 @@ export default function ResearchPage() {
         if (res?.data) { flash('Saved. The site updates within two minutes.'); }
         else flash(res?.error || 'Save failed.');
     };
+
+    if (editingId) return <ReportEditor reportId={editingId} onBack={() => setEditingId(null)} />;
 
     if (doc === null) return <div style={{ padding: 32, color: 'var(--text-muted)' }}>Loading…</div>;
 
@@ -225,19 +225,8 @@ export default function ResearchPage() {
             </div>
 
             <div style={card}>
-                <h2 style={h2}>Statement</h2>
-                <p style={hint}>The big centre statement. The soft ending renders in a lighter colour at the end of the sentence.</p>
-                <Field l="Statement">
-                    <textarea style={area} value={doc.statement} onChange={(e) => set({ statement: e.target.value })} placeholder="At TIES, we advance rigorous research at the intersection of geopolitics, markets and technology…" />
-                </Field>
-                <Field l="Soft ending (rendered lighter)">
-                    <input style={input} value={doc.statement_soft} onChange={(e) => set({ statement_soft: e.target.value })} placeholder="Bharat's next decade." />
-                </Field>
-            </div>
-
-            <div style={card}>
-                <h2 style={h2}>Photo &amp; details</h2>
-                <p style={hint}>The desk photo beside the “what we research” story. Landscape works best; it is shown about 720×640 on desktop.</p>
+                <h2 style={h2}>Desk photo</h2>
+                <p style={hint}>A wide photo shown under the headline. Optional — leave it empty and the page goes straight from the headline to the publications.</p>
                 <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 12 }}>
                     {doc.photo_url ? (
                         <div style={{ position: 'relative' }}>
@@ -257,21 +246,9 @@ export default function ResearchPage() {
                 <Field l="Photo caption (optional)">
                     <input style={input} value={doc.photo_caption} onChange={(e) => set({ photo_caption: e.target.value })} placeholder="The research desk at work" />
                 </Field>
-                <Field l="Details heading">
-                    <textarea style={{ ...area, minHeight: 56 }} value={doc.about_heading} onChange={(e) => set({ about_heading: e.target.value })} placeholder="Rigorous research to decode geopolitics, markets and technology for Bharat." />
-                </Field>
-                <Field l="Details — column one">
-                    <textarea style={area} value={doc.about_body_1} onChange={(e) => set({ about_body_1: e.target.value })} placeholder="What the desk does and how it works…" />
-                </Field>
-                <Field l="Details — column two, first paragraph">
-                    <textarea style={area} value={doc.about_body_2} onChange={(e) => set({ about_body_2: e.target.value })} placeholder="Where the work has appeared, what it has achieved…" />
-                </Field>
-                <Field l="Details — column two, second paragraph">
-                    <textarea style={area} value={doc.about_body_3} onChange={(e) => set({ about_body_3: e.target.value })} placeholder="The mission, stated plainly…" />
-                </Field>
             </div>
 
-            <ReportsCard flash={flash} />
+            <ReportsCard flash={flash} onEdit={setEditingId} />
 
             <ItemList
                 title="What we published"
