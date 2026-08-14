@@ -8,6 +8,7 @@ from .views import (
     refund_registration, sync_registration_payment,
     coupons, coupon_detail, validate_coupon,
     form_questions, form_question_detail, reorder_form_questions,
+    form_sections, form_section_detail, reorder_form_sections,
     mark_attended, list_registrations_extended,
     event_certificate_link,
     list_public_events,
@@ -45,6 +46,9 @@ urlpatterns = [
     path('form-questions/', form_questions, name='webinar-form-questions'),
     path('form-questions/<int:pk>/', form_question_detail, name='webinar-form-question-detail'),
     path('form-questions/reorder/', reorder_form_questions, name='webinar-form-questions-reorder'),
+    path('form-sections/', form_sections, name='webinar-form-sections'),
+    path('form-sections/<int:pk>/', form_section_detail, name='webinar-form-section-detail'),
+    path('form-sections/reorder/', reorder_form_sections, name='webinar-form-sections-reorder'),
 
     # Attendee tracking
     path('mark-attended/', mark_attended, name='webinar-mark-attended'),

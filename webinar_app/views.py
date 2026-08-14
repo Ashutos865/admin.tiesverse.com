@@ -12,10 +12,12 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny, DjangoModelPermissions, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import WebinarEvent, RegistrationForm, CalendarEvent, EventFormQuestion
+from django.db import models
+from .models import (WebinarEvent, RegistrationForm, CalendarEvent,
+                     EventFormQuestion, EventFormSection, DEFAULT_SECTIONS)
 from .serializers import (
     WebinarEventSerializer, RegistrationFormSerializer,
-    CalendarEventSerializer, EventFormQuestionSerializer,
+    CalendarEventSerializer, EventFormQuestionSerializer, EventFormSectionSerializer,
 )
 from . import turso_client
 from . import razorpay_client
@@ -1078,15 +1080,148 @@ def form_question_detail(request, pk):
         return Response(EventFormQuestionSerializer(question).data)
 
     if request.method == 'PATCH':
-        serializer = EventFormQuestionSerializer(question, data=request.data, partial=True)
+        data = dict(request.data)
+        if question.maps_to in EventFormQuestion.LOCKED_FIELDS:
+            # The wording, placement and options are the admin's to change. The
+            # binding is not: every confirmation, reminder and certificate is
+            # addressed from the name and email columns, so a question that
+            # fills one of them must keep filling it.
+            data.pop('maps_to', None)
+            data['required'] = True
+        serializer = EventFormQuestionSerializer(question, data=data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     # DELETE
+    if question.maps_to in EventFormQuestion.LOCKED_FIELDS:
+        return Response(
+            {'error': f'“{question.label}” cannot be removed — the confirmation '
+                      'emails, reminders and certificates are all addressed '
+                      'using it. You can reword it or move it to another '
+                      'section instead.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     question.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+@require_webinar_cap('manage_questions', public_read=True)
+def form_sections(request):
+    """The steps of one event's registration form.
+
+    GET is public — the website needs to know how to lay the form out.
+    POST adds a section; the number is assigned here rather than by the caller
+    so two sections can never collide.
+    """
+    event_key  = str(request.query_params.get('event_key') or
+                     request.data.get('event_key') or '').strip()
+    event_type = str(request.query_params.get('event_type') or
+                     request.data.get('event_type') or '').strip()
+
+    if request.method == 'GET':
+        qs = EventFormSection.objects.filter(event_key=event_key, event_type=event_type)
+        if not qs.exists():
+            # An event that has never been edited still has the three steps the
+            # form has always shown, so describe them rather than returning
+            # nothing and leaving the website to guess.
+            return Response([
+                {'id': None, 'number': n, 'title': t, 'subtitle': st, 'order': n - 1}
+                for n, t, st in DEFAULT_SECTIONS
+            ])
+        return Response(EventFormSectionSerializer(qs, many=True).data)
+
+    title = str(request.data.get('title') or '').strip()
+    if not title:
+        return Response({'error': 'A section needs a title.'}, status=400)
+    if not event_key:
+        return Response({'error': 'event_key is required.'}, status=400)
+
+    existing = EventFormSection.objects.filter(event_key=event_key, event_type=event_type)
+    if not existing.exists():
+        # Materialise the implicit three before adding a fourth, so the new one
+        # joins a real list rather than replacing an assumed one.
+        for n, t, st in DEFAULT_SECTIONS:
+            EventFormSection.objects.get_or_create(
+                event_key=event_key, event_type=event_type, number=n,
+                defaults={'title': t, 'subtitle': st, 'order': n - 1})
+        existing = EventFormSection.objects.filter(event_key=event_key, event_type=event_type)
+
+    number = (existing.aggregate(models.Max('number')).get('number__max') or 0) + 1
+    order = (existing.aggregate(models.Max('order')).get('order__max') or 0) + 1
+    section = EventFormSection.objects.create(
+        event_key=event_key, event_type=event_type, number=number,
+        title=title[:120], subtitle=str(request.data.get('subtitle') or '')[:255],
+        order=order)
+    return Response(EventFormSectionSerializer(section).data, status=201)
+
+
+@api_view(['PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_questions')
+def form_section_detail(request, pk):
+    """Rename a section, or remove it.
+
+    Removing a section never removes its questions: they move to the first
+    remaining section instead. Losing a step of the form should not silently
+    lose what that step asked.
+    """
+    try:
+        section = EventFormSection.objects.get(pk=pk)
+    except EventFormSection.DoesNotExist:
+        return Response({'error': 'Not found.'}, status=404)
+
+    if request.method == 'PATCH':
+        for field in ('title', 'subtitle'):
+            if field in request.data:
+                setattr(section, field, str(request.data.get(field) or '').strip()[:255])
+        if 'order' in request.data:
+            try:
+                section.order = int(request.data.get('order') or 0)
+            except (TypeError, ValueError):
+                pass
+        if not section.title.strip():
+            return Response({'error': 'A section needs a title.'}, status=400)
+        section.save()
+        return Response(EventFormSectionSerializer(section).data)
+
+    siblings = EventFormSection.objects.filter(
+        event_key=section.event_key, event_type=section.event_type,
+    ).exclude(pk=section.pk).order_by('order', 'number')
+    if not siblings.exists():
+        return Response(
+            {'error': 'This is the only section left — a form needs at least one.'},
+            status=400)
+
+    moved = EventFormQuestion.objects.filter(
+        event_key=section.event_key, event_type=section.event_type,
+        section=section.number,
+    ).update(section=siblings.first().number)
+    section.delete()
+    return Response({'status': 'deleted', 'questions_moved': moved})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_questions')
+def reorder_form_sections(request):
+    """Bulk-set section order. Body: { items: [{id, order}, …] }"""
+    updated = 0
+    for item in request.data.get('items', []) or []:
+        try:
+            sec = EventFormSection.objects.get(pk=int(item.get('id')))
+        except (EventFormSection.DoesNotExist, TypeError, ValueError):
+            continue
+        try:
+            sec.order = int(item.get('order') or 0)
+        except (TypeError, ValueError):
+            continue
+        sec.save(update_fields=['order'])
+        updated += 1
+    return Response({'updated': updated})
 
 
 @api_view(['POST'])
