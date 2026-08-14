@@ -271,3 +271,29 @@ resolves to `{error, status}`. Twelve call sites depend on it and it stays.
 Team-inbox addresses and their assignment/SLA workflow · mailbox sending rules
 (the admin@ restriction) · the real logo asset · Tasks/Contacts/Files/Announcements
 data · retiring the stale `mail/` copy at the workspace root.
+
+---
+
+## Build status — August 2026
+
+Recorded so the next person can tell specification from shipped code. This
+document stays the spec; the notes below say how far the build has reached.
+
+**Backend (`admin/mail_app/`) — built.** `Mailbox`, `MailboxGrant`,
+`MailMessage`, `MailAuditLog`, plus the phase-one additions: `MailDraft`,
+`MailAttachment`, `MailNote`, `MailBulkJob` and `MailSsoTicket`. Migrations are
+applied against `turso_db`, as every app model must be.
+
+**Frontend (`admin/mailsite/src/screens/`) — built:** `Login`, `Home`,
+`Mailbox`, `Compose`, `Admin`, `Automation`.
+
+**Deferred, and still deferred:** team-inbox creation and its workflow screen;
+mailbox rules (the `admin@` restriction); the real logo asset — the wordmark is
+still live text with a single swap point; Tasks / Contacts / Files /
+Announcements data wiring, which render as designed but show honest
+placeholders; retiring the stale byte-copy of the app at the workspace root
+(`mail/`) — `admin/mailsite/` is canonical.
+
+**When changing this design:** the token table in section 1 is the contract.
+Change a value there and change it in `src/tokens.css` in the same commit, or
+the next person reads a colour here that the app has not used for months.

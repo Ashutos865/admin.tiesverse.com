@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.3.0] - Webinar Money, Attribution & Research Publishing (14-08-26) (claude)
+
+### Added
+
+* **Refunds from the registrations table:** Full or partial refunds on any paid registration, with the amount re-read from Razorpay rather than trusted from the browser, so a stale screen cannot over-refund. Records `refund_id`, `refund_amount` (paise), `refund_status`, `refunded_at` and `refund_notes`; a part-refunded row reads `partially_refunded` so the books still balance. `refund.*` webhooks are handled, so refunds issued from Razorpay's own dashboard land here too, and "Check with Razorpay" reconciles a drifted row on demand.
+* **Campaign attribution on registrations:** New `utm_source`, `utm_medium`, `utm_campaign`, `utm_content` and `referrer` columns. The website captures them on arrival and holds them for the session, because registration usually happens several clicks after landing; first touch wins. An untagged visit falls back to the referring domain.
+* **Share links panel (webinar Details tab):** A tagged link per channel (WhatsApp, Instagram, LinkedIn, X, Telegram, email, poster QR) plus any custom source, all under one campaign name defaulted from the title.
+* **Analytics tab (webinar panel):** Registered / paid / pending / attended / collected-net-of-refunds, a source donut, channel bars, sign-ups per day and a payment-status bar. Plain SVG - no charting library.
+* **Paid / Not-paid-yet audiences** in the Emails tab, filtered server-side. A free session has no payment step, so its registrants count as confirmed rather than unpaid.
+* **Portal Access page** (`/webinar/access`, superadmins): every verified member listed and searchable, showing which department grants read-only access and which capabilities have been granted on top. Granting is now a superadmin action (plus a portal lead for their own team) rather than anything `_is_org_admin` allowed.
+* **Research reports from Google Docs:** `gdoc_import` turns a shared doc into ordered blocks - sections, sub-heads, paragraphs, tables, references - re-hosting embedded images on Cloudinary and dropping the page-numbered contents, since the reader builds its own.
+* **Report block editor:** Rearrange, retype, insert sections, sub-headings, quotes and inline images, and select words for bold or italic. Emphasis is stored as `**bold**` / `*italic*`, not HTML, so the text stays readable and the reader renders it without trusting markup from a form.
+* **Research Page manager** (`/tiesverse/research-page`): hero copy, desk photo and the publications register.
+* **External registration for city events:** the event form asks whether registration is handled here or elsewhere; an external URL turns the website's button into a link out instead of opening a form whose list nobody would read.
+
+### Changed
+
+* **Webinar/Workshop departments both grant read-only portal access** (18 members), where only an exact "Webinar" department did before.
+* **Registrant lookups accept every slug spelling a title has been stored under.** The browser slugifies "Pakistan's" to `pakistan-s`; Django's `slugify` gives `pakistans`. Rows written by one were invisible to the other, so the Emails tab could show an audience of zero for a webinar that had paid registrants.
+* **Public webinar feed ships speakers** (name, role, org, photo) from `EventSpeaker` instead of only a single host string, falling back to the lead speaker for `host`/`host_image_url`.
+* **Image uploads state their 25 MB limit up front**, name the offending file size, translate nginx's bare 413, and say plainly that nothing was saved when a save fails. The webinar Details tab warns before closing with an uploaded-but-unsaved cover.
+* **Detail tabs are keyed on the event id.** Each seeds its form state on mount, so without a key React reused the previous webinar's state and fields looked empty after switching events or saving - which is why a saved description appeared blank.
+* **Research page trimmed** to headline, optional photo and publications. The statement and about-columns were removed from the page, the admin form *and* `ALLOWED_KEYS`, so the fields cannot be filled with copy that nothing renders.
+
+### Fixed
+
+* **`generate-meeting` returned 500 on every attempt** (`NameError: timezone` - the module never imported `django.utils.timezone`). The crash happened *after* Google Calendar created the event, so each click made a real calendar entry, returned 500 and saved nothing. No Meet link ever appeared, and reminder mails went out without a join link.
+* **The Razorpay webhook fell off the end returning `None`.** Razorpay reads any non-2xx as failure and retries, so every payment webhook was being retried repeatedly. It now returns 200.
+* **Editing a webinar's date or time now moves everything at once:** the Calendar event is patched in place (same Meet link, so a saved link keeps working), `meeting_start` is realigned - it outranks the typed date in `event_start()`, so leaving it stale made the site disagree with the calendar - and everyone who has paid gets a "Webinar - Schedule changed" mail.
+* **The paid registration path was dropping role, organisation, country and both free-text answers;** only the free path stored them.
+
+---
+
 ## [0.0.1] - Project Initialization & Base Architecture (25-05-26) 
 
 ### Added

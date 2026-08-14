@@ -124,3 +124,29 @@ fills the circle (photos already convert to WebP server-side).
 
 Do it token-first: change the token *values*, let components inherit. Only the
 auth/OTP screens get the bespoke hero + segmented treatment.
+
+---
+
+## 7. Pages added since this document — August 2026
+
+New surfaces built after the rollout above. All of them read the CSS variables
+(`--surface`, `--outline-variant`, `--text-main`, `--text-muted`,
+`--primary`) rather than hardcoding colour, so a token change reaches them.
+
+| Page | Route | Who sees it |
+|------|-------|-------------|
+| Research Page | `/tiesverse/research-page` | Org-wide staff |
+| Report editor | inside Research Page (pencil on a report) | Org-wide staff |
+| Portal Access | `/webinar/access` | Superadmins (leads reach it by URL) |
+| Analytics tab | inside a webinar or workshop | Anyone with `view` |
+
+**Charts are plain SVG.** The Analytics donut and bars are drawn with `<circle>`
+`stroke-dasharray` and sized `<span>`s — no charting library, so nothing extra
+ships and there is no second theme system to keep in step with these tokens.
+
+**Read-only is a real state, not a hidden button.** A member with only `view`
+sees the Details form inside a disabled `<fieldset>` with a line naming who to
+ask, instead of editable fields whose save the server would refuse.
+
+**Money and access get a confirm.** Refunding and revoking both name the person
+and the amount or scope before acting, because neither can be undone from here.

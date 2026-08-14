@@ -148,3 +148,33 @@ All ViewSets now use `StaffModelPermissions` which:
 | GET    | `/api/tiesverse/*`                | Tiesverse CRUD                  | Per-permission|
 | GET    | `/api/career/*`                   | Career CRUD                     | Per-permission|
 | GET    | `/api/webinar/*`                  | Webinar CRUD                    | Per-permission|
+
+### 2.5 Endpoints added — August 2026
+
+| Method | Endpoint | Description | Access |
+|--------|----------|-------------|--------|
+| POST | `/api/webinar/refund/` | Refund a registration, fully or partly | `manage_registrations` |
+| POST | `/api/webinar/sync-payment/` | Re-read one payment from Razorpay and store what it says | `manage_registrations` |
+| POST | `/api/webinar/razorpay-webhook/` | Also handles `refund.*` now, not only `payment.*` | Public (HMAC-verified) |
+| GET/POST | `/api/webinar/access/` | Read or set a member's portal capabilities | Superadmin or portal lead |
+| GET | `/api/webinar/my-access/` | The caller's own capabilities + whether they may grant | Authenticated |
+| GET/PUT | `/api/landing/research-page/` | The Research page document | Org-wide staff |
+| GET/POST | `/api/landing/research-reports/` | List reports, or import one from a Google Doc | Org-wide staff |
+| GET/PATCH/DELETE | `/api/landing/research-reports/{id}/` | Read blocks, save edited blocks, delete | Org-wide staff |
+| GET | `/api/public/research-page/` | Research page content for the website | Public, cached 2 min |
+| GET | `/api/public/research-reports/` | Published reports | Public, cached 2 min |
+| GET | `/api/public/research-reports/{slug}/` | One report with its blocks | Public, cached 2 min |
+
+**Two things worth knowing before changing these.**
+
+*Refunds never trust the browser.* `refund_registration` re-reads the payment
+from Razorpay and refuses anything above what is genuinely refundable, so a
+stale screen cannot over-refund. A partial refund is recorded as
+`partially_refunded` rather than `refunded`, which keeps the till balanced.
+
+*Registrant lookups accept several slug spellings.* `_slug_variants` exists
+because the browser slugifies `Pakistan's` to `pakistan-s` while Django's
+`slugify` gives `pakistans`. Rows written under one spelling were invisible to
+a lookup using the other — an audience of zero for a webinar that had paid
+registrants. Any new query against `registrations.event_id` should go through
+it rather than matching a single key.
