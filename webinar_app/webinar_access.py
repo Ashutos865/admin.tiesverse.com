@@ -121,6 +121,44 @@ class WebinarEventPermission(BasePermission):
         return webinar_can(request.user, 'edit_event')
 
 
+class EventSpeakerPermission(BasePermission):
+    """Speakers: either the webinar capability OR the Django model permission.
+
+    Guest speakers are edited from the webinar screen's Guest Speaker tab, but
+    the endpoint behind it belongs to tiesverse_app and was gated purely on
+    Django model permissions. Granting somebody "Manage speakers" in the
+    webinar access grid therefore changed nothing, and they were refused by a
+    tab the grid said they could use.
+
+    Both authorities are accepted rather than replacing one with the other, so
+    existing model-permission holders (the landing-page editors, who add
+    speakers with no webinar attached) keep working exactly as before.
+    """
+    message = 'You do not have permission to manage speakers.'
+
+    _PERMS = {
+        'GET': 'tiesverse_app.view_eventspeaker',
+        'POST': 'tiesverse_app.add_eventspeaker',
+        'PUT': 'tiesverse_app.change_eventspeaker',
+        'PATCH': 'tiesverse_app.change_eventspeaker',
+        'DELETE': 'tiesverse_app.delete_eventspeaker',
+    }
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not getattr(user, 'is_authenticated', False):
+            return False
+        if request.method in ('OPTIONS', 'HEAD'):
+            return True
+        if request.method in ('GET',):
+            if webinar_can(user, 'view') or webinar_can(user, 'manage_speakers'):
+                return True
+        elif webinar_can(user, 'manage_speakers'):
+            return True
+        perm = self._PERMS.get(request.method)
+        return bool(perm and user.has_perm(perm))
+
+
 def require_webinar_cap(cap):
     """Decorator for @api_view functions — 403 unless the caller has `cap`."""
     def deco(view):

@@ -245,6 +245,33 @@ def get_event_guests(event_id):
         return None
 
 
+def remove_guest(event_id, email, send_update=True):
+    """Take one attendee off an existing event. Returns True on success (and
+    when they were not on it to begin with). Never raises."""
+    if not (event_id and email):
+        return False
+    creds = _credentials()
+    if creds is None:
+        return False
+    try:
+        from googleapiclient.discovery import build
+        service = build('calendar', 'v3', credentials=creds, cache_discovery=False)
+        ev = service.events().get(calendarId='primary', eventId=event_id).execute()
+        attendees = ev.get('attendees', []) or []
+        kept = [a for a in attendees
+                if (a.get('email') or '').lower() != email.lower()]
+        if len(kept) == len(attendees):
+            return True  # not on the list; nothing to do
+        service.events().patch(
+            calendarId='primary', eventId=event_id,
+            body={'attendees': kept},
+            sendUpdates='all' if send_update else 'none',
+        ).execute()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def add_guest(event_id, email, send_update=True):
     """Add one attendee (paid registrant) to an existing event and email them.
     Returns True on success. Never raises."""

@@ -619,6 +619,34 @@ def create_payment_order(request):
     })
 
 
+def _add_paid_registrant_to_meeting(row):
+    """Put a paid registrant on the webinar's Meet and return its link.
+
+    Every path that marks a payment as paid calls this, because a registrant
+    who paid through one route is no less entitled to the meeting than one who
+    paid through another: the browser's verify step and Razorpay's webhook can
+    each be the one that lands first, and the webhook used to mark the row paid
+    without ever inviting anybody.
+
+    Returns '' when there is nothing to join yet — the meeting may not have
+    been generated at the time of payment, which is what
+    `backfill_meeting_guests` exists to repair afterwards.
+    """
+    email = (row or {}).get('email') or ''
+    try:
+        from config import google_calendar
+        ev = _find_event_registration(
+            event_key=(row or {}).get('event_id') or (row or {}).get('event_title'))
+        if not ev:
+            return ''
+        if ev.calendar_event_id and email:
+            google_calendar.add_guest(ev.calendar_event_id, email)
+        return ev.meeting_link or ''
+    except Exception:  # noqa: BLE001
+        logger.exception('Could not add %s to the meeting', email)
+        return ''
+
+
 # ── Razorpay: verify payment ───────────────────────────────────────────────────
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -663,16 +691,7 @@ def verify_payment(request):
     email_sent = False
     if row:
         # Paid registrant → add them as a guest on the webinar's Meet + send the link.
-        meeting_link = ''
-        try:
-            from config import google_calendar
-            ev = _find_event_registration(event_key=row.get('event_id') or row.get('event_title'))
-            if ev:
-                meeting_link = ev.meeting_link or ''
-                if ev.calendar_event_id and row.get('email'):
-                    google_calendar.add_guest(ev.calendar_event_id, row.get('email'))
-        except Exception:  # noqa: BLE001
-            pass
+        meeting_link = _add_paid_registrant_to_meeting(row)
         email_sent = send_registration_confirmation(
             to_email=row.get('email', ''),
             name=row.get('name', 'Guest'),
@@ -728,6 +747,16 @@ def razorpay_webhook(request):
                 {'pid': payment_id, 'oid': order_id},
             )
             logger.info('Webhook: marked order %s as paid', order_id)
+            # Marking the row paid is not the whole job: the registrant still
+            # has to be invited to the meeting. This path used to stop at the
+            # UPDATE, so anyone whose payment was confirmed by the webhook
+            # rather than by the browser never reached the guest list.
+            rows = turso_client.execute(
+                'SELECT * FROM registrations WHERE razorpay_order_id=:oid LIMIT 1',
+                {'oid': order_id},
+            )
+            if rows:
+                _add_paid_registrant_to_meeting(rows[0])
         except turso_client.TursoError as exc:
             logger.warning('Webhook Turso update failed: %s', exc)
 
@@ -793,8 +822,12 @@ def _apply_refund_to_registration(*, payment_id, refund_id, refund_amount,
         return ''
 
     row = rows[0]
-    # Amounts are stored in rupees on the row but Razorpay speaks paise.
-    charged_paise = int(row.get('final_amount') or row.get('amount') or 0) * 100
+    # Both sides are already in paise: the row stores what Razorpay charged
+    # (a 99-rupee ticket is amount=9900), and refunds come back in paise too.
+    # This used to multiply the row by 100 before comparing, so a full refund
+    # was measured against a hundred times the real price and every completed
+    # refund was recorded as "partially_refunded".
+    charged_paise = int(row.get('final_amount') or row.get('amount') or 0)
     already = int(row.get('refund_amount') or 0)
     total_refunded = already + int(refund_amount or 0) if refund_status != 'failed' else already
 
@@ -1791,6 +1824,52 @@ def webinar_meeting_guests(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @require_webinar_cap('manage_meeting')
+def webinar_meeting_guest_manage(request):
+    """Add or remove one guest on a webinar's meeting, or sync every paid one.
+
+    Body: { event_key|event_pk, action: 'add'|'remove'|'sync', email?,
+            notify?: bool }
+
+    'sync' invites every paid registrant who is missing — the repair for
+    anyone who paid before the meeting existed. 'notify' decides whether
+    Google emails the person about the change; it defaults to off so a
+    correction does not spam somebody who is already expecting to attend.
+    """
+    from config import google_calendar
+    data = request.data
+    obj = _find_event_registration(data.get('event_key'), data.get('event_pk'))
+    if obj is None:
+        return Response({'error': 'Webinar not found.'}, status=404)
+    if not obj.calendar_event_id:
+        return Response({'error': 'Generate the Meet link first — there is no '
+                                  'meeting to manage guests on yet.'}, status=400)
+
+    action = str(data.get('action') or '').strip().lower()
+    notify = bool(data.get('notify'))
+
+    if action == 'sync':
+        added = _backfill_meeting_guests(obj, send_update=notify)
+        return Response({'status': 'ok', 'action': 'sync', 'added': added})
+
+    email = str(data.get('email') or '').strip()
+    if not email:
+        return Response({'error': 'An email address is required.'}, status=400)
+    if action == 'add':
+        ok = google_calendar.add_guest(obj.calendar_event_id, email, send_update=notify)
+    elif action == 'remove':
+        ok = google_calendar.remove_guest(obj.calendar_event_id, email, send_update=notify)
+    else:
+        return Response({'error': "action must be 'add', 'remove' or 'sync'."}, status=400)
+
+    if not ok:
+        return Response({'error': 'Google rejected the change. The meeting may '
+                                  'have been deleted, or the address refused.'}, status=502)
+    return Response({'status': 'ok', 'action': action, 'email': email})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_meeting')
 def generate_webinar_meeting(request):
     """Create/refresh the single Google Meet for a webinar and store it on the event.
     Body: { event_key|event_pk, start (ISO 'YYYY-MM-DDTHH:MM'), duration_min,
@@ -1863,10 +1942,64 @@ def generate_webinar_meeting(request):
             dt = dj_timezone.make_aware(dt, dj_timezone.get_current_timezone())
         obj.meeting_start = dt
     obj.save()
+    # Anyone who paid before the meeting existed was never invited: there was
+    # no calendar event to add them to at the time. Generating the meeting is
+    # the first moment they can be, so sweep them in now rather than leaving
+    # paid registrants off the guest list forever.
+    backfilled = _backfill_meeting_guests(obj)
     return Response({
         'meeting_link': obj.meeting_link, 'event_id': obj.calendar_event_id,
         'start': start, 'host_controls_applied': controls_applied,
+        'guests_backfilled': backfilled,
     })
+
+
+def _paid_registrant_emails(ev):
+    """Everyone who has paid for this webinar and not been refunded.
+
+    A refunded registrant is deliberately excluded: they no longer hold a
+    ticket, so they should not be carried into the meeting.
+    """
+    if not turso_client.is_configured():
+        return []
+    keys = [k for k in {slugify(ev.title or ''), (ev.title or '').strip()} if k]
+    found, seen = [], set()
+    for key in keys:
+        try:
+            rows = turso_client.execute(
+                """SELECT email, payment_status FROM registrations
+                   WHERE (event_id=:k OR event_title=:k)
+                     AND payment_status IN ('paid','partially_refunded')""",
+                {'k': key},
+            ) or []
+        except turso_client.TursoError:
+            continue
+        for r in rows:
+            email = (r.get('email') or '').strip()
+            if email and email.lower() not in seen:
+                seen.add(email.lower())
+                found.append(email)
+    return found
+
+
+def _backfill_meeting_guests(ev, send_update=False):
+    """Invite every paid registrant who is not already on the meeting.
+
+    add_guest is a no-op for anyone already invited, so this is safe to run
+    repeatedly. Returns how many were added.
+    """
+    if not ev.calendar_event_id:
+        return 0
+    from config import google_calendar
+    added = 0
+    for email in _paid_registrant_emails(ev):
+        try:
+            if google_calendar.add_guest(ev.calendar_event_id, email,
+                                         send_update=send_update):
+                added += 1
+        except Exception:  # noqa: BLE001
+            logger.exception('Backfill could not add %s', email)
+    return added
 
 
 @api_view(['POST'])

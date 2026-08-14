@@ -12,7 +12,7 @@ from .views import (
     event_certificate_link,
     list_public_events,
     webinar_broadcast, webinar_send_history,
-    generate_webinar_meeting, webinar_meeting_guests,
+    generate_webinar_meeting, webinar_meeting_guests, webinar_meeting_guest_manage,
     webinar_revenue,
     webinar_my_access, webinar_access_admin,
 )
@@ -62,6 +62,7 @@ urlpatterns = [
     # Meeting (one Google Meet per event)
     path('generate-meeting/', generate_webinar_meeting, name='webinar-generate-meeting'),
     path('meeting-guests/', webinar_meeting_guests, name='webinar-meeting-guests'),
+    path('meeting-guests/manage/', webinar_meeting_guest_manage, name='webinar-meeting-guest-manage'),
 
     # Registration QR (PNG) for posters and slides
     path('registration-qr/', webinar_registration_qr, name='webinar-registration-qr'),

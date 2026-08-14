@@ -409,6 +409,11 @@ export const getWebinarSendHistory = (event_key) =>
 export const refundRegistration = (payload) => adminFetch(`/api/webinar/refund/`, 'POST', payload);
 export const syncRegistrationPayment = (payload) => adminFetch(`/api/webinar/sync-payment/`, 'POST', payload);
 
+// Meeting guest list: add or remove one person, or sweep in every paid
+// registrant who is missing (action: 'add' | 'remove' | 'sync').
+export const manageMeetingGuest = (payload) =>
+  adminFetch('/api/webinar/meeting-guests/manage/', 'POST', payload);
+
 // Webinar granular access control
 export const getWebinarMyAccess = () =>
   adminFetch('/api/webinar/my-access/').catch(() => ({ capabilities: [], can_grant: false, all_capabilities: [] }));

@@ -8,7 +8,7 @@ import {
 import {
   createEventRegistration, deleteEventRegistration,
   updateEventRegistration, getEventRegistrations,
-  refundRegistration, syncRegistrationPayment,
+  refundRegistration, syncRegistrationPayment, manageMeetingGuest,
   getFormQuestions, createFormQuestion, updateFormQuestion,
   deleteFormQuestion, reorderFormQuestions,
   getEventGuests, createEventSpeaker, deleteEventSpeaker, webinarRegistrationQrUrl,
@@ -388,11 +388,34 @@ function SourceBreakdown({ rows }) {
  * person and the sum. "Check with Razorpay" re-reads the payment for rows that
  * drifted (a refund issued from Razorpay's own dashboard, say).
  */
-function RefundPanel({ row, paidAmount, onDone, setMsg }) {
+function RefundPanel({ row, paidAmount, eventKey, onDone, setMsg }) {
   const [open, setOpen]     = useState(false);
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy]     = useState(false);
+
+  /* Refunding somebody does not decide whether they should still be in the
+     room: a partial refund often means they are still coming, and a full one
+     usually means they are not. Rather than guess, the guest list is left to
+     be set here by hand, next to the refund that prompted the question. */
+  const setGuest = async (action) => {
+    const email = (row.email || '').trim();
+    if (!email) return setMsg('That registration has no email address.');
+    const who = row.name ? `${row.name} (${email})` : email;
+    if (!window.confirm(
+      action === 'add'
+        ? `Add ${who} to the meeting guest list?\n\nThey will be able to join the Meet.`
+        : `Remove ${who} from the meeting guest list?\n\nThey will no longer be able to join the Meet.`,
+    )) return;
+    setBusy(true);
+    const res = await manageMeetingGuest({ event_key: eventKey, action, email, notify: false });
+    setBusy(false);
+    if (res?.status === 'ok') {
+      setMsg(action === 'add' ? `${email} added to the guest list.` : `${email} removed from the guest list.`);
+    } else {
+      setMsg(res?.error || 'Could not update the guest list.');
+    }
+  };
 
   const refundedRupees = Math.round(Number(row.refund_amount || 0) / 100);
   const remaining = Math.max(0, paidAmount - refundedRupees);
@@ -452,6 +475,17 @@ function RefundPanel({ row, paidAmount, onDone, setMsg }) {
         {fullyRefunded && (
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>FULLY REFUNDED</span>
         )}
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+        <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>Meeting guest list</span>
+        <button type="button" className="ww-btn ww-btn-ghost" onClick={() => setGuest('add')} disabled={busy}
+          style={{ padding: '5px 11px', fontSize: 12 }}>
+          Add to guest list
+        </button>
+        <button type="button" className="ww-btn ww-btn-ghost" onClick={() => setGuest('remove')} disabled={busy}
+          style={{ padding: '5px 11px', fontSize: 12, color: '#dc2626', borderColor: '#dc2626' }}>
+          Remove from guest list
+        </button>
       </div>
       {row.refund_notes && (
         <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--text-muted)' }}>{row.refund_notes}</p>
@@ -679,7 +713,7 @@ function RegistrationsTab({ item }) {
                               </div>
                             )}
                             {r.razorpay_payment_id && (
-                              <RefundPanel row={r} paidAmount={amt} onDone={load} setMsg={setMsg} />
+                              <RefundPanel row={r} paidAmount={amt} eventKey={eKey} onDone={load} setMsg={setMsg} />
                             )}
                           </div>
                         </td>
@@ -1049,6 +1083,22 @@ function MeetingTab({ item, showToast }) {
   }, [item.id]);
   useEffect(() => { loadGuests(); }, [loadGuests]);
 
+  /* Anyone who paid before this meeting was generated was never invited —
+     there was no calendar event to invite them to. This invites whoever is
+     still missing; it is safe to press repeatedly, since adding somebody who
+     is already on the list does nothing. */
+  const syncPaidGuests = async () => {
+    setBusy(true);
+    const res = await manageMeetingGuest({ event_pk: item.id, action: 'sync', notify: false });
+    setBusy(false);
+    if (res?.status === 'ok') {
+      showToast?.(res.added
+        ? `${res.added} paid registrant${res.added === 1 ? '' : 's'} added to the guest list.`
+        : 'Every paid registrant is already on the guest list.', 'success');
+      loadGuests();
+    } else showToast?.(res?.error || 'Could not sync the guest list.', 'error');
+  };
+
   const generate = async () => {
     if (!start) return showToast?.('Pick a meeting date and time.', 'error');
     setBusy(true);
@@ -1125,10 +1175,18 @@ function MeetingTab({ item, showToast }) {
               color: guestInfo.guests_can_see_other_guests ? '#075985' : '#6b7280' }}>
               {guestInfo.guests_can_see_other_guests ? '👁 Guests CAN see each other' : '🙈 Guests can’t see each other'}
             </span>
+            <button className="ww-btn ww-btn-ghost" onClick={syncPaidGuests} disabled={busy}
+              title="Invite any paid registrant who is not on the list yet"
+              style={{ padding: '4px 10px', fontSize: 12 }}>
+              Sync paid registrants
+            </button>
             <button className="ww-btn ww-btn-ghost" onClick={loadGuests} title="Refresh" style={{ padding: '4px 10px' }}>↺</button>
           </div>
           {(guestInfo.attendees || []).length === 0 ? (
-            <p className="ww-tab-hint" style={{ margin: 0 }}>No guests yet. Hosts appear here after generating; paid registrants are added automatically when they pay.</p>
+            <p className="ww-tab-hint" style={{ margin: 0 }}>
+              No guests yet. Hosts appear here after generating, and paid registrants are added when they pay.
+              Anyone who paid before this meeting was generated can be swept in with “Sync paid registrants”.
+            </p>
           ) : (
             <div style={{ display: 'grid', gap: 4 }}>
               {guestInfo.attendees.map((a) => (

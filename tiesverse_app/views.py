@@ -10,6 +10,7 @@ from .serializers import (
     WebinarListingSerializer, TechProductSerializer, BrandSerializer, MediaPostSerializer,
 )
 from . import supabase_sync
+from webinar_app.webinar_access import EventSpeakerPermission
 
 
 class StaffModelPermissions(DjangoModelPermissions):
@@ -68,7 +69,10 @@ def _sync_listing_speakers(ev):
 class EventSpeakerViewSet(SupabaseSyncMixin, viewsets.ModelViewSet):
     queryset = EventSpeaker.objects.all().order_by('-created_at')
     serializer_class = EventSpeakerSerializer
-    permission_classes = [IsAuthenticated, StaffModelPermissions]
+    # Accepts the webinar 'manage_speakers' capability as well as the Django
+    # model permission: this is the endpoint behind the webinar screen's Guest
+    # Speaker tab, so a grant made there has to actually work here.
+    permission_classes = [EventSpeakerPermission]
 
     def get_queryset(self):
         qs = super().get_queryset()
