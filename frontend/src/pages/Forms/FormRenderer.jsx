@@ -142,9 +142,19 @@ export function TiesFooter({ show = true }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 10 }}>
       <span style={{ background: 'rgba(255,255,255,.9)', border: '1px solid rgba(0,0,0,.06)', borderRadius: 999, padding: '6px 15px', fontSize: 12.5, color: '#555', boxShadow: '0 6px 18px -10px rgba(0,0,0,.3)', backdropFilter: 'blur(4px)' }}>
-        {/* The orange heart is an emoji, not a coloured glyph: it renders the
-            same everywhere rather than depending on a colour we set. */}
-        Made with 🧡 by <strong style={{ color: '#161616', fontWeight: 800 }}>Tech@TIES</strong>
+        {/* An image, not the 🧡 character: every platform draws its own orange
+            heart, so on Windows and Android the mark would not match the one
+            used everywhere else. The alt text keeps it readable if the image
+            ever fails to load. */}
+        Made with{' '}
+        <img
+          src="/emoji/orange-heart.png"
+          alt="love"
+          width={14}
+          height={14}
+          style={{ display: 'inline-block', verticalAlign: '-2px', margin: '0 1px' }}
+        />{' '}
+        by <strong style={{ color: '#161616', fontWeight: 800 }}>Tech@TIES</strong>
       </span>
     </div>
   );
