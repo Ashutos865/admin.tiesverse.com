@@ -403,6 +403,18 @@ function SourceBreakdown({ rows }) {
  * person and the sum. "Check with Razorpay" re-reads the payment for rows that
  * drifted (a refund issued from Razorpay's own dashboard, say).
  */
+/** Answers to the admin's own questions, as [question, answer] pairs.
+ *  Anything unreadable is skipped rather than thrown: one malformed row must
+ *  not take the whole registrations list down with it. */
+function parseCustomAnswers(raw) {
+  if (!raw) return [];
+  try {
+    const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!obj || typeof obj !== 'object') return [];
+    return Object.entries(obj).filter(([q, a]) => q && a);
+  } catch { return []; }
+}
+
 function RefundPanel({ row, paidAmount, eventKey, onDone, setMsg }) {
   const [open, setOpen]     = useState(false);
   const [amount, setAmount] = useState('');
@@ -727,6 +739,15 @@ function RegistrationsTab({ item }) {
                                 <p>{r.speaker_question}</p>
                               </div>
                             )}
+                            {/* Answers to questions added in the Form Questions
+                                tab. Stored against the wording used at the time,
+                                so a later rename does not relabel an old reply. */}
+                            {parseCustomAnswers(r.custom_answers).map(([q, a]) => (
+                              <div className="ww-reg-exp-qa" key={q}>
+                                <label>{q}</label>
+                                <p>{a}</p>
+                              </div>
+                            ))}
                             {r.razorpay_payment_id && (
                               <RefundPanel row={r} paidAmount={amt} eventKey={eKey} onDone={load} setMsg={setMsg} />
                             )}
