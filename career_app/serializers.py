@@ -289,9 +289,10 @@ class FormResponseSerializer(serializers.ModelSerializer):
         model = FormResponse
         fields = [
             'id', 'form', 'answers', 'submitter_name', 'submitter_email',
-            'submitted_by_user', 'submitted_at',
+            'submitted_by_user', 'submitted_at', 'edited_at', 'edit_count',
+            'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'referrer',
         ]
-        read_only_fields = ['id', 'submitted_at']
+        read_only_fields = ['id', 'submitted_at', 'edited_at', 'edit_count']
 
 
 # ── Projects ──────────────────────────────────────────────────────────────────

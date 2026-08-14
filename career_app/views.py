@@ -3670,6 +3670,12 @@ def _accept_form_response(request, form, is_public):
         # on a form that does not cannot be reopened even if a token leaked,
         # because there is nothing to leak.
         edit_token=(secrets.token_urlsafe(32) if settings_json.get('allow_edit') else ''),
+        # Trimmed: these arrive from a query string anyone can edit.
+        utm_source=str(request.data.get('utm_source') or '')[:80],
+        utm_medium=str(request.data.get('utm_medium') or '')[:80],
+        utm_campaign=str(request.data.get('utm_campaign') or '')[:120],
+        utm_content=str(request.data.get('utm_content') or '')[:120],
+        referrer=str(request.data.get('referrer') or '')[:300],
     )
 
     # Send the submitter a confirmation receipt (opt-out via settings).

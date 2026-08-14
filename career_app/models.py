@@ -1309,6 +1309,14 @@ class FormResponse(models.Model):
     edit_token = models.CharField(max_length=64, blank=True, default='', db_index=True)
     edited_at = models.DateTimeField(null=True, blank=True)
     edit_count = models.PositiveIntegerField(default=0)
+    # Which shared link brought this person here. Captured from the query
+    # string on arrival, so it answers "where should we post next time" with
+    # something better than a guess.
+    utm_source = models.CharField(max_length=80, blank=True, default='', db_index=True)
+    utm_medium = models.CharField(max_length=80, blank=True, default='')
+    utm_campaign = models.CharField(max_length=120, blank=True, default='')
+    utm_content = models.CharField(max_length=120, blank=True, default='')
+    referrer = models.CharField(max_length=300, blank=True, default='')
 
     class Meta:
         db_table = 'form_responses'

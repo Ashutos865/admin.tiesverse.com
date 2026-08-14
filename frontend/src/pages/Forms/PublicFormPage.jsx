@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { getPublicForm, submitPublicForm } from '../../apiClient';
 import { mergeTheme } from './formConfig';
 import FormFill from './FormFill';
+import { captureFormAttribution, getFormAttribution } from './attribution';
 
 /**
  * Public fill page — anyone with /f/:token can open and submit (no login).
@@ -15,6 +16,8 @@ export default function PublicFormPage() {
 
   // Tab title: show "Forms" (or the form's name), not the app's "Tiesverse Admin".
   useEffect(() => { document.title = 'Forms'; }, []);
+  // Record the campaign link before anything can drop the query string.
+  useEffect(() => { captureFormAttribution(); }, []);
   useEffect(() => { if (form?.title) document.title = `${form.title} · Forms`; }, [form]);
 
   useEffect(() => {
@@ -36,7 +39,7 @@ export default function PublicFormPage() {
   );
 
   // Skip the name/email block entirely for anonymous forms (reviews/feedback).
-  return <FormFill form={form} submitFn={(answers, identity) => submitPublicForm(token, { answers, ...identity })} askIdentity={!form.anonymous} />;
+  return <FormFill form={form} submitFn={(answers, identity) => submitPublicForm(token, { answers, ...identity, ...getFormAttribution() })} askIdentity={!form.anonymous} />;
 }
 
 function Center({ children }) {

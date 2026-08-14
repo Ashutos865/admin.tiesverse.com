@@ -4,6 +4,8 @@ import { ArrowLeft, Download, Eye, Inbox, X } from 'lucide-react';
 import { getFormResponses, exportFormResponsesCsv } from '../../apiClient';
 import { isStatic } from './formConfig';
 import { useMe } from '../../context/MeContext';
+import FormAnalytics from './FormAnalytics';
+import FormShare from './FormShare';
 
 export default function FormResponsesPage() {
   const { id } = useParams();
@@ -50,6 +52,14 @@ export default function FormResponsesPage() {
         )}
       </div>
 
+      {form.visibility === 'public' && form.token && (
+        <div style={{ marginBottom: 14 }}>
+          <FormShare publicUrl={`${window.location.origin}/f/${form.token}`} formTitle={form.title} />
+        </div>
+      )}
+
+      <FormAnalytics responses={responses} />
+
       {responses.length === 0 ? (
         <div style={S.empty}>
           <Inbox size={40} style={{ color: '#cbd0d8', marginBottom: 10 }} />
@@ -62,6 +72,7 @@ export default function FormResponsesPage() {
               <tr>
                 <th style={S.th}>Submitted</th>
                 <th style={S.th}>Name</th>
+                <th style={S.th}>Came from</th>
                 {fields.map(f => <th key={f.id} style={S.th}>{f.label || 'Untitled'}</th>)}
                 <th style={S.th}></th>
               </tr>
@@ -71,6 +82,14 @@ export default function FormResponsesPage() {
                 <tr key={r.id} style={S.tr}>
                   <td style={S.td}>{r.submitted_at ? new Date(r.submitted_at).toLocaleString() : ''}</td>
                   <td style={S.td}>{r.submitter_name || <span style={{ color: '#9ca3af' }}>—</span>}</td>
+                  <td style={S.td}>
+                    {r.utm_source
+                      ? <span title={[r.utm_medium, r.utm_campaign].filter(Boolean).join(' · ')}
+                          style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: '#0d0d0d', color: '#fff', whiteSpace: 'nowrap' }}>
+                          {r.utm_source}
+                        </span>
+                      : <span style={{ color: '#cbd0d8' }}>—</span>}
+                  </td>
                   {fields.map(f => <td key={f.id} style={S.td}>{cell(r, f) || <span style={{ color: '#cbd0d8' }}>—</span>}</td>)}
                   <td style={S.td}>
                     <button style={S.viewBtn} onClick={() => setViewing(r)}><Eye size={14} /></button>
