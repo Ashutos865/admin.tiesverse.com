@@ -594,6 +594,15 @@ function RegistrationsTab({ item }) {
                         <span className="ww-reg-name">{r.name || '—'}</span>
                         <span className="ww-reg-sub">{r.email}</span>
                         {r.phone && <span className="ww-reg-sub">{r.phone}</span>}
+                        {/* On the row itself, not only in the expanded panel:
+                            the whole point of a tagged link is being able to
+                            see at a glance which one brought someone. */}
+                        {r.utm_source && (
+                          <span className="ww-badge ww-badge-blue" style={{ marginTop: 4, display: 'inline-block' }}
+                            title={[r.utm_medium, r.utm_campaign].filter(Boolean).join(' · ')}>
+                            via {r.utm_source}
+                          </span>
+                        )}
                       </td>
                       <td>
                         <span className="ww-reg-role">{r.role || '—'}</span>
