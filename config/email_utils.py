@@ -52,7 +52,7 @@ def render_email(
     """
     paragraphs = paragraphs or []
     body_html = ''.join(
-        f'<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#374151;">{p}</p>'
+        f'<p style="margin:0 0 15px;font-size:15px;line-height:1.65;color:#3f3f46;">{p}</p>'
         for p in paragraphs
     )
 
@@ -77,7 +77,7 @@ def render_email(
     if button_label and button_url:
         button_html = (
             f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 20px;">'
-            f'<tr><td style="border-radius:10px;background:{BRAND_PRIMARY};">'
+            f'<tr><td style="border-radius:10px;background:#0d0d0d;">'
             f'<a href="{button_url}" target="_blank" '
             f'style="display:inline-block;padding:12px 28px;font-size:15px;font-weight:600;'
             f'color:#ffffff;text-decoration:none;border-radius:10px;">{button_label}</a>'
@@ -101,28 +101,28 @@ def render_email(
     _footer_line = (
         f'© {BRAND_NAME}'
         if repliable
-        else f'© {BRAND_NAME}. This is an automated message — please do not reply.'
+        else f'© {BRAND_NAME}. This is an automated message, please do not reply.'
     )
 
     html = f"""\
 <!doctype html>
 <html>
-<body style="margin:0;padding:0;background:#f3f4f6;">
+<body style="margin:0;padding:0;background:#f6f6f7;">
 {preheader_html}
-<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f3f4f6;padding:32px 12px;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f6f6f7;padding:36px 12px;">
 <tr><td align="center">
-<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);">
-<tr><td style="background:linear-gradient(135deg,{BRAND_PRIMARY},{BRAND_PRIMARY_DARK});padding:24px 32px;">
-<span style="font-size:18px;font-weight:800;color:#ffffff;letter-spacing:.02em;">{BRAND_NAME}</span>
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e8e8ea;">
+<tr><td style="background:#0d0d0d;padding:26px 32px;">
+<span style="font-size:19px;font-weight:700;color:#ffffff;letter-spacing:-.01em;">.ties<span style="color:{BRAND_PRIMARY};">verse</span></span>
 </td></tr>
 <tr><td style="padding:32px;">
-<h1 style="margin:0 0 20px;font-size:20px;font-weight:800;color:#111827;">{heading}</h1>
+<h1 style="margin:0 0 18px;font-size:21px;font-weight:700;color:#0d0d0d;letter-spacing:-.01em;">{heading}</h1>
 {body_html}
 {rows_html}
 {button_html}
 {footer_html}
 </td></tr>
-<tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #eef0f3;">
+<tr><td style="padding:18px 32px;background:#fafafa;border-top:1px solid #eeeef0;">
 <p style="margin:0;font-size:12px;color:#9ca3af;">{_footer_line}</p>
 </td></tr>
 </table>

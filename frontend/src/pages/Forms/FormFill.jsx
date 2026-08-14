@@ -78,7 +78,7 @@ export default function FormFill({ form, submitFn, askIdentity, initialValues, e
       setReviewing(false);
       setDone(editing
         ? 'Your response has been updated.'
-        : (res.thank_you || 'Thanks — your response has been recorded.'));
+        : (res.thank_you || 'Your response has been recorded.'));
     } else {
       // Stay on the review so nothing typed is lost to a failed request.
       setSubmitError(res?.error || 'Could not submit. Please try again.');
@@ -109,10 +109,14 @@ export default function FormFill({ form, submitFn, askIdentity, initialValues, e
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', fontFamily: fontStack(theme.font), position: 'relative' }}>
         <div aria-hidden style={fixedBg} />
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, position: 'relative', zIndex: 1 }}>
-          <div style={{ background: '#fff', borderRadius: 24, padding: '44px 36px', maxWidth: 480, textAlign: 'center', boxShadow: '0 30px 80px -30px rgba(0,0,0,.45)', borderTop: `6px solid ${theme.accent}` }}>
-            <div style={{ fontSize: 56, lineHeight: 1, marginBottom: 10 }}>{s.thank_you_emoji || '🎉'}</div>
-            <h2 style={{ fontSize: 25, fontWeight: 800, margin: '0 0 10px', color: '#161616' }}>{s.thank_you_title || 'All done!'}</h2>
-            <p style={{ color: '#555', fontSize: 15.5, lineHeight: 1.65, margin: 0, whiteSpace: 'pre-wrap' }}>{done}</p>
+          <div style={{ background: '#fff', borderRadius: 16, padding: '40px 34px', maxWidth: 460, textAlign: 'center', border: '1px solid #e8e8ea', boxShadow: '0 18px 50px -28px rgba(0,0,0,.3)' }}>
+            {s.thank_you_emoji ? (
+              <div style={{ fontSize: 52, lineHeight: 1, marginBottom: 12 }}>{s.thank_you_emoji}</div>
+            ) : (
+              <div style={{ width: 46, height: 46, margin: '0 auto 16px', borderRadius: '50%', background: '#0d0d0d', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 22 }}>✓</div>
+            )}
+            <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 8px', color: '#0d0d0d', letterSpacing: '-.01em' }}>{s.thank_you_title || 'Response received'}</h2>
+            <p style={{ color: '#52525b', fontSize: 15, lineHeight: 1.65, margin: 0, whiteSpace: 'pre-wrap' }}>{done}</p>
             {s.thank_you_button_text && s.thank_you_button_url ? (
               <a href={s.thank_you_button_url} target="_blank" rel="noreferrer"
                 style={{ display: 'inline-block', marginTop: 24, background: theme.accent, color: '#fff', padding: '13px 28px', borderRadius: 12, fontWeight: 700, fontSize: 15, textDecoration: 'none', boxShadow: `0 14px 30px -12px ${theme.accent}` }}>
