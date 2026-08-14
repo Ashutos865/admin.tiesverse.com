@@ -11,6 +11,8 @@ import {
   refundRegistration, syncRegistrationPayment, manageMeetingGuest,
   getFormQuestions, createFormQuestion, updateFormQuestion,
   deleteFormQuestion, reorderFormQuestions,
+  getFormSections, createFormSection, updateFormSection,
+  deleteFormSection, reorderFormSections,
   getEventGuests, createEventSpeaker, deleteEventSpeaker, webinarRegistrationQrUrl,
   getWebinarRegistrationsFull, markAttended,
   webinarBroadcast, getWebinarSendHistory, getWebinarMyAccess,
@@ -64,16 +66,16 @@ const autoCertSource = (varName) => {
 };
 
 const makeDefaultQuestions = (eKey, eType) => [
-  { label: 'Full Name',                    field_type: 'text',     required: true,  order: 0, placeholder: 'Your full name',                   event_key: eKey, event_type: eType },
-  { label: 'Email Address',                field_type: 'email',    required: true,  order: 1, placeholder: 'you@example.com',                   event_key: eKey, event_type: eType },
-  { label: 'WhatsApp Number',              field_type: 'phone',    required: true,  order: 2, placeholder: 'Include country code (e.g. +91)',    event_key: eKey, event_type: eType },
-  { label: 'Current Role',                 field_type: 'select',   required: true,  order: 3, placeholder: 'Select your role',                   options: 'College Student,Working Professional,Researcher / Analyst,NGO / Non-Profit,Teacher / Professor,Other', event_key: eKey, event_type: eType },
-  { label: 'Organization / University',    field_type: 'text',     required: true,  order: 4, placeholder: 'Where do you study or work?',        event_key: eKey, event_type: eType },
-  { label: 'Country',                      field_type: 'text',     required: true,  order: 5, placeholder: 'e.g. India',                         event_key: eKey, event_type: eType },
-  { label: 'City',                         field_type: 'text',     required: true,  order: 6, placeholder: 'e.g. New Delhi',                     event_key: eKey, event_type: eType },
-  { label: 'How did you hear about this?', field_type: 'select',   required: true,  order: 7, placeholder: 'Select one',                         options: 'LinkedIn,X / Twitter,Instagram,Email from TIES,TIES Website,Referral', event_key: eKey, event_type: eType },
-  { label: 'What do you hope to learn?',   field_type: 'textarea', required: true,  order: 8, placeholder: 'Your interest in this session…', event_key: eKey, event_type: eType },
-  { label: 'Question for the Speaker',     field_type: 'textarea', required: false, order: 9, placeholder: 'Ask a targeted question (optional)', event_key: eKey, event_type: eType },
+  { label: 'Full Name',                    field_type: 'text',     required: true,  order: 0, section: 1, maps_to: 'name',             placeholder: 'Your full name',                   event_key: eKey, event_type: eType },
+  { label: 'Email Address',                field_type: 'email',    required: true,  order: 1, section: 1, maps_to: 'email',            placeholder: 'you@example.com',                   event_key: eKey, event_type: eType },
+  { label: 'WhatsApp Number',              field_type: 'phone',    required: true,  order: 2, section: 1, maps_to: 'phone',            placeholder: 'Include country code (e.g. +91)',    event_key: eKey, event_type: eType },
+  { label: 'Current Role',                 field_type: 'select',   required: true,  order: 3, section: 2, maps_to: 'role',             placeholder: 'Select your role',                   options: 'College Student,Working Professional,Researcher / Analyst,NGO / Non-Profit,Teacher / Professor,Other', event_key: eKey, event_type: eType },
+  { label: 'Organization / University',    field_type: 'text',     required: true,  order: 4, section: 2, maps_to: 'organization',     placeholder: 'Where do you study or work?',        event_key: eKey, event_type: eType },
+  { label: 'Country',                      field_type: 'text',     required: true,  order: 5, section: 2, maps_to: 'country',          placeholder: 'e.g. India',                         event_key: eKey, event_type: eType },
+  { label: 'City',                         field_type: 'text',     required: true,  order: 6, section: 2, maps_to: 'city',             placeholder: 'e.g. New Delhi',                     event_key: eKey, event_type: eType },
+  { label: 'How did you hear about this?', field_type: 'select',   required: true,  order: 7, section: 3, maps_to: 'source',           placeholder: 'Select one',                         options: 'LinkedIn,X / Twitter,Instagram,Email from TIES,TIES Website,Referral', event_key: eKey, event_type: eType },
+  { label: 'What do you hope to learn?',   field_type: 'textarea', required: true,  order: 8, section: 3, maps_to: 'expectations',     placeholder: 'Your interest in this session…', event_key: eKey, event_type: eType },
+  { label: 'Question for the Speaker',     field_type: 'textarea', required: false, order: 9, section: 3, maps_to: 'speaker_question', placeholder: 'Ask a targeted question (optional)', event_key: eKey, event_type: eType },
 ];
 
 const previewUrl = (kind, title) =>
@@ -113,7 +115,7 @@ function listingStartLocal(item) {
   const p = (n) => String(n).padStart(2, '0');
   return `${d.y}-${p(d.mo + 1)}-${p(d.d)}T${p(tm.h)}:${p(tm.min)}`;
 }
-const EMPTY_Q = { label: '', field_type: 'text', placeholder: '', options: '', required: true };
+const EMPTY_Q = { label: '', field_type: 'text', placeholder: '', options: '', required: true , section: 1 };
 const EMPTY_SPEAKER = { name: '', role: '', org: '', photo_url: '', quote: '', featured: false };
 const FIELD_TYPES = [
   { value: 'text',     label: 'Short Text' },
@@ -780,10 +782,17 @@ function FormQuestionsTab({ item }) {
   const eType = item.kind === 'webinar' ? 'webinar' : 'workshop';
 
   const [seeding, setSeeding] = useState(false);
+  const [sections, setSections] = useState([]);
+  const [secModal, setSecModal] = useState(null);   // null | {mode, sec}
+  const [secForm, setSecForm]   = useState({ title: '', subtitle: '' });
 
   const load = useCallback(async (autoSeed = false) => {
     setLoading(true);
-    const data = await getFormQuestions(eKey, eType);
+    const [data, secs] = await Promise.all([
+      getFormQuestions(eKey, eType),
+      getFormSections(eKey, eType),
+    ]);
+    setSections(Array.isArray(secs) ? secs : []);
     const qs = Array.isArray(data) ? data : [];
     if (qs.length === 0 && autoSeed) {
       // First time this event has no questions — seed defaults silently
@@ -796,6 +805,54 @@ function FormQuestionsTab({ item }) {
     }
     setLoading(false);
   }, [eKey, eType]);
+
+  /* Section handling. The server assigns section numbers and refuses to
+     delete the last one, so this only has to ask. */
+  const saveSection = async () => {
+    const title = secForm.title.trim();
+    if (!title) return setMsg('A section needs a title.');
+    const res = secModal.mode === 'add'
+      ? await createFormSection({ event_key: eKey, event_type: eType, title, subtitle: secForm.subtitle })
+      : await updateFormSection(secModal.sec.id, { title, subtitle: secForm.subtitle });
+    if (res?.error) return setMsg(res.error);
+    setSecModal(null); setMsg(''); load();
+  };
+
+  const removeSection = async (sec) => {
+    const inIt = questions.filter(q => Number(q.section) === Number(sec.number)).length;
+    const warn = inIt
+      ? `Delete “${sec.title}”?\n\n${inIt} question${inIt === 1 ? '' : 's'} will move to the first section — nothing is deleted.`
+      : `Delete “${sec.title}”?`;
+    if (!window.confirm(warn)) return;
+    const res = await deleteFormSection(sec.id);
+    if (res?.error) return setMsg(res.error);
+    setMsg(''); load();
+  };
+
+  const moveSection = async (idx, dir) => {
+    const next = [...sections];
+    const swap = idx + dir;
+    if (swap < 0 || swap >= next.length) return;
+    [next[idx], next[swap]] = [next[swap], next[idx]];
+    setSections(next);
+    await reorderFormSections(next.map((sec, i) => ({ id: sec.id, order: i })));
+    load();
+  };
+
+  /* Sections as the admin sees them, with their questions attached. An
+     event that has never been edited has no rows of its own, so the server
+     describes the three the form has always had; those have no id and can
+     only be added to, not renamed, until the first real edit creates them. */
+  const grouped = (sections.length ? sections : []).map(sec => ({
+    ...sec,
+    questions: questions
+      .filter(q => Number(q.section || 1) === Number(sec.number))
+      .sort((a, b) => (a.order || 0) - (b.order || 0)),
+  }));
+  // Anything pointing at a section that no longer exists still has to be
+  // reachable, so it is shown rather than quietly hidden.
+  const orphans = questions.filter(
+    q => !sections.some(sec => Number(sec.number) === Number(q.section || 1)));
 
   useEffect(() => { load(true); }, [load]);
 
@@ -813,7 +870,12 @@ function FormQuestionsTab({ item }) {
   const save = async () => {
     if (!form.label.trim()) return setMsg('Label is required.');
     setSaving(true);
-    const payload = { ...form, event_key: eKey, event_type: eType, order: questions.length };
+    const payload = {
+      ...form, event_key: eKey, event_type: eType,
+      section: Number(form.section) || 1,
+      // A new question joins the end of the form; an edited one keeps its place.
+      ...(modal.mode === 'add' ? { order: questions.length } : {}),
+    };
     let res;
     if (modal.mode === 'add') {
       res = await createFormQuestion(payload);
@@ -826,7 +888,11 @@ function FormQuestionsTab({ item }) {
 
   const remove = async (id) => {
     if (!window.confirm('Delete this question?')) return;
-    await deleteFormQuestion(id);
+    const res = await deleteFormQuestion(id);
+    // The server refuses to remove the questions the mail automation depends
+    // on; say why rather than appearing to do nothing.
+    if (res?.error) return setMsg(res.error);
+    setMsg('');
     load();
   };
 
@@ -852,6 +918,9 @@ function FormQuestionsTab({ item }) {
               {seeding ? 'Seeding…' : <><Plus size={14}/> Seed defaults</>}
             </button>
           )}
+          <button className="ww-btn ww-btn-ghost" onClick={() => { setSecForm({ title: '', subtitle: '' }); setSecModal({ mode: 'add' }); }}>
+            <Plus size={14} /> Add Step
+          </button>
           <button className="ww-btn ww-btn-primary" onClick={openAdd}>
             <Plus size={15} /> Add Question
           </button>
@@ -869,24 +938,109 @@ function FormQuestionsTab({ item }) {
           </button>
         </div>
       ) : (
-        <div className="ww-q-list">
-          {questions.map((q, idx) => (
-            <div key={q.id} className="ww-q-card">
-              <div className="ww-q-info">
-                <span className="ww-q-label">{q.label}</span>
-                <span className="ww-q-meta">
-                  {FIELD_TYPES.find(f => f.value === q.field_type)?.label || q.field_type}
-                  {q.required && <span className="ww-badge ww-badge-red">Required</span>}
-                </span>
+        <div className="ww-sec-list">
+          {grouped.map((sec, si) => (
+            <div key={sec.id ?? `n${sec.number}`} className="ww-sec">
+              <div className="ww-sec-head">
+                <div>
+                  <span className="ww-sec-step">Step {si + 1}</span>
+                  <span className="ww-sec-title">{sec.title}</span>
+                  {sec.subtitle && <span className="ww-sec-sub">{sec.subtitle}</span>}
+                  <span className="ww-sec-count">
+                    {sec.questions.length} question{sec.questions.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <div className="ww-q-actions">
+                  <button onClick={() => moveSection(si, -1)} disabled={si === 0 || !sec.id} title="Move section up"><ChevronUp size={14}/></button>
+                  <button onClick={() => moveSection(si, 1)} disabled={si === grouped.length - 1 || !sec.id} title="Move section down"><ChevronDown size={14}/></button>
+                  <button onClick={() => { setSecForm({ title: sec.title, subtitle: sec.subtitle || '' }); setSecModal({ mode: 'edit', sec }); }}
+                    disabled={!sec.id} title={sec.id ? 'Rename section' : 'Add a section first to edit these'}><Edit2 size={14}/></button>
+                  <button onClick={() => removeSection(sec)} disabled={!sec.id}
+                    title="Delete section (its questions move, they are not deleted)"
+                    className="ww-btn-danger-icon"><Trash2 size={14}/></button>
+                </div>
               </div>
-              <div className="ww-q-actions">
-                <button onClick={() => move(idx, -1)} disabled={idx === 0} title="Move up"><ChevronUp size={14}/></button>
-                <button onClick={() => move(idx, 1)} disabled={idx === questions.length - 1} title="Move down"><ChevronDown size={14}/></button>
-                <button onClick={() => openEdit(q)} title="Edit"><Edit2 size={14}/></button>
-                <button onClick={() => remove(q.id)} title="Delete" className="ww-btn-danger-icon"><Trash2 size={14}/></button>
-              </div>
+
+              {sec.questions.length === 0 ? (
+                <p className="ww-sec-empty">No questions in this step yet.</p>
+              ) : sec.questions.map((q, idx) => (
+                <div key={q.id} className="ww-q-card">
+                  <div className="ww-q-info">
+                    <span className="ww-q-label">
+                      {q.label}
+                      {q.is_locked && (
+                        <span className="ww-badge ww-badge-lock" title="Every confirmation, reminder and certificate is addressed using this answer, so it cannot be removed. You can still reword it or move it to another step.">
+                          Permanent
+                        </span>
+                      )}
+                    </span>
+                    <span className="ww-q-meta">
+                      {FIELD_TYPES.find(f => f.value === q.field_type)?.label || q.field_type}
+                      {q.required && <span className="ww-badge ww-badge-red">Required</span>}
+                    </span>
+                  </div>
+                  <div className="ww-q-actions">
+                    <button onClick={() => move(questions.indexOf(q), -1)} disabled={idx === 0} title="Move up"><ChevronUp size={14}/></button>
+                    <button onClick={() => move(questions.indexOf(q), 1)} disabled={idx === sec.questions.length - 1} title="Move down"><ChevronDown size={14}/></button>
+                    <button onClick={() => openEdit(q)} title="Edit"><Edit2 size={14}/></button>
+                    <button onClick={() => remove(q.id)} title={q.is_locked ? 'This question cannot be removed' : 'Delete'}
+                      disabled={q.is_locked} className="ww-btn-danger-icon"><Trash2 size={14}/></button>
+                  </div>
+                </div>
+              ))}
             </div>
           ))}
+
+          {orphans.length > 0 && (
+            <div className="ww-sec">
+              <div className="ww-sec-head">
+                <div>
+                  <span className="ww-sec-title">Not in any step</span>
+                  <span className="ww-sec-sub">Edit each one to choose where it is asked.</span>
+                </div>
+              </div>
+              {orphans.map(q => (
+                <div key={q.id} className="ww-q-card">
+                  <div className="ww-q-info">
+                    <span className="ww-q-label">{q.label}</span>
+                    <span className="ww-q-meta">{FIELD_TYPES.find(f => f.value === q.field_type)?.label || q.field_type}</span>
+                  </div>
+                  <div className="ww-q-actions">
+                    <button onClick={() => openEdit(q)} title="Edit"><Edit2 size={14}/></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Section modal */}
+      {secModal && (
+        <div className="ww-inner-overlay" onClick={() => setSecModal(null)}>
+          <div className="ww-inner-modal" onClick={e => e.stopPropagation()}>
+            <div className="ww-inner-modal-head">
+              <h4>{secModal.mode === 'add' ? 'Add Step' : 'Rename Step'}</h4>
+              <button onClick={() => setSecModal(null)}><X size={16}/></button>
+            </div>
+            <div className="ww-inner-modal-body">
+              {msg && <p className="ww-err">{msg}</p>}
+              <label>Step name <span>*</span>
+                <input value={secForm.title} autoFocus
+                  onChange={e => setSecForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="e.g. Your Interests" />
+              </label>
+              <label>Subtitle <small>(optional)</small>
+                <input value={secForm.subtitle}
+                  onChange={e => setSecForm(f => ({ ...f, subtitle: e.target.value }))}
+                  placeholder="A line of guidance shown under the step name" />
+              </label>
+            </div>
+            <div className="ww-inner-modal-foot">
+              <button className="ww-btn ww-btn-ghost" onClick={() => setSecModal(null)}>Cancel</button>
+              <button className="ww-btn ww-btn-primary" onClick={saveSection}>Save Step</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -916,10 +1070,25 @@ function FormQuestionsTab({ item }) {
                   <input value={form.options} onChange={e => setForm(f => ({...f, options: e.target.value}))} placeholder="Option A, Option B, Option C" />
                 </label>
               )}
+              <label>Ask this in
+                <select value={form.section || 1} onChange={e => setForm(f => ({...f, section: Number(e.target.value)}))}>
+                  {(sections.length ? sections : [{ number: 1, title: 'Personal Info' }]).map((sec, i) => (
+                    <option key={sec.id ?? sec.number} value={sec.number}>Step {i + 1} · {sec.title}</option>
+                  ))}
+                </select>
+              </label>
               <label className="ww-checkbox-label">
-                <input type="checkbox" checked={form.required} onChange={e => setForm(f => ({...f, required: e.target.checked}))} />
+                <input type="checkbox" checked={form.required}
+                  disabled={modal.mode === 'edit' && modal.q?.is_locked}
+                  onChange={e => setForm(f => ({...f, required: e.target.checked}))} />
                 Required field
               </label>
+              {modal.mode === 'edit' && modal.q?.is_locked && (
+                <p className="ww-tab-hint" style={{ margin: '2px 0 0' }}>
+                  This answer addresses every confirmation, reminder and certificate, so it
+                  stays required and cannot be removed. Its wording and step are yours to change.
+                </p>
+              )}
             </div>
             <div className="ww-inner-modal-foot">
               <button className="ww-btn ww-btn-ghost" onClick={() => setModal(null)}>Cancel</button>

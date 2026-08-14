@@ -342,6 +342,34 @@
 }
 .ww-checkbox-label input[type="checkbox"] { width: 15px; height: 15px; flex-shrink: 0; }
 
+/* Form sections — the steps of the registration form, each holding its own
+   questions so the builder mirrors what a registrant actually walks through. */
+.ww-sec-list { display: flex; flex-direction: column; gap: 14px; }
+.ww-sec {
+  border: 1px solid var(--outline-variant);
+  border-radius: 12px;
+  padding: 12px 13px 13px;
+  background: var(--surface-container-lowest);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ww-sec-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; padding-bottom: 9px; border-bottom: 1px solid var(--outline-variant);
+}
+.ww-sec-step {
+  display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--primary); margin-right: 8px;
+}
+.ww-sec-title { font-size: 14px; font-weight: 700; }
+.ww-sec-sub { display: block; font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+.ww-sec-count { display: block; font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+.ww-sec-empty { margin: 2px 0; font-size: 12px; color: var(--text-muted); font-style: italic; }
+/* A question the mail automation depends on: removable is exactly what it is not. */
+.ww-badge-lock { background: color-mix(in srgb, #0ea5e9 15%, transparent); color: #0369a1; }
+.ww-q-actions button:disabled { opacity: .32; cursor: not-allowed; }
+
 /* Form questions list */
 .ww-q-list { display: flex; flex-direction: column; gap: 8px; }
 .ww-q-card {

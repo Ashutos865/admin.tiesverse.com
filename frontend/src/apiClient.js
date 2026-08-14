@@ -386,6 +386,16 @@ export const updateFormQuestion = (id, data) => adminFetch(`/api/webinar/form-qu
 export const deleteFormQuestion = (id) => adminFetch(`/api/webinar/form-questions/${id}`, 'DELETE');
 export const reorderFormQuestions = (items) => adminFetch('/api/webinar/form-questions/reorder', 'POST', { items });
 
+// WEBINAR — Form sections (the steps of the registration form)
+export const getFormSections = (event_key, event_type) =>
+  adminFetch(`/api/webinar/form-sections/?event_key=${encodeURIComponent(event_key)}&event_type=${encodeURIComponent(event_type)}`)
+    .then(r => (Array.isArray(r) ? r : []))
+    .catch(() => []);
+export const createFormSection = (data) => adminFetch('/api/webinar/form-sections/', 'POST', data);
+export const updateFormSection = (id, data) => adminFetch(`/api/webinar/form-sections/${id}/`, 'PATCH', data);
+export const deleteFormSection = (id) => adminFetch(`/api/webinar/form-sections/${id}/`, 'DELETE');
+export const reorderFormSections = (items) => adminFetch('/api/webinar/form-sections/reorder/', 'POST', { items });
+
 // WEBINAR — Certificate template assignment per event/webinar
 export const getEventCertificateLink = (event_key, event_type) =>
   adminFetch(`/api/webinar/event-certificate/?event_key=${encodeURIComponent(event_key)}&event_type=${encodeURIComponent(event_type)}`)
