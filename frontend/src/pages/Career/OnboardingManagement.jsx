@@ -147,7 +147,9 @@ export default function OnboardingManagement() {
     const TABS = ['all', 'pending', 'submitted', 'verified', 'rejected'];
     const TAB_LABELS = { all: 'All', pending: 'Awaiting Docs', submitted: 'Docs Received', verified: 'Verified', rejected: 'Rejected' };
 
-    const allDocsUploaded = profileModal?.has_aadhaar && profileModal?.has_college_id && profileModal?.has_photo;
+    // The college / institute ID is optional, so it does not gate verification:
+    // requiring it would strand anyone who is not currently studying.
+    const allDocsUploaded = profileModal?.has_aadhaar && profileModal?.has_photo;
 
     return (
         <div style={{ padding: '32px 28px', minHeight: '100%' }}>
@@ -202,7 +204,7 @@ export default function OnboardingManagement() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
                     {filtered.map(sub => {
                         const sm = STATUS_META[sub.status] || STATUS_META.pending;
-                        const docsCount = [sub.has_aadhaar, sub.has_college_id, sub.has_photo].filter(Boolean).length;
+                        const docsCount = [sub.has_aadhaar, sub.has_photo].filter(Boolean).length;
                         return (
                             <button key={sub.id} onClick={() => openProfile(sub)} style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '16px 18px', borderRadius: 13, cursor: 'pointer', textAlign: 'left', background: 'var(--surface-container-lowest)', border: '1px solid var(--outline-variant)', transition: 'border-color 150ms ease, transform 150ms ease', ':hover': { borderColor: 'var(--primary)' } }}>
                                 {/* Card top */}
@@ -229,13 +231,13 @@ export default function OnboardingManagement() {
                                 {/* Doc badges */}
                                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                                     <DocBadge label="Aadhaar" uploaded={sub.has_aadhaar} />
-                                    <DocBadge label="College ID" uploaded={sub.has_college_id} />
+                                    <DocBadge label="College ID (opt)" uploaded={sub.has_college_id} />
                                     <DocBadge label="Photo" uploaded={sub.has_photo} />
                                 </div>
 
                                 {/* Footer */}
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: 10, borderTop: '1px solid var(--outline-variant)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                    <span>{docsCount}/3 docs {docsCount === 3 ? '✓' : 'received'}</span>
+                                    <span>{docsCount}/2 required docs {docsCount === 2 ? '✓' : 'received'}</span>
                                     <span style={{ color: 'var(--primary)', fontWeight: 700 }}>Open Profile →</span>
                                 </div>
                             </button>
@@ -285,7 +287,7 @@ export default function OnboardingManagement() {
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
                                     {[
                                         { key: 'aadhaar',    label: 'Aadhaar Card',  uploaded: profileModal.has_aadhaar },
-                                        { key: 'college_id', label: 'College ID',    uploaded: profileModal.has_college_id },
+                                        { key: 'college_id', label: 'College ID (optional)', uploaded: profileModal.has_college_id },
                                         { key: 'photo',      label: 'Profile Photo', uploaded: profileModal.has_photo },
                                     ].map(({ key, label, uploaded }) => (
                                         <div key={key} style={{ padding: '14px 14px', background: uploaded ? 'color-mix(in srgb, #067a50 5%, var(--surface-container-low))' : 'var(--surface-container-low)', border: `1px solid ${uploaded ? 'color-mix(in srgb, #067a50 18%, transparent)' : 'var(--outline-variant)'}`, borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -383,7 +385,7 @@ export default function OnboardingManagement() {
                             )}
                             {profileModal.status !== 'verified' && (
                                 <button onClick={handleVerify} disabled={saving || !allDocsUploaded} style={{ flex: 2, minHeight: 40, minWidth: 120, background: allDocsUploaded ? 'color-mix(in srgb, #067a50 12%, transparent)' : 'var(--surface-container)', border: `1px solid ${allDocsUploaded ? 'color-mix(in srgb, #067a50 25%, transparent)' : 'var(--outline-variant)'}`, borderRadius: 8, color: allDocsUploaded ? '#067a50' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.875rem', cursor: (saving || !allDocsUploaded) ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: !allDocsUploaded ? 0.6 : 1 }}>
-                                    <CheckCircle size={13} /> {allDocsUploaded ? 'Verify & Assign Departments' : 'All 3 docs needed to verify'}
+                                    <CheckCircle size={13} /> {allDocsUploaded ? 'Verify & Assign Departments' : 'Aadhaar + photo needed to verify'}
                                 </button>
                             )}
                             {profileModal.status === 'verified' && (

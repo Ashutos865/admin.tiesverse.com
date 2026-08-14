@@ -615,7 +615,7 @@ function ProfileModal({ member, departments, onClose, onUpdated, onEdit }) {
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                             {[
                                 { key: 'aadhaar',    label: 'Aadhaar Card',    uploaded: member.has_aadhaar },
-                                { key: 'college_id', label: 'College / Inst. ID', uploaded: member.has_college_id },
+                                { key: 'college_id', label: 'College / Inst. ID (optional)', uploaded: member.has_college_id },
                                 { key: 'photo',      label: 'Profile Photo',   uploaded: member.has_photo },
                             ].map(({ key, label, uploaded }) => (
                                 <div key={key} style={{

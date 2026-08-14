@@ -60,7 +60,9 @@ class OnboardingSubmissionSerializer(serializers.ModelSerializer):
         ]
 
     def get_docs_complete(self, obj):
-        return obj.has_aadhaar and obj.has_college_id and obj.has_photo
+        # The college / institute ID is optional — not everyone joining is
+        # studying — so a submission is complete without it.
+        return obj.has_aadhaar and obj.has_photo
 
     def get_avatar_url(self, obj):
         # The member's profile picture (set in Profile settings, stored on UserProfile).
