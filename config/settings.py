@@ -346,6 +346,7 @@ SES_CAREERS_FROM_EMAIL = os.environ.get('SES_CAREERS_FROM_EMAIL', 'careers@tiesv
 OFFER_EMAIL_ENABLED = os.environ.get('OFFER_EMAIL_ENABLED', 'False').lower() == 'true'
 
 WEBSITE_URL = os.environ.get('WEBSITE_URL', 'https://tiesverse.com')
+FORMS_BASE_URL = os.environ.get('FORMS_BASE_URL', 'https://forms.tiesverse.com')
 # Base URL of THIS admin portal frontend — used to build password-reset links.
 ADMIN_PORTAL_URL = os.environ.get('ADMIN_PORTAL_URL', 'http://localhost:5173')
 ONBOARDING_EMAIL_ENABLED = os.environ.get('ONBOARDING_EMAIL_ENABLED', 'False').lower() == 'true'

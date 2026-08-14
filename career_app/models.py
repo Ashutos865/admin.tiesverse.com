@@ -1303,6 +1303,12 @@ class FormResponse(models.Model):
     submitter_name = models.CharField(max_length=255, blank=True)
     submitter_email = models.EmailField(blank=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
+    # Lets one person reopen their own response from the receipt email, and
+    # nobody else's. Only issued when the form allows editing; the column is
+    # indexed because the edit endpoint looks a response up by it.
+    edit_token = models.CharField(max_length=64, blank=True, default='', db_index=True)
+    edited_at = models.DateTimeField(null=True, blank=True)
+    edit_count = models.PositiveIntegerField(default=0)
 
     class Meta:
         db_table = 'form_responses'

@@ -103,6 +103,7 @@ const FormBuilder = lazy(() => import('./pages/Forms/FormBuilder.jsx'));
 const FormFillPage = lazy(() => import('./pages/Forms/FormFillPage.jsx'));
 const FormResponsesPage = lazy(() => import('./pages/Forms/FormResponsesPage.jsx'));
 const PublicFormPage = lazy(() => import('./pages/Forms/PublicFormPage.jsx'));
+const PublicFormEditPage = lazy(() => import('./pages/Forms/PublicFormEditPage.jsx'));
 
 // Certificate Generator
 const CertificateTemplates = lazy(() => import('./pages/Certificates/CertificateTemplates.jsx'));
@@ -147,6 +148,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/signup/:hash" element={<PublicSignup />} />
             <Route path="/f/:token" element={<PublicFormPage />} />
+            <Route path="/f/:token/edit/:editToken" element={<PublicFormEditPage />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/" element={<Navigate to="/tiesverse/dashboard" replace />} />

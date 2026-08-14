@@ -338,6 +338,16 @@ function FieldEditor({ field, active, multiPage, total, onActivate, onChange, on
             <input type="checkbox" checked={!!field.required} onChange={e => onChange({ required: e.target.checked })} />
             Required
           </label>
+          {/* An email question is sometimes a contact address and sometimes
+              just data. Asking here means the receipt follows the question
+              that collects the address, not a setting somewhere else. */}
+          {field.type === 'email' && (
+            <label style={FS.reqToggle} title="When off, this address is stored but never emailed.">
+              <input type="checkbox" checked={field.send_receipt !== false}
+                onChange={e => onChange({ send_receipt: e.target.checked })} />
+              Send the receipt to this address
+            </label>
+          )}
         </div>
       )}
     </div>
@@ -585,7 +595,8 @@ function SettingsPanel({ form, onChange, onSettings, shareLink, copied, copyLink
       <Toggle label="Accepting responses" checked={s.accepting !== false} onChange={v => onSettings({ accepting: v })} />
       <Toggle label="Require login to submit" checked={!!s.require_login} onChange={v => onSettings({ require_login: v })} />
       <Toggle label="One response per person" checked={!!s.one_response} onChange={v => onSettings({ one_response: v })} hint="Only enforceable for logged-in members." />
-      <Toggle label="Email a confirmation receipt" checked={s.send_confirmation !== false} onChange={v => onSettings({ send_confirmation: v })} hint="Sent to the email the person provides (or their account email)." />
+      <Toggle label="Email a confirmation receipt" checked={s.send_confirmation !== false} onChange={v => onSettings({ send_confirmation: v })} hint="A short receipt confirming what was received and when. It never repeats their answers." />
+      <Toggle label="Let people edit their response afterwards" checked={!!s.allow_edit} onChange={v => onSettings({ allow_edit: v })} hint="Adds a private edit link to the receipt. It stops working when the form stops accepting responses." />
 
       {s.send_confirmation !== false && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 4, borderLeft: '2px solid #fe7a0033', marginTop: 2 }}>

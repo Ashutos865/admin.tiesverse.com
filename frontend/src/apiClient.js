@@ -581,6 +581,9 @@ export const exportFormResponsesCsv = (id, filename) =>
 // Public (no auth) — fill a form via its hashed link
 export const getPublicForm = (token) => publicFetch(`/api/career/forms/public/${token}`);
 export const submitPublicForm = (token, data) => publicPost(`/api/career/forms/public/${token}/submit`, data);
+// Reopen one response from the private link in its receipt email.
+export const getPublicFormResponse = (token, editToken) => publicFetch(`/api/career/forms/public/${token}/edit/${editToken}`);
+export const updatePublicFormResponse = (token, editToken, data) => publicPost(`/api/career/forms/public/${token}/edit/${editToken}/save`, data);
 
 // DATA API (Advisory only) — standalone data stores + origin-locked keys (/api/data/v1/)
 export const getDataStores = () => adminFetch('/api/landing/data-stores/');

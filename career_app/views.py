@@ -3437,9 +3437,17 @@ import html as _html
 
 
 def _resolve_confirmation_email(form, request, user):
-    """Pick the address to send a submission confirmation to:
-    the identity email supplied on the form, else the logged-in user's email,
-    else the answer to the first Email question in the form."""
+    """The address a receipt should go to, or '' for none.
+
+    An Email question owns this decision: the builder asks, per email field,
+    whether a receipt goes to whatever is typed there (`send_receipt`). A field
+    that says no is treated as data collection, not a contact address, so we do
+    not mail it. Defaults to True, since an admin who adds an email question and
+    says nothing almost always means "reply to this".
+
+    The identity email captured by the form's own settings, and a logged-in
+    member's own address, are still honoured first.
+    """
     supplied = (request.data.get('submitter_email') or '').strip()
     if supplied:
         return supplied
@@ -3448,66 +3456,165 @@ def _resolve_confirmation_email(form, request, user):
     answers = request.data.get('answers') or {}
     if isinstance(answers, dict):
         for field in (form.schema or []):
-            if field.get('type') == 'email':
-                val = answers.get(str(field.get('id')))
-                if val:
-                    return str(val).strip()
+            if field.get('type') != 'email':
+                continue
+            if field.get('send_receipt') is False:
+                continue
+            val = answers.get(str(field.get('id')))
+            if val:
+                return str(val).strip()
     return ''
 
 
-def _send_form_confirmation(form, to_email, name, answers):
-    """Email the submitter a branded receipt confirming their response.
-    Never raises — email failures must not break the submission."""
+def _send_form_confirmation(form, to_email, name, answers=None, edit_url=''):
+    """Email the submitter a short receipt. Never raises: a mail failure must
+    not fail the submission, which is already saved by the time we get here.
+
+    Deliberately no answers. Email is not a private channel, a receipt often
+    sits in an inbox for years, and a form can ask for things nobody should
+    keep re-reading in plain text. It confirms what was received and when.
+    """
     try:
         from config.email_utils import render_email, send_email, verified_sender_domains
-    except Exception:
+    except Exception:  # noqa: BLE001
         return
 
     settings_json = form.settings or {}
     title = form.title or 'our form'
 
-    # Which alias to send from — only honour a custom address under a verified
-    # domain, otherwise fall back to the system default (prevents silent SES
-    # rejections from a typo'd sender).
+    # Only honour a custom sender under a domain SES has verified; a typo'd
+    # address would otherwise be rejected silently and nobody would know.
     from_addr = None
     chosen = (settings_json.get('from_email') or '').strip()
     if chosen and '@' in chosen and chosen.split('@', 1)[1].lower() in verified_sender_domains():
         from_name = (settings_json.get('from_name') or '').strip()
         from_addr = f'"{from_name}" <{chosen}>' if from_name else chosen
-    greeting = f"Thanks, {name}!" if name else "Thanks for your response!"
-    paragraphs = [f"We’ve received your response to <strong>{_html.escape(title)}</strong>."]
-    thank_you = settings_json.get('thank_you')
+
+    greeting = f'Thanks, {name}!' if name else 'Thanks for your response'
+    when = timezone.localtime(timezone.now()).strftime('%d %B %Y at %H:%M')
+    paragraphs = [
+        f'We have received your response to <strong>{_html.escape(title)}</strong> on {when}.',
+    ]
+    thank_you = (settings_json.get('thank_you') or '').strip()
     if thank_you:
         paragraphs.append(_html.escape(str(thank_you)))
-
-    # A short receipt of what they submitted.
-    rows = []
-    if isinstance(answers, dict):
-        for field in (form.schema or []):
-            if field.get('type') in ('heading', 'section', 'paragraph'):
-                continue
-            val = answers.get(str(field.get('id')))
-            if val in (None, '', []):
-                continue
-            if isinstance(val, list):
-                val = ', '.join(str(v) for v in val)
-            label = _html.escape(str(field.get('label') or 'Question'))[:80]
-            rows.append((label, _html.escape(str(val))[:200]))
+    if edit_url:
+        paragraphs.append(
+            'Need to change something? You can edit your response using the button below '
+            'for as long as this form is open.'
+        )
 
     html_body, text_body = render_email(
         heading=greeting,
         paragraphs=paragraphs,
-        info_rows=rows or None,
+        button_label=('Edit your response' if edit_url else None),
+        button_url=(edit_url or None),
         footer_note='If you did not submit this form, you can safely ignore this email.',
         preheader=f'We received your response to {title}',
     )
     send_email(
         to=to_email,
-        subject=f'We received your response — {title}',
+        subject=f'We received your response - {title}',
         html_body=html_body,
         text_body=text_body,
         from_email=from_addr,
     )
+
+
+class _PublicFormThrottle(AnonRateThrottle):
+    scope = 'public_form'
+
+
+def _form_edit_url(form, resp):
+    """Absolute link that reopens one response, or '' when editing is off."""
+    if not resp.edit_token:
+        return ''
+    from django.conf import settings as dj_settings
+    base = (getattr(dj_settings, 'FORMS_BASE_URL', '') or 'https://forms.tiesverse.com').rstrip('/')
+    return f'{base}/f/{form.token}/edit/{resp.edit_token}'
+
+
+def _form_is_open(form):
+    """(open, message). Editing follows the form: once it stops accepting, a
+    response can no longer be changed, so nobody can rewrite an answer after
+    the reviewing has started."""
+    settings_json = form.settings or {}
+    if not form.is_published:
+        return False, 'This form is not available.'
+    if settings_json.get('accepting') is False:
+        return False, 'This form is no longer accepting responses.'
+    close_date = settings_json.get('close_date')
+    if close_date:
+        try:
+            cd = datetime.date.fromisoformat(str(close_date)[:10])
+            if timezone.now().date() > cd:
+                return False, 'This form is closed.'
+        except (ValueError, TypeError):
+            pass
+    return True, ''
+
+
+def _find_editable_response(form_token, edit_token):
+    """(response, error). Both tokens must match the same response, so a valid
+    token for one form cannot open a response on another."""
+    if not edit_token or len(edit_token) < 20:
+        return None, 'This link is not valid.'
+    resp = FormResponse.objects.filter(edit_token=edit_token).select_related('form').first()
+    if resp is None or resp.form.token != form_token:
+        return None, 'This link is not valid.'
+    ok, msg = _form_is_open(resp.form)
+    if not ok:
+        return None, msg
+    return resp, ''
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([_PublicFormThrottle])
+def public_form_response_edit(request, token, edit_token):
+    """The form plus this person's own answers, for the edit screen."""
+    resp, err = _find_editable_response(token, edit_token)
+    if err:
+        return Response({'error': err}, status=404)
+    return Response({
+        'form': PublicFormSerializer(resp.form).data,
+        'answers': resp.answers or {},
+        'submitted_at': resp.submitted_at,
+        'edited_at': resp.edited_at,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([_PublicFormThrottle])
+def public_form_response_update(request, token, edit_token):
+    """Replace this response's answers. Required questions are re-checked, so
+    an edit cannot leave a form less complete than the original submission."""
+    resp, err = _find_editable_response(token, edit_token)
+    if err:
+        return Response({'error': err}, status=404)
+
+    answers = request.data.get('answers') or {}
+    if not isinstance(answers, dict):
+        return Response({'error': 'Invalid answers payload.'}, status=400)
+
+    missing = []
+    for field in (resp.form.schema or []):
+        if field.get('type') in ('heading', 'section', 'paragraph'):
+            continue
+        if field.get('required'):
+            val = answers.get(str(field.get('id')))
+            if val in (None, '', []) or (isinstance(val, list) and not val):
+                missing.append(field.get('label') or 'Untitled question')
+    if missing:
+        return Response({'error': 'Please answer all required questions.', 'missing': missing}, status=400)
+
+    resp.answers = answers
+    resp.edited_at = timezone.now()
+    resp.edit_count = (resp.edit_count or 0) + 1
+    resp.save(update_fields=['answers', 'edited_at', 'edit_count'])
+    return Response({'ok': True, 'edited_at': resp.edited_at,
+                     'thank_you': (resp.form.settings or {}).get('thank_you') or ''})
 
 
 def _accept_form_response(request, form, is_public):
@@ -3559,13 +3666,20 @@ def _accept_form_response(request, form, is_public):
         submitted_by_user=user,
         submitter_name=(request.data.get('submitter_name') or '')[:255],
         submitter_email=(request.data.get('submitter_email') or '')[:254],
+        # Only mint a token when the form actually allows editing. A response
+        # on a form that does not cannot be reopened even if a token leaked,
+        # because there is nothing to leak.
+        edit_token=(secrets.token_urlsafe(32) if settings_json.get('allow_edit') else ''),
     )
 
     # Send the submitter a confirmation receipt (opt-out via settings).
     if settings_json.get('send_confirmation', True):
         to_email = _resolve_confirmation_email(form, request, user)
         if to_email:
-            _send_form_confirmation(form, to_email, resp.submitter_name, answers)
+            _send_form_confirmation(
+                form, to_email, resp.submitter_name,
+                edit_url=_form_edit_url(form, resp),
+            )
 
     return Response({'ok': True, 'id': resp.id,
                      'thank_you': settings_json.get('thank_you') or ''}, status=201)
@@ -3692,10 +3806,6 @@ def public_form_view(request, token):
         return Response({'error': 'This form is no longer accepting responses.',
                          'closed': True}, status=200)
     return Response(PublicFormSerializer(form).data)
-
-
-class _PublicFormThrottle(AnonRateThrottle):
-    scope = 'public_form'
 
 
 @api_view(['POST'])

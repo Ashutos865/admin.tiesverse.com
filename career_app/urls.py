@@ -1,7 +1,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import PositionViewSet, EnrollmentViewSet, OfferLetterViewSet, HRDepartmentViewSet, PolicyViewSet, PersonalNoteViewSet
-from .views import FormViewSet, public_form_view, public_form_submit
+from .views import (
+    FormViewSet, public_form_view, public_form_submit,
+    public_form_response_edit, public_form_response_update,
+)
 from .project_views import (
     ProjectViewSet, ProjectChecklistViewSet, ProjectMessageViewSet,
     DirectMessageViewSet, ProjectNotificationViewSet,
@@ -59,6 +62,8 @@ urlpatterns = [
     # is not swallowed by the `forms/<pk>/` detail route.
     path('forms/public/<str:token>/', public_form_view, name='public-form'),
     path('forms/public/<str:token>/submit/', public_form_submit, name='public-form-submit'),
+    path('forms/public/<str:token>/edit/<str:edit_token>/', public_form_response_edit, name='public-form-edit'),
+    path('forms/public/<str:token>/edit/<str:edit_token>/save/', public_form_response_update, name='public-form-edit-save'),
 
     path('', include(router.urls)),
     # Current member identity + scope
