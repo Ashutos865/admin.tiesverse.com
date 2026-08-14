@@ -6,6 +6,7 @@ import { isStatic } from './formConfig';
 import { useMe } from '../../context/MeContext';
 import FormAnalytics from './FormAnalytics';
 import FormShare from './FormShare';
+import FormSheetPanel from './FormSheetPanel';
 
 export default function FormResponsesPage() {
   const { id } = useParams();
@@ -57,6 +58,10 @@ export default function FormResponsesPage() {
           <FormShare publicUrl={`${window.location.origin}/f/${form.token}`} formTitle={form.title} />
         </div>
       )}
+
+      <div style={{ marginBottom: 14 }}>
+        <FormSheetPanel formId={id} sheetUrl={(form.settings || {}).sheet_url} onChanged={load} />
+      </div>
 
       <FormAnalytics responses={responses} />
 

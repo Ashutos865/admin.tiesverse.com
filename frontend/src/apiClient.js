@@ -575,6 +575,10 @@ export const updateForm = (id, data) => adminFetch(`/api/career/forms/${id}`, 'P
 export const deleteForm = (id) => adminFetch(`/api/career/forms/${id}`, 'DELETE');
 export const submitForm = (id, data) => adminFetch(`/api/career/forms/${id}/submit`, 'POST', data);
 export const getFormResponses = (id) => adminFetch(`/api/career/forms/${id}/responses`);
+// Google Sheets mirror for one form.
+export const connectFormSheet = (id, data) => adminFetch(`/api/career/forms/${id}/sheet-connect`, 'POST', data);
+export const syncFormSheet = (id) => adminFetch(`/api/career/forms/${id}/sheet-sync`, 'POST', {});
+export const disconnectFormSheet = (id) => adminFetch(`/api/career/forms/${id}/sheet-disconnect`, 'POST', {});
 export const getFormSenders = () => adminFetch('/api/career/forms/senders').catch(() => ({ emails: [], domains: [], default: '' }));
 export const exportFormResponsesCsv = (id, filename) =>
   downloadFile(`/api/career/forms/${id}/responses-csv/`, filename || 'form-responses.csv');

@@ -3613,8 +3613,62 @@ def public_form_response_update(request, token, edit_token):
     resp.edited_at = timezone.now()
     resp.edit_count = (resp.edit_count or 0) + 1
     resp.save(update_fields=['answers', 'edited_at', 'edit_count'])
+    _sync_sheet_quietly(resp.form)
     return Response({'ok': True, 'edited_at': resp.edited_at,
                      'thank_you': (resp.form.settings or {}).get('thank_you') or ''})
+
+
+def _sync_form_to_sheet(form):
+    """Rewrite the form's linked spreadsheet from the database.
+
+    Columns follow the form's current questions, so a renamed question renames
+    its column rather than silently writing under the old one.
+    """
+    from config import google_sheets
+
+    sheet_id = (form.settings or {}).get('sheet_id')
+    if not sheet_id:
+        return 0
+
+    fields = [f for f in (form.schema or [])
+              if f.get('type') not in ('heading', 'section', 'paragraph')]
+    header = (['Submitted at', 'Name', 'Email']
+              + [str(f.get('label') or 'Untitled')[:120] for f in fields]
+              + ['Source', 'Medium', 'Campaign', 'Edited at'])
+
+    rows = []
+    for r in form.responses.all().order_by('submitted_at'):
+        answers = r.answers or {}
+        row = [
+            timezone.localtime(r.submitted_at).strftime('%Y-%m-%d %H:%M') if r.submitted_at else '',
+            r.submitter_name or '',
+            r.submitter_email or '',
+        ]
+        for f in fields:
+            val = answers.get(str(f.get('id')))
+            if isinstance(val, list):
+                val = ', '.join(str(v) for v in val)
+            elif isinstance(val, dict):
+                val = val.get('filename') or val.get('url') or ''
+            row.append('' if val is None else str(val))
+        row += [
+            r.utm_source or '', r.utm_medium or '', r.utm_campaign or '',
+            timezone.localtime(r.edited_at).strftime('%Y-%m-%d %H:%M') if r.edited_at else '',
+        ]
+        rows.append(row)
+
+    google_sheets.write_rows(sheet_id, header, rows)
+    return len(rows)
+
+
+def _sync_sheet_quietly(form):
+    """Mirror after a submission. A Sheets outage must never cost a response,
+    which is already saved by the time this runs."""
+    try:
+        if (form.settings or {}).get('sheet_id'):
+            _sync_form_to_sheet(form)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('Sheet sync failed for form %s: %s', form.id, exc)
 
 
 def _accept_form_response(request, form, is_public):
@@ -3687,6 +3741,7 @@ def _accept_form_response(request, form, is_public):
                 edit_url=_form_edit_url(form, resp),
             )
 
+    _sync_sheet_quietly(form)
     return Response({'ok': True, 'id': resp.id,
                      'thank_you': settings_json.get('thank_you') or ''}, status=201)
 
@@ -3769,6 +3824,76 @@ class FormViewSet(viewsets.ModelViewSet):
         qs = form.responses.all().order_by('-submitted_at')
         data = FormResponseSerializer(qs, many=True).data
         return Response({'form': FormSerializer(form).data, 'responses': data})
+
+    # ── Google Sheets mirror ──────────────────────────────────────────
+    @action(detail=True, methods=['post'], url_path='sheet-connect')
+    def sheet_connect(self, request, pk=None):
+        """Attach a spreadsheet to this form: create a new one, or adopt an
+        existing one from its link. Writes the responses so far immediately, so
+        the sheet is useful the moment it appears rather than after the next
+        submission."""
+        if not self._can_manage():
+            return Response({'error': 'Only HR / Advisory can manage forms.'}, status=403)
+        from config import google_sheets
+
+        if not google_sheets.is_configured():
+            return Response({'error': 'Google is not configured on the server.'}, status=400)
+
+        form = self.get_object()
+        existing = google_sheets.sheet_id_from_url(request.data.get('sheet_url') or '')
+        try:
+            if existing:
+                sheet = {'id': existing,
+                         'url': f'https://docs.google.com/spreadsheets/d/{existing}/edit'}
+            else:
+                sheet = google_sheets.create_spreadsheet(f'{form.title} - responses')
+                share_with = (request.data.get('share_with') or '').strip()
+                if share_with:
+                    google_sheets.share_with(sheet['id'], share_with)
+        except google_sheets.SheetsError as exc:
+            return Response({'error': str(exc)}, status=502)
+
+        form.settings = {**(form.settings or {}),
+                         'sheet_id': sheet['id'], 'sheet_url': sheet['url']}
+        form.save(update_fields=['settings'])
+
+        try:
+            count = _sync_form_to_sheet(form)
+        except google_sheets.SheetsError as exc:
+            # The sheet is linked; only the first write failed, and the message
+            # says why, so this is not a reason to unlink it.
+            return Response({'sheet_url': sheet['url'], 'synced': 0,
+                             'warning': str(exc)}, status=200)
+        return Response({'sheet_url': sheet['url'], 'synced': count})
+
+    @action(detail=True, methods=['post'], url_path='sheet-sync')
+    def sheet_sync(self, request, pk=None):
+        """Rewrite the linked sheet from the database."""
+        if not self._can_manage():
+            return Response({'error': 'Only HR / Advisory can manage forms.'}, status=403)
+        from config import google_sheets
+        form = self.get_object()
+        if not (form.settings or {}).get('sheet_id'):
+            return Response({'error': 'This form is not connected to a spreadsheet.'}, status=400)
+        try:
+            count = _sync_form_to_sheet(form)
+        except google_sheets.SheetsError as exc:
+            return Response({'error': str(exc)}, status=502)
+        return Response({'synced': count, 'sheet_url': (form.settings or {}).get('sheet_url', '')})
+
+    @action(detail=True, methods=['post'], url_path='sheet-disconnect')
+    def sheet_disconnect(self, request, pk=None):
+        """Stop mirroring. The spreadsheet itself is left alone - deleting
+        someone's data because they unlinked a form would be a surprise."""
+        if not self._can_manage():
+            return Response({'error': 'Only HR / Advisory can manage forms.'}, status=403)
+        form = self.get_object()
+        settings_json = {**(form.settings or {})}
+        settings_json.pop('sheet_id', None)
+        settings_json.pop('sheet_url', None)
+        form.settings = settings_json
+        form.save(update_fields=['settings'])
+        return Response({'ok': True})
 
     @action(detail=True, methods=['get'], url_path='responses-csv')
     def responses_csv(self, request, pk=None):
