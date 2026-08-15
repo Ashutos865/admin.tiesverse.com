@@ -1,8 +1,13 @@
 """Podcast episodes: managed in the admin, served to tiesverse.com.
 
-Audio lives in R2; only its URL is stored. Duration is measured by the browser
-at upload rather than typed in, so the length shown on the site cannot drift
-from the actual recording.
+An episode is published by giving it the link where it already lives — a
+Spotify, YouTube or Apple URL — and the site sends listeners there. That is how
+a podcast is actually distributed, and it avoids carrying a 45-minute recording
+through this server: uploads were capped at 25 MB by nginx while the code
+allowed 200 MB, so any real episode failed with nothing but "Upload failed".
+
+Direct audio upload is still accepted for anything genuinely hosted here, and
+an episode may have both: the link is what the site offers first.
 """
 import re
 
@@ -35,6 +40,8 @@ def _dto(p):
         'tag': p.tag,
         'description': p.description,
         'audio_url': p.audio_url,
+        'listen_url': p.listen_url,
+        'platform': p.platform,
         'cover_url': p.cover_url,
         'duration_seconds': p.duration_seconds,
         'published_at': p.published_at.isoformat() if p.published_at else None,
@@ -56,7 +63,8 @@ def _unique_slug(title, pk=None):
 
 def _apply(p, data):
     """Copy the editable fields off a request onto an episode."""
-    for field in ('title', 'episode_label', 'tag', 'description', 'cover_url'):
+    for field in ('title', 'episode_label', 'tag', 'description', 'cover_url',
+                  'listen_url'):
         if field in data:
             setattr(p, field, str(data.get(field) or '').strip()[:600])
     for field in ('is_featured', 'is_published'):
@@ -181,7 +189,12 @@ def public_podcasts(request):
     """Published episodes for tiesverse.com. Cached; writes bust it."""
     payload = cache.get(PUBLIC_CACHE_KEY)
     if payload is None:
-        rows = Podcast.objects.filter(is_published=True).exclude(audio_url='')
+        # An episode needs somewhere to send the listener: either audio we
+        # host, or the link where it is published. Requiring audio_url alone
+        # would hide every episode released on Spotify or YouTube.
+        from django.db.models import Q
+        rows = (Podcast.objects.filter(is_published=True)
+                .exclude(Q(audio_url='') & Q(listen_url='')))
         payload = {'episodes': [_dto(p) for p in rows]}
         cache.set(PUBLIC_CACHE_KEY, payload, 300)
     return Response(payload)

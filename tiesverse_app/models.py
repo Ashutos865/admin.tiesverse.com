@@ -493,6 +493,12 @@ class Podcast(models.Model):
     tag = models.CharField(max_length=60, blank=True)             # 'Strategy'
     description = models.TextField(blank=True)
     audio_url = models.CharField(max_length=600, blank=True)
+    # Where the episode actually lives — a Spotify, YouTube or Apple link.
+    # Publishing by link rather than by upload is how a podcast is normally
+    # distributed: the episode is already hosted somewhere that handles
+    # streaming, and a 45-minute recording is bigger than anything this
+    # server should be asked to carry.
+    listen_url = models.CharField(max_length=600, blank=True)
     cover_url = models.CharField(max_length=600, blank=True)
     # Seconds. Read from the file on upload; the site formats it for display, so
     # a stored "48 min" string can never drift from the actual recording.
@@ -507,6 +513,20 @@ class Podcast(models.Model):
     class Meta:
         db_table = 'podcasts'
         ordering = ['position', '-published_at', '-created_at']
+
+    @property
+    def platform(self):
+        """Which service the listen link points at, for the button's wording."""
+        u = (self.listen_url or '').lower()
+        if 'spotify.' in u:
+            return 'spotify'
+        if 'youtube.' in u or 'youtu.be' in u:
+            return 'youtube'
+        if 'apple.' in u or 'podcasts.apple' in u:
+            return 'apple'
+        if u:
+            return 'link'
+        return ''
 
     def __str__(self):
         return self.title

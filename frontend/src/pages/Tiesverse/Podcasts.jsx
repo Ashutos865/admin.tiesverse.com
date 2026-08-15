@@ -8,6 +8,17 @@ import {
 
 /* Episode length is stored in seconds and formatted here, so what the site
    shows always matches the file rather than a number typed from memory. */
+/** What the listen link points at, said plainly under the field. */
+function linkNote(url) {
+  const u = String(url || '').trim();
+  if (!u) return 'Leave blank only if you are uploading the audio file below.';
+  if (!/^https?:\/\//i.test(u)) return 'That does not look like a link — it should start with https://';
+  if (/spotify\./i.test(u)) return 'Spotify — the site will show "Listen on Spotify".';
+  if (/youtube\.|youtu\.be/i.test(u)) return 'YouTube — the site will show "Watch on YouTube".';
+  if (/apple\.|podcasts\.apple/i.test(u)) return 'Apple Podcasts — the site will show "Listen on Apple Podcasts".';
+  return 'The site will show "Listen" and open this link.';
+}
+
 const fmtLen = (s) => {
   if (!s) return '—';
   const m = Math.floor(s / 60);
@@ -186,6 +197,20 @@ function EpisodeCard({ ep, first, last, onMove, onChanged, say }) {
             placeholder="What this episode covers — shown under the title on the site."
             onChange={(e) => set({ description: e.target.value })} />
 
+          {/* Where the episode actually lives. This is the normal way to
+              publish one: the recording is already on Spotify or YouTube,
+              and the site sends listeners there rather than trying to carry
+              a 45-minute file through this server. */}
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span style={S.lbl}>Listen link — Spotify, YouTube or Apple</span>
+            <input style={S.input} value={draft.listen_url || ''}
+              placeholder="https://open.spotify.com/episode/…  or  https://youtu.be/…"
+              onChange={(e) => set({ listen_url: e.target.value.trim() })} />
+            <span style={{ fontSize: 12, color: '#6b7280' }}>
+              {linkNote(draft.listen_url)}
+            </span>
+          </label>
+
           <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
             <label style={S.field}>
               <span style={S.lbl}>Published</span>
@@ -211,8 +236,10 @@ function EpisodeCard({ ep, first, last, onMove, onChanged, say }) {
                 </button>
                 <audio ref={audioRef} src={ep.audio_url} onEnded={() => setPlaying(false)} />
               </>
-            ) : (
-              <span style={S.warn}>No audio yet — this episode will not appear on the site.</span>
+            ) : draft.listen_url ? null : (
+              <span style={S.warn}>
+                No listen link and no audio — this episode will not appear on the site.
+              </span>
             )}
 
             <input ref={fileRef} type="file" accept="audio/*" style={{ display: 'none' }}
