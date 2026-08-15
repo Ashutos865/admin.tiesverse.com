@@ -1044,7 +1044,15 @@ def form_questions(request):
     event_type = request.query_params.get('event_type', '').strip()
 
     if request.method == 'GET':
-        qs = EventFormQuestion.objects.filter(event_key=event_key, event_type=event_type).order_by('order')
+        # The website derives this key from two places that slugify an
+        # apostrophe differently: the URL gives `pakistan-s`, the event title
+        # via Django gives `pakistans`. Asking for one spelling when the
+        # questions were stored under the other returned an empty list, and
+        # the form silently showed no custom questions — which is exactly how
+        # a real registrant's answer went uncollected.
+        qs = EventFormQuestion.objects.filter(
+            event_key__in=_slug_variants(event_key), event_type=event_type,
+        ).order_by('order')
         return Response(EventFormQuestionSerializer(qs, many=True).data)
 
     # POST — admin only
@@ -1123,7 +1131,8 @@ def form_sections(request):
                      request.data.get('event_type') or '').strip()
 
     if request.method == 'GET':
-        qs = EventFormSection.objects.filter(event_key=event_key, event_type=event_type)
+        qs = EventFormSection.objects.filter(
+            event_key__in=_slug_variants(event_key), event_type=event_type)
         if not qs.exists():
             # An event that has never been edited still has the three steps the
             # form has always shown, so describe them rather than returning
@@ -1488,7 +1497,27 @@ def _slug_variants(text):
     raw = str(text or '')
     out = []
     js_style = re.sub(r'^-|-$', '', re.sub(r'[^a-z0-9]+', '-', raw.lower().strip()))
-    for candidate in (raw, slugify(raw), js_style):
+    candidates = [raw, slugify(raw), js_style]
+
+    # Slugs cannot be un-slugified, so a key that arrives already slugified
+    # cannot be translated by pattern-matching without mangling the rest of
+    # it. Instead, find the event this key refers to and add every spelling of
+    # its real title. That is exact rather than a guess.
+    try:
+        from tiesverse_app.models import EventRegistration
+        for ev in EventRegistration.objects.all().only('title'):
+            title = ev.title or ''
+            forms = {
+                slugify(title),
+                re.sub(r'^-|-$', '', re.sub(r'[^a-z0-9]+', '-', title.lower().strip())),
+            }
+            if raw in forms or slugify(raw) in forms:
+                candidates.extend(forms)
+                break
+    except Exception:  # noqa: BLE001
+        pass
+
+    for candidate in candidates:
         c = str(candidate or '').strip()
         if c and c not in out:
             out.append(c)
