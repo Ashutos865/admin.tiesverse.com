@@ -133,6 +133,13 @@ SLOTS = (
         {'key': 'letter-backdrop', 'label': 'Founders letter backdrop', 'group': 'Hero & backdrops', 'aspect': 16 / 9, 'auto': False},
         {'key': 'tech-bg', 'label': 'Technology section background', 'group': 'Hero & backdrops', 'aspect': 16 / 9, 'auto': False},
         {'key': 'team-group', 'label': 'About: team group photo', 'group': 'About', 'aspect': 16 / 9, 'auto': False},
+        # Portraits for the two co-founders. Square, because the About page
+        # shows them in a circle; without one it falls back to their initials,
+        # which is what the page did before these existed.
+        {'key': 'founder-1', 'label': 'About: co-founder 1 photo (Hardik Pathak)',
+         'group': 'About', 'aspect': 1, 'auto': False},
+        {'key': 'founder-2', 'label': 'About: co-founder 2 photo (Pruthavirajsingh Dulat)',
+         'group': 'About', 'aspect': 1, 'auto': False},
     ]
     + _rows2(_BRAND_PAGE, 'Brand page')
     + [{'key': k, 'label': l, 'group': 'Nav feature cards', 'aspect': 4 / 3, 'auto': a} for (k, l, a, _f) in _NAV]
