@@ -528,6 +528,34 @@ class Podcast(models.Model):
             return 'link'
         return ''
 
+    @property
+    def embed_url(self):
+        """A player that can sit on our own page, when the platform offers one.
+
+        Both YouTube and Spotify publish an embeddable player, so an episode can
+        be listened to without leaving the site while the original link still
+        takes anyone who prefers it to the platform itself. Anything else
+        returns '' and is offered as a link only.
+        """
+        import re as _re
+        u = (self.listen_url or '').strip()
+        if not u:
+            return ''
+
+        # youtu.be/ID  |  youtube.com/watch?v=ID  |  /embed/ID  |  /live/ID
+        m = _re.search(
+            r'(?:youtu\.be/|youtube\.com/(?:watch\?(?:.*&)?v=|embed/|live/|shorts/))'
+            r'([A-Za-z0-9_-]{11})', u)
+        if m:
+            return 'https://www.youtube-nocookie.com/embed/' + m.group(1)
+
+        # open.spotify.com/episode/ID  ->  /embed/episode/ID
+        m = _re.search(r'open\.spotify\.com/(episode|show)/([A-Za-z0-9]+)', u)
+        if m:
+            return 'https://open.spotify.com/embed/%s/%s' % (m.group(1), m.group(2))
+
+        return ''
+
     def __str__(self):
         return self.title
 

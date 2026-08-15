@@ -42,9 +42,14 @@ def _dto(p):
         'audio_url': p.audio_url,
         'listen_url': p.listen_url,
         'platform': p.platform,
+        'embed_url': p.embed_url,
         'cover_url': p.cover_url,
         'duration_seconds': p.duration_seconds,
-        'published_at': p.published_at.isoformat() if p.published_at else None,
+        # Tolerant on purpose: whatever shape the date is in, describing an
+        # episode must never be the thing that fails.
+        'published_at': (p.published_at.isoformat()
+                         if hasattr(p.published_at, 'isoformat')
+                         else (str(p.published_at) if p.published_at else None)),
         'is_featured': p.is_featured,
         'is_published': p.is_published,
         'position': p.position,
@@ -77,8 +82,20 @@ def _apply(p, data):
             except (TypeError, ValueError):
                 pass
     if 'published_at' in data:
-        raw = str(data.get('published_at') or '').strip()
-        p.published_at = raw[:10] if re.match(r'^\d{4}-\d{2}-\d{2}', raw) else None
+        # Parse it rather than assigning the string. Django only converts on
+        # save-and-reload, so the unsaved model held a str and anything reading
+        # it back — the response serialiser, immediately below — hit
+        # 'str' object has no attribute 'isoformat' and returned a 500 even
+        # though the save itself had succeeded.
+        raw = str(data.get('published_at') or '').strip()[:10]
+        parsed = None
+        if re.match(r'^\d{4}-\d{2}-\d{2}$', raw):
+            from datetime import date
+            try:
+                parsed = date(*(int(x) for x in raw.split('-')))
+            except ValueError:
+                parsed = None      # e.g. 2025-02-31
+        p.published_at = parsed
     return p
 
 
