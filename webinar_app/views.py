@@ -1795,7 +1795,11 @@ def webinar_broadcast(request):
             'defaults': dict(extra or {}),
             'subject_src': subject_override or tpl.subject,
             'body_src': tpl.body_html,
-            'source': 'webinar_broadcast',
+            # This is the From header the worker sends with, not a label:
+            # the worker passes job_config['source'] straight to send_email.
+            # A description here reaches SES as the sender and every message
+            # is rejected with "Missing final '@domain'".
+            'source': resolve_from(tpl),
             'email_field': 'email',
             'actor': actor,
             'tpl_key': template_key,
