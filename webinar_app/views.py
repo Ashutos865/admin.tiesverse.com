@@ -1734,6 +1734,89 @@ def webinar_broadcast(request):
         ]
         list_source = 'registrants'
 
+    # ── Large sends go to the background worker ───────────────────────────
+    # Sending inside the request means the whole run has to finish inside
+    # nginx's 120s window. A 1,035-recipient send does not: it was cut off
+    # part-way, leaving some people mailed, some not, and no way for the
+    # browser to say which. The durable worker has no such limit, checkpoints
+    # after every recipient, and refuses to re-send anyone already logged for
+    # the campaign — so an interrupted run resumes without duplicates.
+    QUEUE_ABOVE = int(data.get('queue_above') or 25)
+    wants_queue = bool(data.get('queue')) or (not test_email and len(send_list) > QUEUE_ABOVE)
+
+    if wants_queue and send_list:
+        from accounts_app.campaign_jobs import enqueue_campaign
+        # Recipients travel on the job itself, in the shape the worker expects.
+        job_recipients = [
+            {**(item.get('row') or {}), 'email': item['email'], 'name': item['name']}
+            for item in send_list if item.get('email')
+        ]
+
+        # Anyone this template has already reached is dropped before queueing.
+        # The worker's own de-duplication is per campaign, so it cannot know
+        # about an earlier run that was cut off part-way — which is exactly the
+        # situation a resend is for. Opt out with skip_already_sent=false.
+        skipped_already = 0
+        if str(data.get('skip_already_sent', 'true')).lower() not in ('false', '0', 'no'):
+            done = {
+                (e or '').strip().lower()
+                for e in EmailSendLog.objects
+                .filter(template_key=template_key, status='sent')
+                .values_list('recipient_email', flat=True)
+            }
+            if done:
+                before_n = len(job_recipients)
+                job_recipients = [r for r in job_recipients
+                                  if (r.get('email') or '').strip().lower() not in done]
+                skipped_already = before_n - len(job_recipients)
+                logger.info('Broadcast: %d recipients already had %s, skipping them',
+                            skipped_already, template_key)
+
+        if not job_recipients:
+            return Response({
+                'queued': False, 'total': 0, 'already_sent': skipped_already,
+                'message': (f'Everyone on this list ({skipped_already}) has already '
+                            'received this email. Nothing was sent.'),
+            })
+        campaign = EmailCampaign.objects.create(
+            name=f'{event_title} — {tpl.name}'[:200],
+            template_key=template_key, template_name=tpl.name,
+            subject=(subject_override or tpl.subject)[:300],
+            from_name=getattr(tpl, 'from_name', '') or '',
+            from_email=resolve_from(tpl),
+            body_html=tpl.body_html,
+            recipient_count=len(job_recipients),
+            status='queued',
+            had_attachment=bool(include_certificate or doc_attachments),
+            created_by=actor,
+        )
+        enqueue_campaign(campaign.id, {
+            'recipients': job_recipients,
+            'defaults': dict(extra or {}),
+            'subject_src': subject_override or tpl.subject,
+            'body_src': tpl.body_html,
+            'source': 'webinar_broadcast',
+            'email_field': 'email',
+            'actor': actor,
+            'tpl_key': template_key,
+            'tpl_name': tpl.name,
+            'certificate': None,
+            'event_key': event_key,
+            'event_type': event_type,
+        })
+        logger.info('Webinar broadcast queued: campaign %s, %d recipients',
+                    campaign.id, len(job_recipients))
+        return Response({
+            'queued': True,
+            'campaign_id': campaign.id,
+            'total': len(job_recipients),
+            'already_sent': skipped_already,
+            'message': (f'Sending to {len(job_recipients)} people in the background'
+                        + (f'; {skipped_already} already had this email and were skipped'
+                           if skipped_already else '')
+                        + '. You can close this page — progress is saved as it goes.'),
+        })
+
     sent = stubbed = skipped = failed = 0
     seen = set()
     results = []
