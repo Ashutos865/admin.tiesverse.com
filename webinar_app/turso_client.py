@@ -179,6 +179,22 @@ def setup_tables():
             updated_at          TEXT NOT NULL
         )
     """)
+    # A coupon marked is_test runs a registration end to end — the mail goes,
+    # the meeting link is delivered, the ticket prints — but the row is never
+    # written, so a rehearsal never lands in the attendee numbers.
+    try:
+        coupon_columns = {
+            str(row.get('name'))
+            for row in (execute('PRAGMA table_info(coupons)') or [])
+        }
+    except TursoError:
+        coupon_columns = set()
+    if 'is_test' not in coupon_columns:
+        try:
+            execute('ALTER TABLE coupons ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0')
+        except TursoError:
+            pass  # already added by another worker
+
     execute(
         'CREATE INDEX IF NOT EXISTS idx_coupons_target '
         'ON coupons(event_type, event_id, active)'

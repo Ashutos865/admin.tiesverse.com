@@ -30,6 +30,7 @@ const emptyForm = {
   expires_at: '',
   max_redemptions: '',
   active: true,
+  is_test: false,
 };
 
 const slugify = (value) => String(value || '')
@@ -60,6 +61,9 @@ const displayDate = (value) => {
 };
 
 const couponState = (coupon) => {
+  // Shown ahead of everything else: handing a test code to a real registrant
+  // means their seat is never recorded, so it has to be obvious at a glance.
+  if (String(coupon.is_test) === '1') return { label: 'Test — not recorded', tone: 'scheduled' };
   if (String(coupon.active) !== '1') return { label: 'Paused', tone: 'paused' };
   const now = Date.now();
   const starts = coupon.starts_at ? new Date(coupon.starts_at).getTime() : null;
@@ -152,6 +156,9 @@ export default function Coupons() {
       expires_at: toLocalInput(coupon.expires_at),
       max_redemptions: coupon.max_redemptions || '',
       active: String(coupon.active) === '1',
+      // Without this, opening a test coupon and saving would quietly turn it
+      // into a real one.
+      is_test: String(coupon.is_test) === '1',
     });
     setModalOpen(true);
   };
@@ -314,6 +321,7 @@ export default function Coupons() {
                 </div>
                 <label className="app-field"><span>First registrations limit (optional)</span><input type="number" min="1" value={form.max_redemptions} onChange={(event) => setForm((value) => ({ ...value, max_redemptions: event.target.value }))} placeholder="10 — leave empty for unlimited" /></label>
                 <label className="app-switch"><input type="checkbox" checked={form.active} onChange={(event) => setForm((value) => ({ ...value, active: event.target.checked }))} /><span><strong>Coupon enabled</strong><small>Turn this off to save it as paused.</small></span></label>
+                <label className="app-switch"><input type="checkbox" checked={form.is_test} onChange={(event) => setForm((value) => ({ ...value, is_test: event.target.checked }))} /><span><strong>Test coupon</strong><small>Runs a real registration — the confirmation email, the joining link and the ticket all go out — but nothing is saved, so it never reaches your attendee numbers. Must be 100% off.</small></span></label>
               </div>
               <footer className="app-modal-footer"><button type="button" onClick={closeModal}>Cancel</button><button type="submit" disabled={saving}>{saving ? 'Saving…' : editingId ? 'Update Coupon' : 'Create Coupon'}</button></footer>
             </form>

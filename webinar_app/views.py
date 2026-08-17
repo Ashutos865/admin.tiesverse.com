@@ -209,16 +209,19 @@ def coupons(request):
         turso_client.execute(
             """INSERT INTO coupons
                (code,event_id,event_title,event_type,discount_type,discount_value,
-                starts_at,expires_at,max_redemptions,redeemed_count,active,created_at,updated_at)
+                starts_at,expires_at,max_redemptions,redeemed_count,active,is_test,
+                created_at,updated_at)
                VALUES (:code,:event_id,:event_title,:event_type,:discount_type,:discount_value,
                        NULLIF(:starts_at,''),NULLIF(:expires_at,''),NULLIF(:max_redemptions,''),
-                       0,:active,:created_at,:updated_at)""",
+                       0,:active,:is_test,:created_at,:updated_at)""",
             {
                 'code': code, 'event_id': event_id, 'event_title': event_title,
                 'event_type': event_type, 'discount_type': discount_type,
                 'discount_value': str(discount_value), 'starts_at': starts_at,
                 'expires_at': expires_at, 'max_redemptions': max_redemptions,
                 'active': 1 if data.get('active', True) else 0,
+                # A rehearsal coupon: everything runs, nothing is recorded.
+                'is_test': 1 if data.get('is_test') else 0,
                 'created_at': now, 'updated_at': now,
             },
         )
@@ -246,6 +249,7 @@ def coupon_detail(request, coupon_id):
     allowed = {
         'code', 'event_id', 'event_title', 'event_type', 'discount_type',
         'discount_value', 'starts_at', 'expires_at', 'max_redemptions', 'active',
+        'is_test',
     }
     merged = {**existing, **{key: data[key] for key in allowed if key in data}}
     code = str(merged.get('code') or '').strip().upper()
@@ -278,7 +282,8 @@ def coupon_detail(request, coupon_id):
                  code=:code,event_id=:event_id,event_title=:event_title,event_type=:event_type,
                  discount_type=:discount_type,discount_value=:discount_value,
                  starts_at=NULLIF(:starts_at,''),expires_at=NULLIF(:expires_at,''),
-                 max_redemptions=NULLIF(:max_redemptions,''),active=:active,updated_at=:updated_at
+                 max_redemptions=NULLIF(:max_redemptions,''),active=:active,
+                 is_test=:is_test,updated_at=:updated_at
                WHERE id=:id""",
             {
                 'id': coupon_id, 'code': code,
@@ -288,6 +293,7 @@ def coupon_detail(request, coupon_id):
                 'discount_value': str(discount_value), 'starts_at': starts_at,
                 'expires_at': expires_at, 'max_redemptions': max_redemptions,
                 'active': 1 if str(merged.get('active')).lower() in ('1', 'true') else 0,
+                'is_test': 1 if str(merged.get('is_test')).lower() in ('1', 'true') else 0,
                 'updated_at': _utcnow().isoformat(),
             },
         )
@@ -584,6 +590,44 @@ def create_payment_order(request):
         'speaker_question': str(data.get('speaker_question') or ''),
         'custom_answers': _custom_answers_json(data),
     }
+
+    # A rehearsal. Everything a real registration does still happens - the
+    # confirmation is sent, the meeting link is delivered, the ticket prints -
+    # but no row is written, so a test never reaches the attendee count, the
+    # exports or the master sheet. Only reachable for a coupon somebody
+    # deliberately marked as a test in the admin.
+    is_test_coupon = bool(coupon) and str(coupon.get('is_test') or '0') not in ('0', '', 'None', 'False')
+
+    if is_test_coupon and final_amount <= 0:
+        # The redemption is handed straight back: a test must not consume a
+        # real use of the code, or a five-use coupon dies after five dry runs.
+        _release_coupon(coupon_code)
+        meeting_link = _deliver_meeting_link(data.get('event_id'), event_title, email)
+        email_sent = send_registration_confirmation(
+            email, name, event_title, event_type, str(data.get('event_date') or ''),
+            meeting_link=meeting_link,
+        )
+        logger.info('TEST registration for %s on "%s" - mail sent, nothing stored',
+                    email, event_title)
+        return Response({
+            'status': 'registered',
+            'free': True,
+            'test': True,
+            'coupon_code': coupon_code,
+            'discount_amount': str(discount_amount),
+            'final_amount': '0.00',
+            'email_sent': email_sent,
+        })
+
+    if is_test_coupon and final_amount > 0:
+        # A test coupon that still leaves a balance would charge real money
+        # against a registration we are not going to store, leaving the payment
+        # with no record. Refuse it instead, and hand the redemption back.
+        _release_coupon(coupon_code)
+        return Response({
+            'error': 'This is a test coupon, so it cannot be used for a payment. '
+                     'Set it to 100% off to run a test registration.',
+        }, status=400)
 
     # A 100% coupon completes registration without opening Razorpay.
     if final_amount <= 0:
