@@ -51,7 +51,7 @@ def _barcode_cells(seed, count=26):
     return ''.join(cells)
 
 
-def _teeth_cells(count=20):
+def _teeth_cells(count=22):
     """The torn foot of the slip, as table cells.
 
     clip-path does not exist in email, so each notch is a cell holding a
@@ -60,7 +60,7 @@ def _teeth_cells(count=20):
     """
     cell = (
         f'<td style="font-size:0;line-height:0;padding:0;">'
-        f'<div style="width:0;height:0;border-left:9px solid transparent;'
+        f'<div style="width:0;height:0;border-left:6px solid transparent;'
         f'border-right:6px solid transparent;border-top:7px solid {TICKET_PAGE};">'
         f'</div></td>'
     )
@@ -135,18 +135,28 @@ def send_registration_confirmation(to_email, name, event_title, event_type, even
         html_body = f"""\
 <!doctype html>
 <html>
-<body style="margin:0;padding:0;background:{TICKET_PAGE};">
+<head>
+<meta name="color-scheme" content="light only" />
+<meta name="supported-color-schemes" content="light only" />
+<style>
+  /* Gmail on Android re-colours a light email for dark mode and, because the
+     logo is a transparent PNG with dark ink, paints a light plate behind it
+     to keep it legible - that is the white patch. Declaring the scheme stops
+     most clients inverting; the slip also carries its own explicit
+     background so that if one inverts anyway, the mark still sits on a
+     surface we chose rather than one the client invented. */
+  :root {{ color-scheme: light only; supported-color-schemes: light only; }}
+  [data-ogsc] .slip {{ background: #fdfaf3 !important; }}
+  [data-ogsc] .slip-muted {{ color: #8a8078 !important; }}
+</style>
+</head>
+<body class="body" style="margin:0;padding:0;background:{TICKET_PAGE};">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0"
        style="width:100%;background:{TICKET_PAGE};padding:30px 12px;">
 <tr><td align="center">
 
   <table role="presentation" cellpadding="0" cellspacing="0" border="0"
          style="width:100%;max-width:400px;">
-
-    <tr><td align="center" style="padding:0 0 20px;">
-      <img src="{BRAND_LOGO_URL}" width="124" alt="Tiesverse"
-           style="display:block;width:124px;max-width:124px;height:auto;border:0;outline:none;" />
-    </td></tr>
 
     <!-- The dispenser hood the slip is printed from. Two flat bands rather
          than the screen's gradient, which Outlook drops. -->
@@ -158,15 +168,19 @@ def send_registration_confirmation(to_email, name, event_title, event_type, even
 
     <tr><td style="padding:0 22px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+             class="slip" bgcolor="{TICKET_PAPER}"
              style="width:100%;background:{TICKET_PAPER};">
         <tr><td style="padding:20px 20px 16px;">
 
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
-              <td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;
-                         letter-spacing:1.6px;color:{TICKET_INK};">TIESVERSE
-                <div style="font-size:9px;letter-spacing:1.2px;color:{TICKET_MUTED};
-                            padding-top:3px;">{slip_kind}</div>
+              <td style="padding:0;">
+                <img src="{BRAND_LOGO_URL}" width="104" alt="Tiesverse"
+                     style="display:block;width:104px;max-width:104px;height:auto;
+                            border:0;outline:none;" />
+                <div class="slip-muted" style="font-family:Arial,Helvetica,sans-serif;
+                            font-size:9px;font-weight:bold;letter-spacing:1.2px;
+                            color:{TICKET_MUTED};padding-top:7px;">{slip_kind}</div>
               </td>
               <td align="right" width="26" style="width:26px;">
                 <div style="width:24px;height:24px;background:{TICKET_ACCENT};border-radius:12px;
@@ -223,6 +237,7 @@ def send_registration_confirmation(to_email, name, event_title, event_type, even
 
       <!-- Torn edge, cut into the foot of the slip -->
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+             class="slip" bgcolor="{TICKET_PAPER}"
              style="width:100%;background:{TICKET_PAPER};">
         <tr>{teeth}</tr>
       </table>
