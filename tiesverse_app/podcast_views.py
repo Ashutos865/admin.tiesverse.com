@@ -72,6 +72,9 @@ def _apply(p, data):
                   'listen_url'):
         if field in data:
             setattr(p, field, str(data.get(field) or '').strip()[:600])
+    # `platform` is not stored: Podcast derives it from listen_url as a
+    # read-only property, so it is always in step with the link and must not be
+    # assigned here — doing so raises AttributeError and fails the whole save.
     for field in ('is_featured', 'is_published'):
         if field in data:
             setattr(p, field, str(data.get(field)).lower() in ('true', '1', 'yes', 'on'))

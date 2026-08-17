@@ -5,6 +5,8 @@ from .views import (
     WebinarEventViewSet, CalendarEventViewSet,
     register_for_event, list_registrations,
     create_payment_order, verify_payment, razorpay_webhook, payment_reminder,
+    master_sheet, sync_payments, source_analytics,
+    master_sheet_audience_count,
     refund_registration, sync_registration_payment,
     coupons, coupon_detail, validate_coupon,
     form_questions, form_question_detail, reorder_form_questions,
@@ -39,6 +41,12 @@ urlpatterns = [
     path('verify-payment/', verify_payment, name='webinar-verify-payment'),
     path('payment-reminder/', payment_reminder, name='webinar-payment-reminder'),
     path('razorpay-webhook/', razorpay_webhook, name='razorpay-webhook'),
+    # One row per person, and a manual recovery for payments the webhook missed.
+    path('master-sheet/', master_sheet, name='webinar-master-sheet'),
+    path('sync-payments/', sync_payments, name='webinar-sync-payments'),
+    path('source-analytics/', source_analytics, name='webinar-source-analytics'),
+    path('master-sheet-audience/', master_sheet_audience_count,
+         name='webinar-master-sheet-audience'),
     path('refund/', refund_registration, name='webinar-refund'),
     path('sync-payment/', sync_registration_payment, name='webinar-sync-payment'),
 

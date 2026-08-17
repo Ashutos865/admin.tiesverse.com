@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import SeoCoach from '../../components/SeoCoach';
 import {
     BookOpen, Plus, Upload, X, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, Save,
     FileText, Link2, ExternalLink, Pencil,
@@ -88,6 +89,20 @@ function ReportsCard({ flash, onEdit }) {
                     <input style={input} value={date} onChange={(e) => setDate(e.target.value)} placeholder="August 2026" />
                     <input style={input} value={dek} onChange={(e) => setDek(e.target.value)} placeholder="One-line standfirst shown under the title (optional)" />
                 </div>
+                {/* The standfirst becomes the search snippet and the share
+                    card, so it is worth seeing how it reads before importing. */}
+                {dek.trim() && (
+                    <SeoCoach
+                        kind="report"
+                        // The title is read from the document on import, so only
+                        // the standfirst can be judged here. Passing a made-up
+                        // title would score words nobody wrote.
+                        title=""
+                        titleUnavailable
+                        description={dek}
+                        extras={[{ label: 'The date', value: date }]}
+                    />
+                )}
                 <button style={{ ...btn('var(--primary, #fe7a00)', '#fff'), justifyContent: 'center' }} disabled={importing} onClick={doImport}>
                     <Link2 size={15} /> {importing ? 'Importing… (fetching the doc)' : 'Import from Google Doc'}
                 </button>

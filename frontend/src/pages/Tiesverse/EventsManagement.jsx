@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import SeoCoach from '../../components/SeoCoach';
 import {
   CalendarDays,
   ChevronLeft,
@@ -344,6 +345,17 @@ const EventsManagement = () => {
                 <span>Description / Note</span>
                 <textarea name="note" value={formData.note} onChange={handleChange} placeholder="Short blurb shown on the event card." />
               </label>
+              {/* The note is what a search result and a share card will show,
+                  so it is worth seeing that while writing it. */}
+              <SeoCoach
+                kind="event"
+                title={formData.title}
+                description={formData.note}
+                extras={[
+                  { label: 'The date', value: formData.date },
+                  { label: 'The city', value: formData.city },
+                ]}
+              />
               <div className="event-checkboxes">
                 <label><input type="checkbox" name="flagship" checked={formData.flagship} onChange={handleChange} /> Flagship event</label>
                 <label><input type="checkbox" name="past" checked={formData.past} onChange={handleChange} /> Past event</label>

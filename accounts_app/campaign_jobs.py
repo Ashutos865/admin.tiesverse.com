@@ -7,6 +7,7 @@ it, and sends it via SES, updating campaign progress in the DB as it goes.
 """
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -19,6 +20,8 @@ from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.db import connection
+
+logger = logging.getLogger(__name__)
 
 ZW = chr(0x200b)   # zero-width space: non-empty for the generator, invisible on the PDF
 EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
@@ -797,6 +800,12 @@ def process_campaign(camp):
         source, email_field = cfg.get('source') or '', cfg.get('email_field') or 'email'
         actor = cfg.get('actor') or ''
         tpl_key, tpl_name = cfg.get('tpl_key') or '', cfg.get('tpl_name') or ''
+        # Which webinar this send belongs to. The inline send path records
+        # this on every log row, but the worker never did — so anything
+        # large enough to be queued vanished from a webinar's Send History
+        # even though it had been delivered and logged.
+        event_key = cfg.get('event_key') or ''
+        event_type = cfg.get('event_type') or ''
         cert = cfg.get('certificate') or None
 
         cert_vars, cert_els, cert_tid, mapping, fname_pat = [], [], '', {}, 'certificate.pdf'
@@ -877,6 +886,23 @@ def process_campaign(camp):
             if not to or not EMAIL_RE.match(to) or dup:
                 return {'email': to, 'name': name, 'subject': subject, 'status': 'skipped',
                         'error': 'duplicate' if dup else 'invalid or blank email', 'cert': '', 'mid': ''}
+
+            # Checked per recipient, not from a list built when the campaign was
+            # queued: a 1,000-person send takes long enough that somebody can
+            # unsubscribe midway, and the promise is that we stop mailing them.
+            # Certificates and other transactional sends are exempt — opting out
+            # of marketing does not forfeit something already earned or paid for.
+            if not is_test_send and not cert:
+                try:
+                    from accounts_app.models import MailContact
+                    if MailContact.objects.filter(
+                            email__iexact=to).exclude(
+                            status=MailContact.ACTIVE).exists():
+                        return {'email': to, 'name': name, 'subject': subject,
+                                'status': 'skipped', 'error': 'unsubscribed',
+                                'cert': '', 'mid': ''}
+                except Exception:  # noqa: BLE001 — never block a send on this
+                    pass
 
             attachments, cert_fname, cert_id, gen_error = None, '', '', ''
             guard = {'allowed': True, 'reason': '', 'reuse_cert_id': '', 'is_test': is_test_send}
@@ -966,11 +992,94 @@ def process_campaign(camp):
                 if not str(merged.get('portal_url') or '').strip():
                     merged['portal_url'] = merged['verify_url']
                 subject = render_tokens(subject_src, merged)
+            # Resolved before the body is rendered, because both the footer link
+            # and the List-Unsubscribe header need the same per-person token.
+            unsub_url, send_headers = '', None
+            if not cert:
+                try:
+                    from accounts_app.unsubscribe import (
+                        get_or_create_contact, unsubscribe_headers)
+                    _contact = get_or_create_contact(to, name=name)
+                    send_headers = unsubscribe_headers(_contact) or None
+                    from accounts_app.unsubscribe import unsubscribe_link
+                    unsub_url = unsubscribe_link(_contact)
+                except Exception:  # noqa: BLE001 — never block a send on this
+                    unsub_url, send_headers = '', None
+
             body = render_tokens(body_src, merged)
 
+            # A visible footer link, not only the header. Mail clients show an
+            # unsubscribe button from the header alone, but many readers look
+            # for a link in the body, and the rules expect one to be findable.
+            # Appended rather than required in every template, so no template
+            # can be published without one by mistake. A template that already
+            # includes {{unsubscribe_url}} places it itself and is left alone.
+            if not cert and unsub_url:
+                if '{{unsubscribe_url}}' in body_src or unsub_url in body:
+                    body = body.replace('{{unsubscribe_url}}', unsub_url)
+                else:
+                    body += (
+                        '<div style="margin-top:28px;padding-top:16px;'
+                        'border-top:1px solid #e5e7eb;font-family:Arial,sans-serif;'
+                        'font-size:12px;line-height:1.5;color:#6b7280;text-align:center">'
+                        'You are receiving this because you registered with TIESVERSE '
+                        'or signed up for our updates.<br>'
+                        f'<a href="{unsub_url}" style="color:#6b7280;text-decoration:underline">'
+                        'Unsubscribe from these emails</a>'
+                        '</div>'
+                    )
+
+            # Gmail and Yahoo require bulk mail to carry a one-click unsubscribe
+            # header (resolved above, alongside the footer link); without it,
+            # mail from a domain sending at this volume is filtered to spam
+            # whatever the content says. Certificates are transactional, not
+            # bulk mail, and carry neither.
+            #
+            # Test sends DO get both. Skipping the suppression check for a test
+            # is right — you must be able to mail yourself even after
+            # unsubscribing — but skipping the link meant a test looked nothing
+            # like the real thing, so there was no way to check the unsubscribe
+            # link before sending to a thousand people.
             res = send_email(to, subject, body, from_email=source,
-                             attachments=attachments, enabled=True, detailed=True)
+                             attachments=attachments, enabled=True, detailed=True,
+                             headers=send_headers)
             ok = res.get('ok')
+
+            # One retry, then decide. Most failures at this layer are transient —
+            # SES throttling, a dropped connection — and simply trying again
+            # fixes them. A second failure means something is actually wrong.
+            if not ok:
+                time.sleep(1.5)
+                res = send_email(to, subject, body, from_email=source,
+                                 attachments=attachments, enabled=True, detailed=True,
+                                 headers=send_headers)
+                ok = res.get('ok')
+
+                if not ok and not cert and not is_test_send:
+                    # Suppress only what is permanently undeliverable. An outage
+                    # or a throttle would otherwise strip real subscribers off
+                    # the list for good, which is far worse than mailing a dead
+                    # address twice. Anything not clearly permanent is left
+                    # active and simply retried on the next campaign.
+                    err_text = str(res.get('error') or '').lower()
+                    permanent = any(marker in err_text for marker in (
+                        'does not exist', 'no such user', 'invalid domain',
+                        'address blacklisted', 'suppressed', 'rejected',
+                        'invalid email', 'recipient rejected',
+                        "missing final '@domain'", 'illegal address',
+                    ))
+                    if permanent:
+                        try:
+                            from accounts_app.models import MailContact
+                            from django.utils import timezone as _tz
+                            MailContact.objects.filter(email__iexact=to).update(
+                                status=MailContact.BOUNCED,
+                                status_reason='failed twice: %s' % err_text[:160],
+                                status_changed_at=_tz.now())
+                            logger.warning('Suppressed %s after two permanent '
+                                        'failures: %s', to, err_text[:200])
+                        except Exception:  # noqa: BLE001
+                            pass
             if ok and cert_id:
                 # Sending IS issuing: the QR must verify from the moment the mail
                 # lands, so the record is written right after the send succeeds.
@@ -1035,6 +1144,7 @@ def process_campaign(camp):
                             template_key=tpl_key, template_name=tpl_name, subject=(r.get('subject') or '')[:300],
                             context='campaign', status=r.get('status') or 'failed', error=(r.get('error') or '')[:400],
                             certificate_id=(r.get('cert') or '')[:64], message_id=(r.get('mid') or '')[:200],
+                            event_key=event_key[:120], event_type=event_type[:20],
                             campaign=camp, sent_by=actor)
                     except Exception:  # noqa: BLE001
                         pass

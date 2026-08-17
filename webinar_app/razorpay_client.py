@@ -80,6 +80,25 @@ def fetch_payment(payment_id):
         return None
 
 
+def order_payments(order_id):
+    """Every payment attempt made against an order, newest last.
+
+    An order can be attempted several times — a failed card, then a successful
+    UPI — so this returns the list rather than a single payment. Used by
+    `reconcile_payments` to ask Razorpay what really happened to a registration
+    we still show as unpaid.
+
+    Raises on failure rather than returning [], because a network error and
+    "nobody ever paid" must not look the same to a reconciler: silently
+    treating an outage as no-payment would leave real money unrecorded.
+    """
+    client, _ = _get_client()
+    if not client or not order_id:
+        raise RuntimeError('Razorpay is not configured')
+    resp = client.order.payments(order_id) or {}
+    return resp.get('items', []) or []
+
+
 def refund_payment(payment_id, amount_paise=None, notes=None, speed='normal'):
     """Refund a captured payment, in full or partly.
 

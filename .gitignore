@@ -228,3 +228,6 @@ server_err.txt
 server_out.txt
 
 cert_fonts/
+
+# Build output from the deploy step (uploaded, then swapped into dist on the VPS).
+frontend/dist_new/

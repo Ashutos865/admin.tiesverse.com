@@ -128,6 +128,10 @@ function EpisodeCard({ ep, first, last, onMove, onChanged, say }) {
       title: draft.title, episode_label: draft.episode_label, tag: draft.tag,
       description: draft.description, published_at: draft.published_at || '',
       is_featured: draft.is_featured, is_published: draft.is_published,
+      // The listen link was missing from this payload, so pasting a URL updated
+      // the form and the warning cleared, but Save sent everything except the
+      // link — it was silently dropped and the field was empty again on reload.
+      listen_url: draft.listen_url || '',
     });
     setBusy(false);
     if (res?.error) return say(res.error);

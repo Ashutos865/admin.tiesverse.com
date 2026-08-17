@@ -303,3 +303,111 @@ class CertificateDocType(models.Model):
 
     def __str__(self):
         return self.label
+
+
+class MailContact(models.Model):
+    """One row per person we hold an address for — the master contact record.
+
+    Registrations are a ledger: the same human appears once per webinar they
+    signed up for, and three times over if their payment failed twice. That is
+    the right shape for money and attendance, and the wrong shape for "may we
+    email this person". Mail status belongs to the person, not the registration,
+    so it lives here and is looked up by address.
+
+    Named MailContact rather than Contact because `tiesverse_app.ContactMessage`
+    already exists and means something else entirely (a website enquiry).
+
+    Deliberately in accounts_app: `config/routers.py` sends accounts_app to the
+    default database and tiesverse_app/webinar_app to turso_db, and
+    `allow_relation` returns False across that line. Suppression has to be
+    checked against EmailSendLog on every campaign send, so it must sit on the
+    same database as EmailSendLog.
+    """
+    ACTIVE = 'active'
+    UNSUBSCRIBED = 'unsubscribed'
+    BOUNCED = 'bounced'
+    JUNK = 'junk'
+    STATUS_CHOICES = [
+        (ACTIVE, 'Active'),
+        (UNSUBSCRIBED, 'Unsubscribed'),
+        (BOUNCED, 'Bounced'),
+        (JUNK, 'Junk'),
+    ]
+
+    # Stored lowercased so 'A@x.com' and 'a@x.com' can never become two people.
+    email = models.EmailField(max_length=254, unique=True)
+    name = models.CharField(max_length=200, blank=True)
+    phone = models.CharField(max_length=40, blank=True)
+    city = models.CharField(max_length=120, blank=True)
+    country = models.CharField(max_length=120, blank=True)
+
+    # Attribution is kept for good: it is how a webinar's reach is judged long
+    # after the per-webinar answers have been purged.
+    utm_source = models.CharField(max_length=80, blank=True)
+    utm_medium = models.CharField(max_length=80, blank=True)
+    utm_campaign = models.CharField(max_length=120, blank=True)
+    utm_content = models.CharField(max_length=120, blank=True)
+    referrer = models.CharField(max_length=300, blank=True)
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES,
+                              default=ACTIVE, db_index=True)
+    # Why they are unsubscribed/bounced — 'one-click', 'ses-complaint', etc.
+    status_reason = models.CharField(max_length=200, blank=True)
+    status_changed_at = models.DateTimeField(null=True, blank=True)
+
+    # Random, per-contact, and never derived from the address: a guessable token
+    # would let anyone unsubscribe anyone else by editing a URL.
+    unsubscribe_token = models.CharField(max_length=64, unique=True, db_index=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_mailed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'mail_contacts'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['status', 'email'])]
+
+    def __str__(self):
+        return f"{self.name or self.email} ({self.status})"
+
+    @property
+    def can_receive_marketing(self):
+        """Bulk mail is allowed only to active contacts.
+
+        Transactional mail — a payment confirmation, a meeting link, a
+        certificate — is not covered by this and must never consult it: someone
+        who opted out of marketing has still paid for their seat.
+        """
+        return self.status == self.ACTIVE
+
+    @staticmethod
+    def new_token():
+        import secrets
+        return secrets.token_urlsafe(32)[:64]
+
+
+class MailContactEvent(models.Model):
+    """Which webinars a contact came to us through, and when.
+
+    The link between a person and an event is kept here rather than being
+    re-derived from the registration ledger, because the ledger's per-webinar
+    answers get purged once an event is over while the fact that they attended
+    is worth keeping for good.
+    """
+    contact = models.ForeignKey(MailContact, on_delete=models.CASCADE,
+                                related_name='events')
+    event_key = models.CharField(max_length=200, db_index=True)
+    event_title = models.CharField(max_length=300, blank=True)
+    event_date = models.CharField(max_length=80, blank=True)
+    registered_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mail_contact_events'
+        ordering = ['-registered_at', '-id']
+        # One row per person per event: re-registering updates, never duplicates.
+        unique_together = [('contact', 'event_key')]
+
+    def __str__(self):
+        return f"{self.contact.email} → {self.event_title or self.event_key}"

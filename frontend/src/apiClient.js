@@ -372,6 +372,37 @@ export const getWebinarRegistrationsFull = (event_key = '', event_pk = '') =>
     .then(r => (r?.error ? r : (r?.rows || [])))
     .catch(() => []);
 
+// WEBINAR — Master sheet: the same registrations grouped one row per person.
+export const getWebinarMasterSheet = (params = {}) => {
+  const qs = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v)).toString();
+  return adminFetch(`/api/webinar/master-sheet/${qs ? `?${qs}` : ''}`)
+    .then(r => (r?.error ? r : r))
+    .catch(() => ({ rows: [], count: 0 }));
+};
+
+// WEBINAR — Ask Razorpay what was really paid and record anything missed.
+export const syncWebinarPayments = (dryRun = false) =>
+  adminFetch('/api/webinar/sync-payments/', 'POST', { dry_run: dryRun });
+
+// WEBINAR — Which links bring sign-ups, and which bring paying customers.
+export const getWebinarSourceAnalytics = (eventKey = '') =>
+  adminFetch(`/api/webinar/source-analytics/${eventKey ? `?event_key=${encodeURIComponent(eventKey)}` : ''}`)
+    .catch(() => ({ sources: [], totals: {} }));
+
+// WEBINAR — How many people a master-sheet broadcast would actually reach.
+export const getMasterSheetAudience = (eventKey = '') =>
+  adminFetch(`/api/webinar/master-sheet-audience/${eventKey ? `?event_key=${encodeURIComponent(eventKey)}` : ''}`)
+    .catch(() => ({}));
+
+// MAIL — put someone back on the list, or mark them off it.
+export const setMailContactStatus = (email, status) =>
+  adminFetch('/api/mail/contact-status/', 'POST', { email, status });
+
+// MAIL — correct a mistyped address and reactivate the contact.
+export const fixMailContactEmail = (email, newEmail) =>
+  adminFetch('/api/mail/fix-email/', 'POST', { email, new_email: newEmail });
+
 // WEBINAR — Attendee tracking
 export const markAttended = (ids, attended) =>
   adminFetch('/api/webinar/mark-attended', 'POST', { ids, attended });

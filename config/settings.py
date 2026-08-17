@@ -368,6 +368,14 @@ RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '')
 RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '')
 RAZORPAY_WEBHOOK_SECRET = os.environ.get('RAZORPAY_WEBHOOK_SECRET', '')
 
+# Public base for links that go out in email. Deliberately NOT the admin
+# domain: an unsubscribe link is seen by every recipient, and publishing
+# admin.tiesverse.com to a thousand inboxes advertises the panel to anyone
+# who reads a footer. mail.tiesverse.com proxies only /api/mail/ to the same
+# backend, so the links work while revealing nothing about the admin app.
+MAIL_PUBLIC_URL = os.environ.get(
+    'MAIL_PUBLIC_URL', 'https://mail.tiesverse.com').rstrip('/')
+
 # ── Google Calendar (interview scheduling — OAuth 2.0 user credentials) ──
 # We use OAuth (not a service-account key) because Workspace "secure by default"
 # blocks SA key creation. Get the refresh token once with get_google_refresh_token.py.

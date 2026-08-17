@@ -1,5 +1,6 @@
 import './WebinarsWorkshops.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import SeoCoach from '../../components/SeoCoach';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Award, BarChart3, ChevronDown, ChevronUp, ClipboardList, Download, Edit2, FileQuestion,
@@ -14,7 +15,7 @@ import {
   getFormSections, createFormSection, updateFormSection,
   deleteFormSection, reorderFormSections,
   getEventGuests, createEventSpeaker, deleteEventSpeaker, webinarRegistrationQrUrl,
-  getWebinarRegistrationsFull, markAttended,
+  getWebinarRegistrationsFull, markAttended, getMasterSheetAudience,
   webinarBroadcast, getWebinarSendHistory, getWebinarMyAccess,
   generateWebinarMeeting, getWebinarMeetingGuests,
   getEmailTemplates, getSESSenders,
@@ -249,6 +250,33 @@ function AnalyticsTab({ item }) {
     .map(([label, value], i) => ({ label, value, colour: CHART_COLOURS[i % CHART_COLOURS.length] }));
   const topCount = sources[0]?.value || 1;
 
+  // Sign-ups are only half the story: a channel can fill the list and sell
+  // nothing. Credit goes to the link the payment actually came through, since
+  // someone who retries can arrive from a different link each time.
+  const paidTally = new Map();
+  rows.forEach((r) => {
+    if (String(r.payment_status || '').toLowerCase() !== 'paid') return;
+    const key = String(r.utm_source || '').trim().toLowerCase()
+      || String(r.source || '').trim().toLowerCase()
+      || 'direct / untagged';
+    const acc = paidTally.get(key) || { paid: 0, paise: 0 };
+    acc.paid += 1;
+    acc.paise += Number(r.final_amount || r.amount || 0);
+    paidTally.set(key, acc);
+  });
+  const revenueSources = sources
+    .map((s) => {
+      const acc = paidTally.get(s.label) || { paid: 0, paise: 0 };
+      return {
+        ...s,
+        paid: acc.paid,
+        paise: acc.paise,
+        conversion: s.value ? Math.round((acc.paid / s.value) * 100) : 0,
+      };
+    })
+    .sort((a, b) => b.paise - a.paise || b.value - a.value);
+  const topRevenue = Math.max(1, ...revenueSources.map((s) => s.paise));
+
   // Registrations per day, most recent fortnight, so a push is visible.
   const byDay = new Map();
   rows.forEach((r) => {
@@ -316,6 +344,37 @@ function AnalyticsTab({ item }) {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              <div style={{ border: '1px solid var(--outline-variant)', borderRadius: 12, padding: 16, background: 'var(--surface)' }}>
+                <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 800, color: 'var(--text-main)' }}>Paying customers by channel</h4>
+                <p style={{ margin: '0 0 12px', fontSize: 11.5, color: 'var(--text-muted)' }}>
+                  Which links bring money, not just sign-ups. Credited to the link the payment came through.
+                </p>
+                {paid === 0 ? (
+                  <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-muted)' }}>No payments yet.</p>
+                ) : (
+                  <div style={{ display: 'grid', gap: 9 }}>
+                    {revenueSources.map((s) => (
+                      <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '130px 1fr 92px', gap: 10, alignItems: 'center' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</span>
+                        <span style={{ height: 9, borderRadius: 6, background: 'var(--outline-variant)', overflow: 'hidden' }}>
+                          <span style={{
+                            display: 'block', height: '100%', borderRadius: 6,
+                            width: `${(s.paise / topRevenue) * 100}%`,
+                            // Grey where a channel produced sign-ups but no money,
+                            // so a dead channel cannot be mistaken for a small one.
+                            background: s.paise ? s.colour : 'var(--outline-variant)',
+                          }} />
+                        </span>
+                        <span style={{ fontSize: 12, textAlign: 'right', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+                          <strong>{inr(s.paise)}</strong>
+                          <span style={{ color: 'var(--text-muted)' }}> · {s.paid}/{s.value}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div style={{ border: '1px solid var(--outline-variant)', borderRadius: 12, padding: 16, background: 'var(--surface)' }}>
@@ -1440,7 +1499,10 @@ function EmailsTab({ item, showToast }) {
   const [busy, setBusy]           = useState(false);
 
   // Recipient source: this webinar's registrants, or a custom list (CSV / manual)
-  const [recipMode, setRecipMode] = useState('registrants'); // 'registrants' | 'custom'
+  const [recipMode, setRecipMode] = useState('registrants'); // 'registrants' | 'custom' | 'master'
+  // Counted on the server: the master sheet spans every webinar, so the
+  // number cannot be derived from the rows this screen already holds.
+  const [masterCounts, setMasterCounts] = useState({});
   const [customList, setCustomList] = useState([]);           // [{ name, email }]
   const [mName, setMName]         = useState('');
   const [mEmail, setMEmail]       = useState('');
@@ -1587,7 +1649,24 @@ function EmailsTab({ item, showToast }) {
   // ── custom recipient list (CSV upload + manual entry) ──
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const validCustom = customList.filter(r => EMAIL_RE.test((r.email || '').trim()));
-  const sendCount = recipMode === 'custom' ? validCustom.length : audienceCount;
+  // Fetched when the tab is opened rather than on every render: it is a
+  // server round-trip over the whole contact list, and the number only
+  // changes when registrations do.
+  useEffect(() => {
+    if (recipMode !== 'master') return;
+    let cancelled = false;
+    getMasterSheetAudience(item?.slug || item?.title || '').then((r) => {
+      if (!cancelled && r && !r.error) setMasterCounts(r);
+    });
+    return () => { cancelled = true; };
+  }, [recipMode, item]);
+
+  const masterCount = audience === 'master_sheet_all'
+    ? masterCounts.all_active
+    : masterCounts.not_registered;
+  const sendCount = recipMode === 'custom'
+    ? validCustom.length
+    : recipMode === 'master' ? (masterCount || 0) : audienceCount;
 
   const parseCSV = (text) => {
     const out = []; let i = 0, f = '', row = [], q = false;
@@ -1765,11 +1844,15 @@ function EmailsTab({ item, showToast }) {
 
         <label style={S.label}>Recipients</label>
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-          <button type="button" className={`ww-btn ${recipMode === 'registrants' ? 'ww-btn-primary' : 'ww-btn-ghost'}`} onClick={() => setRecipMode('registrants')}>
+          <button type="button" className={`ww-btn ${recipMode === 'registrants' ? 'ww-btn-primary' : 'ww-btn-ghost'}`} onClick={() => { setRecipMode('registrants'); setAudience('all'); }}>
             <Users size={14} /> Registrants
           </button>
           <button type="button" className={`ww-btn ${recipMode === 'custom' ? 'ww-btn-primary' : 'ww-btn-ghost'}`} onClick={() => setRecipMode('custom')}>
             <Upload size={14} /> Upload / manual list
+          </button>
+          <button type="button" className={`ww-btn ${recipMode === 'master' ? 'ww-btn-primary' : 'ww-btn-ghost'}`}
+            onClick={() => { setRecipMode('master'); setAudience('master_sheet'); }}>
+            <Users size={14} /> Master sheet
           </button>
         </div>
 
@@ -1787,6 +1870,36 @@ function EmailsTab({ item, showToast }) {
                 <div style={S.audL}>{n} recipient{n !== 1 ? 's' : ''}</div>
               </div>
             ))}
+          </div>
+        ) : recipMode === 'master' ? (
+          <div style={{ marginBottom: 14 }}>
+            <div style={S.row}>
+              {[
+                ['master_sheet', 'Not yet registered',
+                 masterCounts.not_registered,
+                 'Everyone on the list except people already signed up for this webinar'],
+                ['master_sheet_all', 'Everyone on the list',
+                 masterCounts.all_active,
+                 'All active contacts, including people who already registered'],
+              ].map(([v, l, n, hint]) => (
+                <div key={v} style={S.aud(audience === v)} onClick={() => setAudience(v)}>
+                  <div style={S.audN}>{l}</div>
+                  <div style={S.audL}>
+                    {n == null ? 'counting…' : `${n} recipient${n !== 1 ? 's' : ''}`}
+                  </div>
+                  <div style={{ ...S.audL, marginTop: 4, fontSize: 11, opacity: .75 }}>{hint}</div>
+                </div>
+              ))}
+            </div>
+            <p className="ww-tab-hint" style={{ margin: '10px 0 0' }}>
+              One mail per person, however many times they registered.
+              {masterCounts.suppressed
+                ? ` ${masterCounts.suppressed} unsubscribed or bad address${masterCounts.suppressed === 1 ? '' : 'es'} already excluded.`
+                : ''}
+              {masterCounts.already_registered
+                ? ` ${masterCounts.already_registered} already registered for this one.`
+                : ''}
+            </p>
           </div>
         ) : (
           <div style={{ marginBottom: 14 }}>
@@ -2430,6 +2543,17 @@ const WebinarsWorkshops = () => {
               <label>Description
                 <textarea rows={3} value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} placeholder="Brief description" />
               </label>
+              {/* What this title and description will look like in a search
+                  result, while there is still time to change them. */}
+              <SeoCoach
+                kind="webinar"
+                title={form.title}
+                description={form.description}
+                extras={[
+                  { label: 'The date', value: form.date },
+                  { label: 'The speaker', value: form.host },
+                ]}
+              />
               <div className="ww-two-col">
                 <label>Date
                   <input value={form.date} onChange={e => setForm(f => ({...f, date: e.target.value}))} placeholder="e.g. 20 July 2025" />

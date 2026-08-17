@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib.auth.models import User, Permission
 from django.db.models import Q
 from rest_framework import viewsets, permissions, views, response, status
@@ -10,6 +12,8 @@ from .serializers import (
     FeaturedContentSerializer, EmailDraftSerializer, EmailSendLogSerializer,
 )
 from .models import Setting, EmailTemplate, EmailCampaign, FeaturedContent, EmailDraft, EmailSendLog
+
+logger = logging.getLogger(__name__)
 
 
 # ── Permission classes ────────────────────────────────────────────────────────
@@ -695,6 +699,67 @@ class EmailCampaignViewSet(viewsets.ReadOnlyModelViewSet):
             EmailCampaign.objects.filter(id=c.id).update(cancel_requested=True)
         return response.Response({'status': 'canceling', 'ok': True})
 
+    @action(detail=False, methods=['get'])
+    def reach(self, request):
+        """How many distinct people we have actually reached — not how many send
+        attempts succeeded.
+
+        Per-campaign `sent_count` answers a different question and misleads after
+        a failed run is retried: the 1,035-person invite went out as one campaign
+        that failed wholesale, a partial retry, and a fixed re-run, so the stored
+        counters total 281 while every one of the 1,035 people did receive it.
+        Counting distinct addresses with at least one successful send across all
+        campaigns for a template gives the number a human means by "how many did
+        we mail".
+
+        GET /api/email-campaigns/reach/            → totals across everything
+        GET /api/email-campaigns/reach/?template_key=custom_webinar_inviteprom
+        """
+        template_key = (request.query_params.get('template_key') or '').strip()
+
+        logs = EmailSendLog.objects.all()
+        if template_key:
+            logs = logs.filter(template_key=template_key)
+
+        def distinct_emails(qs):
+            return {
+                (e or '').strip().lower()
+                for e in qs.values_list('recipient_email', flat=True)
+                if (e or '').strip()
+            }
+
+        everyone = distinct_emails(logs)
+        # 'sent' is the write-time outcome; SES later upgrades it to 'delivered'
+        # or downgrades it to bounced/complained, so both count as reached.
+        reached = distinct_emails(logs.filter(status__in=('sent', 'delivered')))
+        bounced = distinct_emails(logs.filter(status='bounced'))
+
+        per_template = []
+        if not template_key:
+            for key in (logs.values_list('template_key', flat=True)
+                        .distinct().order_by()):
+                sub = logs.filter(template_key=key)
+                per_template.append({
+                    'template_key': key or '',
+                    'people': len(distinct_emails(sub)),
+                    'reached': len(distinct_emails(
+                        sub.filter(status__in=('sent', 'delivered')))),
+                    'attempts': sub.count(),
+                })
+            per_template.sort(key=lambda r: -r['people'])
+
+        return response.Response({
+            'template_key': template_key,
+            'people': len(everyone),
+            'reached': len(reached),
+            'never_reached': len(everyone - reached),
+            'bounced': len(bounced),
+            # Attempts include retries of failed runs, so this is legitimately
+            # larger than `people` and is not a duplicate-send count.
+            'attempts': logs.count(),
+            'per_template': per_template,
+        })
+
     @action(detail=True, methods=['get'])
     def recipients(self, request, pk=None):
         """Full per-recipient send history for one campaign: who, status, error,
@@ -767,7 +832,71 @@ class SESNotificationView(views.APIView):
                     qs.update(status=new_status, **({'error': detail} if detail else {}))
                 except Exception:  # noqa: BLE001
                     pass
+
+            # Recording the complaint is not enough on its own: without also
+            # taking the person off the list they are mailed again next time,
+            # complain again, and the rate climbs until Gmail filters this
+            # domain for everybody. Gmail's limit is 0.3% — on a thousand
+            # recipients that is three people — so a complaint has to be final.
+            if new_status in ('complained', 'bounced'):
+                self._suppress(inner, new_status, detail)
+
         return response.Response({'ok': True})
+
+    @staticmethod
+    def _suppress(inner, new_status, detail):
+        """Stop mailing an address that complained or is permanently undeliverable."""
+        from django.utils import timezone
+
+        from .models import MailContact
+
+        if new_status == 'complained':
+            recipients = [r.get('emailAddress') for r
+                          in (inner.get('complaint') or {}).get('complainedRecipients', [])]
+            status_value = MailContact.UNSUBSCRIBED
+            reason = 'reported as spam (%s)' % (detail or 'complaint')
+        else:
+            bounce = inner.get('bounce') or {}
+            # Only permanent bounces. A 'Transient' bounce is a full mailbox or
+            # a server having a bad day — suppressing those would lose real
+            # readers over a temporary problem.
+            if str(bounce.get('bounceType') or '').lower() != 'permanent':
+                return
+            recipients = [r.get('emailAddress') for r
+                          in bounce.get('bouncedRecipients', [])]
+            status_value = MailContact.BOUNCED
+            reason = 'permanent bounce (%s)' % (detail or 'bounce')
+
+        # Fall back to the envelope when the notification does not name the
+        # recipients, which some event formats omit.
+        if not any(recipients):
+            recipients = (inner.get('mail') or {}).get('destination', []) or []
+
+        for address in recipients:
+            address = (address or '').strip().lower()
+            if not address:
+                continue
+            try:
+                updated = MailContact.objects.filter(email__iexact=address).update(
+                    status=status_value,
+                    status_reason=reason[:200],
+                    status_changed_at=timezone.now(),
+                )
+                if updated:
+                    logger.warning('Suppressed %s: %s', address, reason)
+                else:
+                    # Somebody we mailed but never had a contact row for —
+                    # record them anyway so the next campaign skips them.
+                    MailContact.objects.create(
+                        email=address,
+                        unsubscribe_token=MailContact.new_token(),
+                        status=status_value,
+                        status_reason=reason[:200],
+                        status_changed_at=timezone.now(),
+                    )
+                    logger.warning('Suppressed %s (new contact): %s', address, reason)
+            except Exception:  # noqa: BLE001 — never fail the webhook back to AWS
+                logger.exception('Could not suppress %s', address)
 
 
 class EmailDraftViewSet(viewsets.ModelViewSet):

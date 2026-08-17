@@ -91,6 +91,10 @@ urlpatterns = [
     path('api/public/email-template/<str:key>/', PublicEmailTemplateView.as_view(), name='public-email-template'),
     path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    # Unsubscribe links are printed in every marketing email, so they get a
+    # short public path of their own rather than /api/accounts/... — it reads
+    # better in a footer and says nothing about the admin app behind it.
+    path('api/mail/', include(('accounts_app.mail_urls', 'mail'), namespace='mail')),
     path('api/accounts/', include('accounts_app.urls')),
     path('api/landing/', include('tiesverse_app.urls')),
     path('api/career/', include('career_app.urls')),

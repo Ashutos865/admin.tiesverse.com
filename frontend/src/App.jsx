@@ -35,6 +35,7 @@ const CareerDashboard = lazy(() => import('./pages/Career/CareerDashboard'));
 const WebinarDashboard = lazy(() => import('./pages/Webinar/WebinarDashboard'));
 const Registrations = lazy(() => import('./pages/Webinar/Registrations.jsx'));
 const Coupons = lazy(() => import('./pages/Webinar/Coupons.jsx'));
+const MasterSheet = lazy(() => import('./pages/Webinar/MasterSheet.jsx'));
 const PortalAccess = lazy(() => import('./pages/Webinar/PortalAccess.jsx'));
 
 // Tiesverse
@@ -275,6 +276,7 @@ function App() {
               <Route path="/webinar/webinars-workshops" element={<WebinarsWorkshops />} />
               <Route path="/webinar/registrations" element={<Registrations />} />
               <Route path="/webinar/coupons" element={<Coupons />} />
+              <Route path="/webinar/master-sheet" element={<MasterSheet />} />
               <Route path="/webinar/access" element={<PortalAccess />} />
               <Route path="/webinar/event_registrations" element={<WebinarsWorkshops />} />
 
