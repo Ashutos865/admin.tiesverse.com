@@ -350,46 +350,91 @@ def register_for_event(request):
     now = datetime.datetime.utcnow().isoformat()
     event_date = str(data.get('event_date') or '')
 
+    # Bound here rather than inside the branch below: without a database there
+    # is no prior row to have found, and the response reads it either way.
+    existing_id = None
+
     if turso_client.is_configured():
+        # Registering twice for the same free event is the same person, not two
+        # attendees — someone re-submitting the form should update what we hold,
+        # not add another row to count and mail separately.
+        free_event_id = str(data.get('event_id') or '')
+        reg_params = {
+            'event_id':        free_event_id,
+            'event_title':     event_title,
+            'event_type':      event_type,
+            'event_date':      event_date,
+            'name':            name,
+            'email':           email,
+            'phone':           str(data.get('phone') or ''),
+            'role':            str(data.get('role') or ''),
+            'organization':    str(data.get('organization') or ''),
+            'country':         str(data.get('country') or ''),
+            'city':            str(data.get('city') or ''),
+            'source':          str(data.get('source') or ''),
+            'expectations':    str(data.get('expectations') or ''),
+            'speaker_question':str(data.get('speaker_question') or ''),
+            'custom_answers':  _custom_answers_json(data),
+            # Trimmed: these arrive from a query string anyone can edit.
+            'utm_source':      str(data.get('utm_source') or '')[:80],
+            'utm_medium':      str(data.get('utm_medium') or '')[:80],
+            'utm_campaign':    str(data.get('utm_campaign') or '')[:120],
+            'utm_content':     str(data.get('utm_content') or '')[:120],
+            'referrer':        str(data.get('referrer') or '')[:300],
+            'registered_at':   now,
+        }
+
+        # Which row are we writing? An existing free row for this person and
+        # event means they are re-submitting, so update it in place; anything
+        # paid is left alone, since that is a financial record.
+        existing_id = None
         try:
             turso_client.setup_tables()
-            turso_client.execute(
-                """INSERT INTO registrations
-                   (event_id, event_title, event_type, event_date, name, email, phone,
-                    role, organization, country, city, source, expectations, speaker_question,
-                    custom_answers,
-                    utm_source, utm_medium, utm_campaign, utm_content, referrer, registered_at)
-                   VALUES (:event_id, :event_title, :event_type, :event_date, :name, :email, :phone,
-                           :role, :organization, :country, :city, :source, :expectations, :speaker_question,
-                           :custom_answers,
-                           :utm_source, :utm_medium, :utm_campaign, :utm_content, :referrer, :registered_at)""",
-                {
-                    'event_id':        str(data.get('event_id') or ''),
-                    'event_title':     event_title,
-                    'event_type':      event_type,
-                    'event_date':      event_date,
-                    'name':            name,
-                    'email':           email,
-                    'phone':           str(data.get('phone') or ''),
-                    'role':            str(data.get('role') or ''),
-                    'organization':    str(data.get('organization') or ''),
-                    'country':         str(data.get('country') or ''),
-                    'city':            str(data.get('city') or ''),
-                    'source':          str(data.get('source') or ''),
-                    'expectations':    str(data.get('expectations') or ''),
-                    'speaker_question':str(data.get('speaker_question') or ''),
-                    'custom_answers':  _custom_answers_json(data),
-                    # Trimmed: these arrive from a query string anyone can edit.
-                    'utm_source':      str(data.get('utm_source') or '')[:80],
-                    'utm_medium':      str(data.get('utm_medium') or '')[:80],
-                    'utm_campaign':    str(data.get('utm_campaign') or '')[:120],
-                    'utm_content':     str(data.get('utm_content') or '')[:120],
-                    'referrer':        str(data.get('referrer') or '')[:300],
-                    'registered_at':   now,
-                },
-            )
+            if free_event_id:
+                prior = turso_client.execute(
+                    "SELECT id FROM registrations "
+                    "WHERE lower(email)=:email AND event_id=:event_id "
+                    "AND (payment_required IS NULL OR payment_required=0) "
+                    "ORDER BY id DESC LIMIT 1",
+                    {'email': email, 'event_id': free_event_id})
+                if prior:
+                    existing_id = prior[0].get('id')
         except turso_client.TursoError as exc:
-            logger.error('Turso registration insert failed: %s', exc)
+            # A duplicate row is untidy; a failed registration is worse.
+            logger.warning('Could not check for an existing free registration: %s', exc)
+
+        try:
+            if existing_id:
+                turso_client.execute(
+                    """UPDATE registrations SET
+                         event_title=:event_title, event_type=:event_type,
+                         event_date=:event_date, name=:name, phone=:phone,
+                         role=:role, organization=:organization, country=:country,
+                         city=:city, source=:source, expectations=:expectations,
+                         speaker_question=:speaker_question, custom_answers=:custom_answers,
+                         utm_source=:utm_source, utm_medium=:utm_medium,
+                         utm_campaign=:utm_campaign, utm_content=:utm_content,
+                         referrer=:referrer, registered_at=:registered_at
+                       WHERE id=:id""",
+                    {**reg_params, 'id': existing_id},
+                )
+                logger.info('Updated existing free registration %s for %s',
+                            existing_id, email)
+            else:
+                turso_client.execute(
+                    """INSERT INTO registrations
+                       (event_id, event_title, event_type, event_date, name, email, phone,
+                        role, organization, country, city, source, expectations, speaker_question,
+                        custom_answers,
+                        utm_source, utm_medium, utm_campaign, utm_content, referrer, registered_at)
+                       VALUES (:event_id, :event_title, :event_type, :event_date, :name, :email, :phone,
+                               :role, :organization, :country, :city, :source, :expectations, :speaker_question,
+                               :custom_answers,
+                               :utm_source, :utm_medium, :utm_campaign, :utm_content, :referrer, :registered_at)""",
+                    reg_params,
+                )
+        except turso_client.TursoError as exc:
+            logger.error('Turso registration write failed: %s', exc)
             return Response({'error': 'Registration could not be saved. Please try again.'}, status=500)
 
         # FREE webinars: every registrant gets the Meet link now. PAID webinars:
@@ -399,11 +444,17 @@ def register_for_event(request):
 
         if email_sent:
             try:
-                row_id = turso_client.execute('SELECT last_insert_rowid() AS id')
-                if row_id:
+                # On the update path last_insert_rowid() would point at whatever
+                # row was inserted last, which is not this one — so use the id we
+                # already know and only fall back to the rowid after an insert.
+                target_id = existing_id
+                if not target_id:
+                    row_id = turso_client.execute('SELECT last_insert_rowid() AS id')
+                    target_id = row_id[0]['id'] if row_id else None
+                if target_id:
                     turso_client.execute(
                         'UPDATE registrations SET email_sent = 1 WHERE id = :id',
-                        {'id': row_id[0]['id']},
+                        {'id': target_id},
                     )
             except turso_client.TursoError:
                 pass
@@ -412,8 +463,13 @@ def register_for_event(request):
         meeting_link = _deliver_meeting_link(data.get('event_id'), event_title, email, free_only=True)
         email_sent = send_registration_confirmation(email, name, event_title, event_type, event_date, meeting_link=meeting_link)
 
+    # The row is updated rather than duplicated when someone registers twice,
+    # which keeps the sheet clean but used to leave them with no idea it had
+    # happened before. Say so; their details and the joining link are refreshed
+    # either way, so this is information, not a refusal.
     return Response({
         'status': 'registered',
+        'already_registered': bool(existing_id),
         'email_sent': email_sent,
     })
 
@@ -567,6 +623,33 @@ def create_payment_order(request):
             'email_sent': email_sent,
         })
 
+    # Somebody who has already settled this event must not be sent to the
+    # payment sheet again. This runs before the order is created, so there is
+    # no order to abandon and no coupon left reserved against a seat they
+    # already hold. Only settled rows count: a pending or failed attempt is an
+    # unfinished checkout and has to stay retryable.
+    if turso_client.is_configured():
+        try:
+            settled = turso_client.execute(
+                "SELECT payment_status FROM registrations "
+                "WHERE lower(email)=lower(:email) AND event_id=:event_id "
+                "AND payment_status IN ('paid','free') "
+                "ORDER BY id DESC LIMIT 1",
+                {'email': email, 'event_id': event_id})
+            if settled:
+                if coupon:
+                    _release_coupon(coupon_code)
+                return Response({
+                    'status': 'already_registered',
+                    'payment_status': settled[0].get('payment_status'),
+                    'message': 'This email is already registered for this event. '
+                               'Check your inbox for the confirmation — we have not charged you again.',
+                }, status=409)
+        except turso_client.TursoError as exc:
+            # Never block a registration because the lookup failed; a duplicate
+            # is recoverable, a lost sale is not.
+            logger.warning('Duplicate-registration check failed: %s', exc)
+
     if not razorpay_client.is_configured():
         if coupon:
             _release_coupon(coupon_code)
@@ -591,6 +674,66 @@ def create_payment_order(request):
 
     # Save a pending row to Turso so we can match it on verification
     if turso_client.is_configured():
+        # A failed or abandoned checkout used to leave its pending row behind,
+        # so someone who retried twice ended up as three rows for one webinar —
+        # and the payment landed on whichever row they happened to succeed on
+        # while the others sat around as decoys. Reuse their unsettled row
+        # instead: one person, one row, and the payment has nowhere else to go.
+        #
+        # Deliberately narrow. Only 'pending'/'failed' rows are reused; a row
+        # that is paid, free or refunded is a settled financial record and must
+        # never be overwritten by someone reopening the registration page.
+        reused_id = None
+        try:
+            prior = turso_client.execute(
+                "SELECT id FROM registrations "
+                "WHERE lower(email)=:email AND event_id=:event_id "
+                "AND payment_status IN ('pending','failed') "
+                "ORDER BY id DESC LIMIT 1",
+                {'email': email, 'event_id': event_id})
+            if prior:
+                reused_id = prior[0].get('id')
+        except turso_client.TursoError as exc:
+            # Falling back to a plain insert costs a duplicate row, which is
+            # untidy but harmless. Failing the registration would cost a sale.
+            logger.warning('Could not check for a prior pending row: %s', exc)
+
+        if reused_id:
+            try:
+                turso_client.execute(
+                    """UPDATE registrations SET
+                         event_title=:event_title, event_type=:event_type,
+                         event_date=:event_date, name=:name, phone=:phone, city=:city,
+                         registered_at=:registered_at, payment_required=1,
+                         amount=:amount, razorpay_order_id=:razorpay_order_id,
+                         payment_status='pending', coupon_code=:coupon_code,
+                         discount_amount=:discount_amount, final_amount=:final_amount,
+                         coupon_redeemed=:coupon_redeemed, role=:role,
+                         organization=:organization, country=:country, source=:source,
+                         expectations=:expectations, speaker_question=:speaker_question,
+                         custom_answers=:custom_answers, utm_source=:utm_source,
+                         utm_medium=:utm_medium, utm_campaign=:utm_campaign,
+                         utm_content=:utm_content, referrer=:referrer
+                       WHERE id=:id AND payment_status IN ('pending','failed')""",
+                    {**registration_params,
+                     'razorpay_order_id': order['order_id'],
+                     'id': reused_id},
+                )
+                logger.info('Reused pending registration %s for %s (order %s)',
+                            reused_id, email, order['order_id'])
+                # Identical to the response below — the frontend must not be
+                # able to tell whether its row was reused or freshly inserted.
+                return Response({
+                    **order,
+                    'coupon_code': coupon_code,
+                    'discount_amount': str(discount_amount),
+                    'final_amount': str(final_amount),
+                })
+            except turso_client.TursoError as exc:
+                # Fall through to the insert below rather than block the payment.
+                logger.warning('Reuse of registration %s failed, inserting fresh: %s',
+                               reused_id, exc)
+
         try:
             turso_client.execute(
                 """INSERT INTO registrations
@@ -641,8 +784,13 @@ def _add_paid_registrant_to_meeting(row):
     email = (row or {}).get('email') or ''
     try:
         from config import google_calendar
-        ev = _find_event_registration(
-            event_key=(row or {}).get('event_id') or (row or {}).get('event_title'))
+        # Try the slug, then fall back to the title. A title containing an
+        # apostrophe slugifies to 'pakistan-s-...', which does not match back to
+        # 'Pakistan's ...', so the slug lookup alone silently finds nothing and
+        # the registrant gets a confirmation with no link in it.
+        ev = _find_event_registration(event_key=(row or {}).get('event_id'))
+        if not ev:
+            ev = _find_event_registration(event_key=(row or {}).get('event_title'))
         if not ev:
             return ''
         if ev.calendar_event_id and email:
@@ -1359,6 +1507,482 @@ def mark_attended(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 @require_webinar_cap('manage_registrations')
+def master_sheet_audience_count(request):
+    """How many people a master-sheet broadcast would actually reach.
+
+    Shown on the audience card before sending, because "everyone" is a
+    frightening thing to click without a number attached — and the number is
+    not the size of the contact list: unsubscribed people and anyone already
+    registered for this webinar are removed first.
+
+    GET /api/webinar/master-sheet-audience/?event_key=...
+    """
+    from accounts_app.models import MailContact
+
+    event_key = request.query_params.get('event_key', '').strip()
+    try:
+        fresh = _load_master_sheet_audience(event_key, exclude_registered=True)
+        everyone = _load_master_sheet_audience(event_key, exclude_registered=False)
+    except Exception as exc:  # noqa: BLE001
+        return Response({'error': str(exc)}, status=503)
+
+    return Response({
+        'not_registered': len(fresh),
+        'all_active': len(everyone),
+        'already_registered': len(everyone) - len(fresh),
+        'suppressed': MailContact.objects.exclude(
+            status=MailContact.ACTIVE).count(),
+        'total_contacts': MailContact.objects.count(),
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_registrations')
+def source_analytics(request):
+    """Which links bring registrations, and which bring paying customers.
+
+    Two different questions, and the second is the one that decides where the
+    effort goes: a channel can produce plenty of sign-ups and no revenue.
+    On the real data X/Twitter has produced three registrations and zero
+    payments, while LinkedIn converts three of four — invisible until the two
+    numbers sit side by side.
+
+    Credited to the link the payment came through, not the first one seen: a
+    person who retries can arrive from several links, and only one earned it.
+
+    GET /api/webinar/source-analytics/?event_key=...
+    """
+    if not turso_client.is_configured():
+        return Response({'sources': [], 'totals': {}})
+    try:
+        turso_client.setup_tables()
+        rows = turso_client.execute(
+            'SELECT * FROM registrations ORDER BY id') or []
+    except turso_client.TursoError as exc:
+        logger.error('source_analytics read failed: %s', exc)
+        return Response({'sources': [], 'totals': {}, 'error': str(exc)}, status=503)
+
+    event_key = request.query_params.get('event_key', '').strip()
+    if event_key:
+        allowed = set(_slug_variants(event_key))
+        rows = [r for r in rows if (r.get('event_id') or '') in allowed]
+
+    def channel_of(row):
+        # The UTM is what the link said; `source` is what the person typed. UTM
+        # wins when present because it cannot be mistyped, but plenty of rows
+        # have only the typed answer and would otherwise vanish into 'direct'.
+        return (str(row.get('utm_source') or '').strip().lower()
+                or str(row.get('source') or '').strip().lower()
+                or 'direct')
+
+    stats = {}
+    for r in rows:
+        key = channel_of(r)
+        entry = stats.setdefault(key, {
+            'source': key, 'registrations': 0, 'paid': 0, 'refunded': 0,
+            'pending': 0, 'revenue_paise': 0, 'people': set(),
+        })
+        entry['registrations'] += 1
+        email = (r.get('email') or '').strip().lower()
+        if email:
+            entry['people'].add(email)
+
+        status = str(r.get('payment_status') or '').lower()
+        if status == 'paid':
+            entry['paid'] += 1
+            entry['revenue_paise'] += int(r.get('final_amount') or r.get('amount') or 0)
+        elif status == 'refunded':
+            entry['refunded'] += 1
+        elif status in ('pending', 'failed'):
+            entry['pending'] += 1
+
+    sources = []
+    for entry in stats.values():
+        people = len(entry.pop('people'))
+        entry['people'] = people
+        # Per person, not per row: retries would otherwise depress a channel
+        # that is converting perfectly well.
+        entry['conversion'] = round(entry['paid'] / people * 100, 1) if people else 0.0
+        entry['revenue'] = entry['revenue_paise'] / 100.0
+        sources.append(entry)
+
+    sources.sort(key=lambda s: (-s['revenue_paise'], -s['registrations']))
+
+    return Response({
+        'sources': sources,
+        'totals': {
+            'registrations': sum(s['registrations'] for s in sources),
+            'people': sum(s['people'] for s in sources),
+            'paid': sum(s['paid'] for s in sources),
+            'revenue': sum(s['revenue'] for s in sources),
+        },
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_registrations')
+def sync_payments(request):
+    """Ask Razorpay about every unsettled order and record what was really paid.
+
+    Exists because the webhook has proved unreliable: three payments were
+    captured and left showing as pending in a single day. Rather than needing
+    someone with server access to run a command, this puts the recovery one
+    click away in the admin.
+
+    POST /api/webinar/sync-payments/   { "dry_run": true }
+    """
+    dry_run = bool(request.data.get('dry_run'))
+
+    if not turso_client.is_configured():
+        return Response({'error': 'Registration storage is not configured.'}, status=503)
+
+    try:
+        rows = turso_client.execute(
+            "SELECT * FROM registrations "
+            "WHERE razorpay_order_id IS NOT NULL AND razorpay_order_id <> '' "
+            "AND payment_status IN ('pending','failed','created') ORDER BY id") or []
+    except turso_client.TursoError as exc:
+        return Response({'error': str(exc)}, status=503)
+
+    recovered, checked, errors = [], 0, 0
+
+    for row in rows:
+        oid = (row.get('razorpay_order_id') or '').strip()
+        if not oid:
+            continue
+        checked += 1
+        try:
+            payments = razorpay_client.order_payments(oid)
+        except Exception as exc:  # noqa: BLE001 — one bad order must not stop the sweep
+            errors += 1
+            logger.warning('sync_payments: Razorpay unreachable for %s: %s', oid, exc)
+            continue
+
+        captured = next(
+            (p for p in payments if p.get('status') in ('captured', 'authorized')), None)
+        if not captured:
+            continue
+
+        item = {
+            'id': row.get('id'),
+            'name': row.get('name') or '',
+            'email': row.get('email') or '',
+            'payment_id': captured.get('id') or '',
+            'amount': int(captured.get('amount') or 0) / 100.0,
+            'notified': False,
+        }
+
+        if dry_run:
+            recovered.append(item)
+            continue
+
+        try:
+            turso_client.execute(
+                "UPDATE registrations SET payment_status='paid', razorpay_payment_id=:pid "
+                "WHERE id=:id AND payment_status != 'paid' AND payment_status != 'refunded'",
+                {'pid': item['payment_id'], 'id': row.get('id')})
+        except turso_client.TursoError as exc:
+            errors += 1
+            logger.error('sync_payments: write failed for %s: %s', row.get('id'), exc)
+            continue
+
+        logger.warning('sync_payments: RECOVERED %s for registration %s (%s)',
+                       item['payment_id'], row.get('id'), item['email'])
+
+        try:
+            fresh = turso_client.execute(
+                'SELECT * FROM registrations WHERE id=:id LIMIT 1',
+                {'id': row.get('id')}) or []
+            if fresh:
+                reg = fresh[0]
+                link = _add_paid_registrant_to_meeting(reg)
+                item['notified'] = bool(send_registration_confirmation(
+                    to_email=reg.get('email', ''),
+                    name=reg.get('name', 'Guest'),
+                    event_title=reg.get('event_title', ''),
+                    event_type=reg.get('event_type', 'event'),
+                    meeting_link=link,
+                ))
+                if item['notified']:
+                    turso_client.execute(
+                        'UPDATE registrations SET email_sent=1 WHERE id=:id',
+                        {'id': reg.get('id')})
+        except Exception as exc:  # noqa: BLE001 — the money is already recorded
+            logger.exception('sync_payments: notify failed for %s: %s', row.get('id'), exc)
+
+        recovered.append(item)
+
+    return Response({
+        'checked': checked,
+        'recovered': recovered,
+        'recovered_count': len(recovered),
+        'errors': errors,
+        'dry_run': dry_run,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_registrations')
+def master_sheet(request):
+    """One row per person, with the webinars they registered for attached.
+
+    The registration table is a ledger: one row per registration, so somebody
+    who retried a failed payment twice appears three times and gets counted,
+    mailed and chased as three people. This groups it by email — the same data,
+    read as people rather than as events.
+
+    Nothing is written and no row is merged in storage. The ledger stays the
+    financial record; this is a view over it, so the money trail is untouched
+    and the answer changes the moment the ledger does.
+
+    GET /api/webinar/master-sheet/
+      ?q=          search name / email / phone
+      ?event_key=  only people who registered for this event
+      ?status=     paid | pending | refunded | free
+    """
+    if not turso_client.is_configured():
+        return Response({'rows': [], 'count': 0})
+    try:
+        turso_client.setup_tables()
+        rows = turso_client.execute(
+            'SELECT * FROM registrations ORDER BY registered_at DESC LIMIT 5000') or []
+    except turso_client.TursoError as exc:
+        logger.error('master_sheet read failed: %s', exc)
+        return Response({'rows': [], 'count': 0, 'error': str(exc)}, status=503)
+
+    def took_money(status):
+        return str(status or '').lower() in ('paid', 'refunded')
+
+    people = {}
+    for r in rows:
+        email = (r.get('email') or '').strip().lower()
+        if not email:
+            continue
+
+        person = people.get(email)
+        if person is None:
+            person = people[email] = {
+                'email': email,
+                'name': '', 'phone': '', 'city': '', 'country': '',
+                'utm_source': '', 'utm_medium': '', 'utm_campaign': '',
+                # What they typed in "how did you hear about this?", kept beside
+                # the UTM because the two disagree often enough to matter.
+                'source': '',
+                'first_seen': r.get('registered_at') or '',
+                'last_seen': r.get('registered_at') or '',
+                'events': [],
+                'registration_count': 0,
+                'attempts': 0,
+                'paid_count': 0,
+                'refunded_count': 0,
+                'total_paid_paise': 0,
+                'attended_count': 0,
+                'certificate_ids': [],
+                'row_ids': [],
+            }
+
+        # Keep the best value seen, not the newest: a later row with a blank
+        # phone should not erase a number an earlier one supplied.
+        for field in ('name', 'phone', 'city', 'country',
+                      'utm_source', 'utm_medium', 'utm_campaign'):
+            value = str(r.get(field) or '').strip()
+            if value and not person[field]:
+                person[field] = value
+
+        # Credit goes to the link they actually paid through. Someone who tries
+        # three times can arrive from three different links — Diya registered
+        # via google.com, then email, then linkedin, and paid on the last — so
+        # first-touch would credit a link that earned nothing. The paying row
+        # overrides whatever was recorded before it.
+        if str(r.get('payment_status') or '').lower() == 'paid':
+            for field in ('utm_source', 'utm_medium', 'utm_campaign'):
+                value = str(r.get(field) or '').strip()
+                if value:
+                    person[field] = value
+            typed = str(r.get('source') or '').strip()
+            if typed:
+                person['source'] = typed
+        elif not person.get('source'):
+            person['source'] = str(r.get('source') or '').strip()
+
+        when = r.get('registered_at') or ''
+        if when:
+            if not person['first_seen'] or when < person['first_seen']:
+                person['first_seen'] = when
+            if when > person['last_seen']:
+                person['last_seen'] = when
+
+        person['row_ids'].append(r.get('id'))
+        status = str(r.get('payment_status') or '').lower()
+
+        # One entry per event, not per row: the retries collapse here.
+        key = (r.get('event_id') or r.get('event_title') or '').strip()
+        entry = next((e for e in person['events'] if e['event_key'] == key), None)
+        if entry is None:
+            entry = {
+                'event_key': key,
+                'event_title': r.get('event_title') or '',
+                'event_date': r.get('event_date') or '',
+                'registered_at': when,
+                'status': status,
+                'attempts': 0,
+                'attended': False,
+                'certificate_id': '',
+                'amount_paise': 0,
+            }
+            person['events'].append(entry)
+            person['registration_count'] += 1
+
+        entry['attempts'] += 1
+        person['attempts'] += 1
+
+        # A settled status outranks an abandoned attempt, so the event shows how
+        # it actually ended rather than whichever row happened to be read last.
+        if took_money(status) or status == 'free':
+            entry['status'] = status
+        if str(r.get('attended') or '') in ('1', 'True', 'true'):
+            entry['attended'] = True
+            person['attended_count'] += 1
+        cert = str(r.get('webinar_certificate_id') or '').strip()
+        if cert:
+            entry['certificate_id'] = cert
+            person['certificate_ids'].append(cert)
+
+        if status == 'paid':
+            person['paid_count'] += 1
+            paid = int(r.get('final_amount') or r.get('amount') or 0)
+            person['total_paid_paise'] += paid
+            entry['amount_paise'] = paid
+        elif status == 'refunded':
+            person['refunded_count'] += 1
+            entry['amount_paise'] = int(r.get('final_amount') or r.get('amount') or 0)
+
+    # Mail status lives in MailContact on the default database, which the router
+    # will not let us join to the Turso ledger — so it is attached here instead.
+    # Contacts who never registered are folded in too: most of the list arrived
+    # from the CSV import, and somebody who unsubscribes must be findable
+    # whether or not they ever signed up for a webinar.
+    try:
+        from accounts_app.models import MailContact
+        for contact in MailContact.objects.all().iterator():
+            email = (contact.email or '').strip().lower()
+            if not email:
+                continue
+            person = people.get(email)
+            if person is None:
+                person = people[email] = {
+                    'email': email,
+                    'name': contact.name or '', 'phone': contact.phone or '',
+                    'city': contact.city or '', 'country': contact.country or '',
+                    'utm_source': contact.utm_source or '',
+                    'utm_medium': contact.utm_medium or '',
+                    'utm_campaign': contact.utm_campaign or '',
+                    'source': '',
+                    'first_seen': '', 'last_seen': '',
+                    'events': [], 'registration_count': 0, 'attempts': 0,
+                    'paid_count': 0, 'refunded_count': 0, 'total_paid_paise': 0,
+                    'attended_count': 0, 'certificate_ids': [], 'row_ids': [],
+                    # Never registered, only ever mailed — worth showing plainly
+                    # rather than as a row that looks like an empty registration.
+                    'contact_only': True,
+                }
+            else:
+                person['contact_only'] = False
+                for field in ('name', 'phone', 'city', 'country'):
+                    value = str(getattr(contact, field, '') or '').strip()
+                    if value and not person.get(field):
+                        person[field] = value
+
+            person['mail_status'] = contact.status
+            person['mail_status_reason'] = contact.status_reason or ''
+            person['can_email'] = (contact.status == MailContact.ACTIVE)
+    except Exception as exc:  # noqa: BLE001 — the sheet is still useful without it
+        logger.warning('Could not attach mail status to the master sheet: %s', exc)
+
+    # Anyone with no contact record at all is mailable until told otherwise.
+    for person in people.values():
+        person.setdefault('mail_status', 'active')
+        person.setdefault('mail_status_reason', '')
+        person.setdefault('can_email', True)
+        person.setdefault('contact_only', False)
+
+    result = list(people.values())
+
+    # Filter by mail status — the screen for "who has unsubscribed?", which is
+    # unanswerable by scrolling a thousand rows.
+    mail_status = request.query_params.get('mail_status', '').strip().lower()
+    if mail_status and mail_status != 'all':
+        result = [p for p in result if p.get('mail_status') == mail_status]
+
+    event_key = request.query_params.get('event_key', '').strip()
+    if event_key:
+        allowed = set(_slug_variants(event_key))
+        result = [p for p in result
+                  if any(e['event_key'] in allowed for e in p['events'])]
+
+    status_filter = request.query_params.get('status', '').strip().lower()
+    if status_filter:
+        result = [p for p in result
+                  if any(e['status'] == status_filter for e in p['events'])]
+
+    q = request.query_params.get('q', '').strip().lower()
+    if q:
+        result = [p for p in result
+                  if q in p['email'] or q in p['name'].lower()
+                  or q in (p['phone'] or '')]
+
+    # Registrants first, then everyone we only hold an address for: the people
+    # with a history are the ones anybody is looking for, and sorting purely by
+    # last_seen buried them under a thousand imported contacts with no date.
+    result.sort(key=lambda p: (not p.get('contact_only'), p.get('last_seen') or ''),
+                reverse=True)
+
+    # Counted across everyone, not the filtered view, so the tabs still show
+    # their totals while one of them is selected.
+    status_counts = {}
+    for person in people.values():
+        key = person.get('mail_status') or 'active'
+        status_counts[key] = status_counts.get(key, 0) + 1
+
+    # Paginated because the browser, not the server, is the bottleneck: this
+    # query runs in well under a tenth of a second, but handing a thousand rows
+    # to the table froze the tab outright — every row carries buttons and
+    # handlers, and the whole lot was being rendered at once.
+    total = len(result)
+    try:
+        page = max(1, int(request.query_params.get('page') or 1))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        per_page = int(request.query_params.get('per_page') or 100)
+    except (TypeError, ValueError):
+        per_page = 100
+    per_page = max(10, min(per_page, 500))
+
+    start = (page - 1) * per_page
+    page_rows = result[start:start + per_page]
+
+    return Response({
+        'rows': page_rows,
+        'count': total,
+        'page': page,
+        'per_page': per_page,
+        'pages': max(1, (total + per_page - 1) // per_page),
+        'has_more': start + per_page < total,
+        # The gap between these two is the duplication the ledger carries.
+        'ledger_rows': len(rows),
+        'people': len(people),
+        'status_counts': status_counts,
+        'mailable': sum(1 for p in people.values() if p.get('can_email')),
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@require_webinar_cap('manage_registrations')
 def list_registrations_extended(request):
     """
     Same as list_registrations but includes the `attended` column.
@@ -1524,6 +2148,46 @@ def _slug_variants(text):
     return out
 
 
+def _load_master_sheet_audience(event_key, exclude_registered=True):
+    """Everyone in the master sheet, for inviting beyond one webinar's list.
+
+    The other audiences are drawn from a single event's registrations, which is
+    the wrong pool for an invitation: the people worth inviting are precisely
+    those who have *not* registered yet. This reads the contact list instead —
+    deduplicated, so somebody who registered three times is mailed once — and
+    by default removes anyone already signed up for this event, because an
+    invitation to someone holding a seat reads as carelessness.
+
+    Suppressed contacts never appear: unsubscribed, bounced and junk are all
+    excluded here as well as in the worker, so the count shown before sending
+    is the count that will actually be mailed.
+    """
+    from accounts_app.models import MailContact
+
+    contacts = MailContact.objects.filter(status=MailContact.ACTIVE)
+
+    already = set()
+    if exclude_registered and event_key:
+        for row in _load_event_registrants(event_key, 'all') or []:
+            email = (row.get('email') or '').strip().lower()
+            if email:
+                already.add(email)
+
+    out = []
+    for contact in contacts.iterator():
+        email = (contact.email or '').strip().lower()
+        if not email or email in already:
+            continue
+        out.append({
+            'email': email,
+            'name': contact.name or '',
+            'phone': contact.phone or '',
+            'city': contact.city or '',
+            'country': contact.country or '',
+        })
+    return out
+
+
 def _load_event_registrants(event_key, audience='all'):
     """Return this webinar's registrants from Turso, filtered by audience.
     audience: 'all' | 'attended' | 'not_attended' | 'paid' | 'unpaid'."""
@@ -1609,12 +2273,21 @@ def webinar_broadcast(request):
     extra = data.get('extra_context') or {}
     test_email  = str(data.get('test_email') or '').strip().lower()
 
+    # An invitation goes to people who have not registered and, on a paid
+    # webinar, have not paid — so it must never carry the joining link. Only
+    # templates sent to confirmed attendees get it auto-filled; anything else
+    # would hand the Meet to the whole mailing list.
+    _INVITE_LIKE = ('invite', 'invitation', 'promo', 'announce', 'broadcast')
+    _key_l = template_key.lower()
+    link_allowed = not any(word in _key_l for word in _INVITE_LIKE)
+
     # Auto-fill meeting details from the event record itself, so automation
     # mails carry the real Meet link/date/time even when left blank by hand.
     try:
         _ev = _find_event_registration(event_key, data.get('event_pk'))
         if _ev is not None:
-            if not str(extra.get('join_link') or '').strip() and _ev.meeting_link:
+            if (link_allowed and not str(extra.get('join_link') or '').strip()
+                    and _ev.meeting_link):
                 extra['join_link'] = _ev.meeting_link
             if not str(extra.get('date') or '').strip() and _ev.date:
                 extra['date'] = _ev.date
@@ -1622,6 +2295,12 @@ def webinar_broadcast(request):
                 extra['time'] = _ev.time_tz
     except Exception:  # noqa: BLE001
         pass
+
+    # Belt and braces: even if the link was passed in by hand or sits in the
+    # template body, strip it from an invitation rather than trust the caller.
+    if not link_allowed:
+        extra.pop('join_link', None)
+        extra['join_link'] = ''
 
     # Certificate attachment options
     cert_template_id = str(data.get('certificate_template_id') or '').strip()
@@ -1667,7 +2346,42 @@ def webinar_broadcast(request):
         ctx = _context_for(name, row)
         subject = render_tokens(subject_override or tpl.subject, ctx)
         body = render_tokens(tpl.body_html, ctx)
-        ok = send_email(to_email, subject, body, from_email=resolve_from(tpl), enabled=True, attachments=attachments)
+
+        # Marketing mail has to carry a one-click unsubscribe, and this function
+        # is every send that does not go through the background worker — the
+        # test preview and any broadcast small enough to run inline. Without
+        # this the test looked nothing like the real thing and small sends went
+        # out non-compliant.
+        #
+        # Certificates are transactional: someone who opted out of marketing has
+        # still earned the certificate, so those carry no unsubscribe link.
+        headers = None
+        if not include_certificate:
+            try:
+                from accounts_app.unsubscribe import (
+                    get_or_create_contact, unsubscribe_headers, unsubscribe_link)
+                contact = get_or_create_contact(to_email, name=name)
+                headers = unsubscribe_headers(contact) or None
+                url = unsubscribe_link(contact)
+                if url:
+                    if '{{unsubscribe_url}}' in (tpl.body_html or ''):
+                        body = body.replace('{{unsubscribe_url}}', url)
+                    else:
+                        body += (
+                            '<div style="margin-top:28px;padding-top:16px;'
+                            'border-top:1px solid #e5e7eb;font-family:Arial,sans-serif;'
+                            'font-size:12px;line-height:1.5;color:#6b7280;text-align:center">'
+                            'You are receiving this because you registered with TIESVERSE '
+                            'or signed up for our updates.<br>'
+                            f'<a href="{url}" style="color:#6b7280;text-decoration:underline">'
+                            'Unsubscribe from these emails</a>'
+                            '</div>'
+                        )
+            except Exception:  # noqa: BLE001 — a missing footer must not stop the send
+                headers = None
+
+        ok = send_email(to_email, subject, body, from_email=resolve_from(tpl),
+                        enabled=True, attachments=attachments, headers=headers)
         return ok, subject
 
     def _cert_attachment(name, row=None):
@@ -1722,6 +2436,21 @@ def webinar_broadcast(request):
                 continue
             send_list.append({'email': em, 'name': str(r.get('name') or '').strip(), 'row': r})
         list_source = 'list'
+    elif audience in ('master_sheet', 'master_sheet_all'):
+        # The whole contact list rather than one event's sign-ups — the pool an
+        # invitation should go to. Deduplicated by the master sheet itself, so
+        # somebody who registered three times is mailed once.
+        try:
+            registrants = _load_master_sheet_audience(
+                event_key, exclude_registered=(audience == 'master_sheet'))
+        except Exception as exc:  # noqa: BLE001
+            return Response({'error': f'Could not load the master sheet: {exc}'},
+                            status=503)
+        send_list = [
+            {'email': r['email'], 'name': r.get('name') or '', 'row': r}
+            for r in registrants
+        ]
+        list_source = 'master_sheet'
     else:
         try:
             registrants = _load_event_registrants(event_key, audience)
