@@ -13,8 +13,15 @@ BRAND_LOGO_URL = 'https://www.tiesverse.com/brand-logo.png'
 
 # Ticket palette. The saffron is the site's own --accent; the ink is the near
 # black used on paper stock so the barcode and rules read as printed.
-TICKET_PAPER = '#fe7a00'
+# The slip is near-white paper, matching what the registrant just saw on the
+# confirmation screen; saffron is the accent on the dispenser and the seal, not
+# the whole card.
+TICKET_PAPER = '#fdfaf3'
 TICKET_INK = '#1d160d'
+TICKET_ACCENT = '#fe7a00'
+TICKET_PAGE = '#f4efe7'
+TICKET_MUTED = '#8a8078'
+TICKET_RULE = '#e6ded2'
 
 
 def _ticket_ref(email, event_title):
@@ -23,25 +30,41 @@ def _ticket_ref(email, event_title):
     return f'TIES-{digest[:8].upper()}'
 
 
-def _barcode_cells(seed, count=34):
+def _barcode_cells(seed, count=26):
     """A row of table cells that reads as a barcode.
 
-    Real barcode fonts are not installed on the machines that render email, and
-    a background-image barcode is stripped by several clients, so the bars are
-    table cells with a width and a background colour — the one thing every
-    client since Outlook 2000 agrees on.
+    Barcode fonts are not installed on the machines that render email and a
+    background-image barcode is stripped by several clients, so the bars are
+    table cells with a width and a background colour. Kept narrow enough to fit
+    a 320px-wide phone without forcing the message to scroll sideways.
     """
     digest = hashlib.sha1(seed.encode('utf-8')).hexdigest()
     cells = []
     for i in range(count):
-        wide = int(digest[i % len(digest)], 16) % 3
-        w = 2 + wide
+        w = 2 + int(digest[i % len(digest)], 16) % 2
         cells.append(
-            f'<td width="{w}" style="width:{w}px;background:{TICKET_INK};'
+            f'<td width="{w}" height="26" style="width:{w}px;height:26px;'
+            f'background:{TICKET_INK};font-size:0;line-height:0;">&nbsp;</td>'
+            f'<td width="2" height="26" style="width:2px;height:26px;'
             f'font-size:0;line-height:0;">&nbsp;</td>'
-            f'<td width="3" style="width:3px;font-size:0;line-height:0;">&nbsp;</td>'
         )
     return ''.join(cells)
+
+
+def _teeth_cells(count=20):
+    """The torn foot of the slip, as table cells.
+
+    clip-path does not exist in email, so each notch is a cell holding a
+    triangle drawn with borders — the one shape CSS can make without images
+    and Word's renderer still honours.
+    """
+    cell = (
+        f'<td style="font-size:0;line-height:0;padding:0;">'
+        f'<div style="width:0;height:0;border-left:9px solid transparent;'
+        f'border-right:6px solid transparent;border-top:7px solid {TICKET_PAGE};">'
+        f'</div></td>'
+    )
+    return cell * count
 
 
 def send_registration_confirmation(to_email, name, event_title, event_type, event_date='', meeting_link=''):
@@ -96,6 +119,11 @@ def send_registration_confirmation(to_email, name, event_title, event_type, even
         # through Word. The notch, perforation and stub are therefore drawn
         # with borders and cells, which every client has supported for years.
         ref = _ticket_ref(to_email, event_title)
+        slip_kind = 'CONFIRMED TICKET'
+        kind_word = 'Session' if event_type == 'webinar' else 'Event'
+        date_upper = event_date.upper() if event_date else ''
+        barcode = _barcode_cells(ref)
+        teeth = _teeth_cells()
         date_cell = (
             f'<td style="padding:0 0 0 18px;border-left:1px solid rgba(29,22,13,.18);">'
             f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:9px;font-weight:bold;'
@@ -107,115 +135,108 @@ def send_registration_confirmation(to_email, name, event_title, event_type, even
         html_body = f"""\
 <!doctype html>
 <html>
-<body style="margin:0;padding:0;background:#f4efe7;">
+<body style="margin:0;padding:0;background:{TICKET_PAGE};">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0"
-       style="width:100%;background:#f4efe7;padding:32px 12px;">
+       style="width:100%;background:{TICKET_PAGE};padding:30px 12px;">
 <tr><td align="center">
 
   <table role="presentation" cellpadding="0" cellspacing="0" border="0"
-         style="width:100%;max-width:420px;">
+         style="width:100%;max-width:400px;">
 
-    <!-- Logo, as an image rather than typed text -->
-    <tr><td align="center" style="padding:0 0 22px;">
-      <img src="{BRAND_LOGO_URL}" width="132" alt="Tiesverse"
-           style="display:block;width:132px;max-width:132px;height:auto;border:0;outline:none;" />
+    <tr><td align="center" style="padding:0 0 20px;">
+      <img src="{BRAND_LOGO_URL}" width="124" alt="Tiesverse"
+           style="display:block;width:124px;max-width:124px;height:auto;border:0;outline:none;" />
     </td></tr>
 
-    <!-- ── Ticket ─────────────────────────────────────────── -->
-    <tr><td>
+    <!-- The dispenser hood the slip is printed from. Two flat bands rather
+         than the screen's gradient, which Outlook drops. -->
+    <tr><td style="padding:0 14px;">
+      <div style="height:9px;background:{TICKET_ACCENT};border-radius:8px 8px 0 0;
+                  font-size:0;line-height:0;">&nbsp;</div>
+      <div style="height:6px;background:{TICKET_INK};font-size:0;line-height:0;">&nbsp;</div>
+    </td></tr>
+
+    <tr><td style="padding:0 22px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
-             style="width:100%;background:{TICKET_PAPER};border-radius:14px;">
+             style="width:100%;background:{TICKET_PAPER};">
+        <tr><td style="padding:20px 20px 16px;">
 
-        <!-- Body -->
-        <tr><td style="padding:26px 26px 20px;">
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
-              <td style="font-family:Arial,Helvetica,sans-serif;font-size:9px;font-weight:bold;
-                         letter-spacing:1.2px;text-transform:uppercase;color:rgba(29,22,13,.72);">
-                {kind_label.title()} pass
+              <td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;
+                         letter-spacing:1.6px;color:{TICKET_INK};">TIESVERSE
+                <div style="font-size:9px;letter-spacing:1.2px;color:{TICKET_MUTED};
+                            padding-top:3px;">{slip_kind}</div>
               </td>
-              <td align="right" style="font-family:Arial,Helvetica,sans-serif;font-size:9px;
-                         font-weight:bold;letter-spacing:1.2px;text-transform:uppercase;
-                         color:rgba(29,22,13,.72);">Confirmed</td>
+              <td align="right" width="26" style="width:26px;">
+                <div style="width:24px;height:24px;background:{TICKET_ACCENT};border-radius:12px;
+                            color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:13px;
+                            font-weight:bold;text-align:center;line-height:24px;">&#10003;</div>
+              </td>
             </tr>
           </table>
 
-          <div style="font-family:Georgia,'Times New Roman',serif;font-size:27px;line-height:1.1;
-                      font-weight:bold;color:{TICKET_INK};padding:22px 0 0;">{event_title}</div>
+          <div style="font-family:Georgia,'Times New Roman',serif;font-size:23px;line-height:1.15;
+                      font-weight:bold;color:{TICKET_INK};padding:18px 0 0;">SEAT CONFIRMED</div>
+          <div style="font-family:Arial,Helvetica,sans-serif;font-size:10px;font-weight:bold;
+                      letter-spacing:1.1px;color:{TICKET_MUTED};padding:6px 0 0;">{date_upper}</div>
 
-          <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;
-                      color:rgba(29,22,13,.78);padding:12px 0 0;">
-            Hi {name}, your seat is confirmed. Keep this ticket — it carries your
-            reference number.
-          </div>
+          <div style="border-top:1px dashed {TICKET_RULE};font-size:0;line-height:0;
+                      margin:16px 0 0;height:0;">&nbsp;</div>
 
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0"
-                 style="padding:22px 0 0;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+                 style="padding-top:14px;">
             <tr>
-              <td style="padding:0 18px 0 0;">
-                <div style="font-family:Arial,Helvetica,sans-serif;font-size:9px;font-weight:bold;
-                            letter-spacing:1px;text-transform:uppercase;color:rgba(29,22,13,.62);">Admit</div>
-                <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;
-                            color:{TICKET_INK};padding-top:4px;">One</div>
-              </td>
-              {date_cell}
+              <td valign="top" style="font-family:Arial,Helvetica,sans-serif;font-size:12px;
+                         color:{TICKET_MUTED};padding:0 10px 9px 0;white-space:nowrap;">{kind_word}</td>
+              <td valign="top" align="right" style="font-family:Arial,Helvetica,sans-serif;
+                         font-size:12px;font-weight:bold;color:{TICKET_INK};padding:0 0 9px;">{event_title}</td>
             </tr>
-          </table>
-        </td></tr>
-
-        <!-- Perforation. The notches are half-circles in the page colour that
-             sit flush to each edge, so the ticket reads as punched rather than
-             as two dots floating on it. Outlook ignores border-radius and
-             renders them square, which still reads as a notch. -->
-        <tr><td style="padding:0;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
-              <td width="9" style="width:9px;padding:0;">
-                <div style="width:9px;height:18px;background:#f4efe7;
-                            border-radius:0 18px 18px 0;font-size:0;line-height:0;">&nbsp;</div>
-              </td>
-              <td style="padding:0 10px;">
-                <div style="border-top:2px dashed rgba(29,22,13,.32);font-size:0;line-height:0;
-                            height:0;">&nbsp;</div>
-              </td>
-              <td width="9" style="width:9px;padding:0;">
-                <div style="width:9px;height:18px;background:#f4efe7;
-                            border-radius:18px 0 0 18px;font-size:0;line-height:0;">&nbsp;</div>
-              </td>
+              <td valign="top" style="font-family:Arial,Helvetica,sans-serif;font-size:12px;
+                         color:{TICKET_MUTED};padding:0 10px 9px 0;">Name</td>
+              <td valign="top" align="right" style="font-family:Arial,Helvetica,sans-serif;
+                         font-size:12px;font-weight:bold;color:{TICKET_INK};padding:0 0 9px;">{name}</td>
             </tr>
-          </table>
-        </td></tr>
-
-        <!-- Stub -->
-        <tr><td style="padding:18px 26px 24px;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
-              <td style="font-family:Arial,Helvetica,sans-serif;font-size:9px;font-weight:bold;
-                         letter-spacing:1px;text-transform:uppercase;color:rgba(29,22,13,.62);">
-                Reference</td>
-              <td align="right" style="font-family:'Courier New',Courier,monospace;font-size:12px;
-                         font-weight:bold;letter-spacing:.5px;color:{TICKET_INK};">{ref}</td>
+              <td valign="top" style="font-family:Arial,Helvetica,sans-serif;font-size:12px;
+                         color:{TICKET_MUTED};padding:0 10px 0 0;">Email</td>
+              <td valign="top" align="right" style="font-family:Arial,Helvetica,sans-serif;
+                         font-size:12px;font-weight:bold;color:{TICKET_INK};
+                         padding:0;word-break:break-all;">{to_email}</td>
             </tr>
           </table>
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0"
-                 style="padding-top:14px;height:26px;">
-            <tr>{_barcode_cells(ref)}</tr>
-          </table>
-        </td></tr>
 
+          <div style="text-align:center;padding:20px 0 0;font-family:Arial,Helvetica,sans-serif;
+                      font-size:9px;font-weight:bold;letter-spacing:1.2px;color:{TICKET_MUTED};">
+            YOU ARE ON THE LIST</div>
+
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"
+                 style="margin:12px auto 0;">
+            <tr>{barcode}</tr>
+          </table>
+          <div style="text-align:center;font-family:'Courier New',Courier,monospace;font-size:9px;
+                      letter-spacing:1.4px;color:{TICKET_MUTED};padding:6px 0 0;">{ref}</div>
+
+        </td></tr>
+      </table>
+
+      <!-- Torn edge, cut into the foot of the slip -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+             style="width:100%;background:{TICKET_PAPER};">
+        <tr>{teeth}</tr>
       </table>
     </td></tr>
-    <!-- ── /Ticket ────────────────────────────────────────── -->
 
     {meet_block}
 
-    <tr><td style="padding:22px 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;
+    <tr><td style="padding:24px 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;
                    line-height:1.6;color:#5b5147;">
       We will send the joining link and venue details before the {kind_label} begins.
       Questions? Reply to this email or write to contact@tiesverse.com.
     </td></tr>
 
-    <tr><td style="padding:20px 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;
+    <tr><td style="padding:18px 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;
                    line-height:1.6;color:#9a8f83;">
       &copy; Tiesverse &middot; India&#39;s leading youth-led organisation in research, media
       &amp; technology.
