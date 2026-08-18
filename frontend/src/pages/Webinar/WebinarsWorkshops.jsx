@@ -1453,6 +1453,14 @@ function MeetingTab({ item, showToast }) {
         <label style={F.check}><input type="checkbox" style={F.checkbox} checked={guestsSee} onChange={(e) => setGuestsSee(e.target.checked)} /> Guests can see each other</label>
         <label style={F.check}><input type="checkbox" style={F.checkbox} checked={moderation} onChange={(e) => setModeration(e.target.checked)} /> Moderation on — only hosts can present &amp; chat</label>
         <label style={F.check}><input type="checkbox" style={F.checkbox} checked={autoRecord} onChange={(e) => setAutoRecord(e.target.checked)} /> Auto-record the session</label>
+        {/* Neither the Meet API nor the Calendar API exposes a lobby or a
+            wait-for-host field, so this one cannot be set from here. Saying so
+            is better than leaving it looking handled. */}
+        <p className="ww-tab-hint" style={{ margin: '2px 0 0', fontSize: 12, lineHeight: 1.5 }}>
+          <strong>Host joins first:</strong> Google does not expose this to the API — moderation
+          above limits what an early guest can do, but not whether they can enter. Open the meeting
+          in Google Meet once and switch on <em>“Host must join before others”</em> there.
+        </p>
         <button className="ww-btn ww-btn-primary" onClick={generate} disabled={busy} style={{ justifySelf: 'start' }}>
           <Video size={14} /> {busy ? 'Creating…' : (link ? 'Regenerate meeting' : 'Generate Meet link')}
         </button>

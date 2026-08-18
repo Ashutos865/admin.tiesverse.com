@@ -49,6 +49,14 @@ def create_meet_space(*, access_type='RESTRICTED', moderation=True, auto_record=
     try:
         from googleapiclient.discovery import build
         svc = build('meet', 'v2', credentials=creds, cache_discovery=False)
+        # RESTRICTED is the strongest entry control the API offers: only people
+        # on the invite can get in at all. Note what is NOT available - there is
+        # no lobby or wait-for-host field anywhere in SpaceConfig or on a
+        # Calendar Event (verified against the live discovery document
+        # 2026-08-18). Google exposes "Host must join before others" only in the
+        # Meet UI, so it has to be switched on there per meeting; moderation
+        # below limits what an early joiner can DO, but cannot stop them
+        # entering.
         config = {'accessType': access_type, 'entryPointAccess': 'ALL'}
         if moderation:
             config['moderation'] = 'ON'
