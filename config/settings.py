@@ -63,6 +63,11 @@ CERTIFICATE_GENERATOR_API_URL = os.environ.get(
 ).rstrip('/')
 
 _allowed = os.environ.get('ALLOWED_HOSTS', '')
+# Every hostname nginx proxies to this app must be listed, not just the one
+# people log in at. Django answers a bare 'Bad Request (400)' for anything
+# else - which is what unsubscribe links on mail.tiesverse.com returned for
+# a day, silently, because the static page loaded fine and only the API path
+# reached Django. Currently proxied: admin, mail, forms, docs.
 ALLOWED_HOSTS = [h.strip() for h in _allowed.split(',') if h.strip()] or ['localhost', '127.0.0.1']
 
 # ── Security headers ──────────────────────────────────────────────────────
