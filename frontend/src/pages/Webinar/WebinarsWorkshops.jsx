@@ -1352,9 +1352,19 @@ function MeetingTab({ item, showToast }) {
      still missing; it is safe to press repeatedly, since adding somebody who
      is already on the list does nothing. */
   const syncPaidGuests = async () => {
+    // try/finally on every one of these: setBusy(false) used to sit on the
+    // happy path, so a network error or a timeout left the button disabled and
+    // reading "Creating..." for good, with no way back but a page reload.
     setBusy(true);
-    const res = await manageMeetingGuest({ event_pk: item.id, action: 'sync', notify: false });
-    setBusy(false);
+    let res;
+    try {
+      res = await manageMeetingGuest({ event_pk: item.id, action: 'sync', notify: false });
+    } catch (err) {
+      showToast?.('Could not reach the server. Nothing was changed.', 'error');
+      return;
+    } finally {
+      setBusy(false);
+    }
     if (res?.status === 'ok') {
       showToast?.(res.added
         ? `${res.added} paid registrant${res.added === 1 ? '' : 's'} added to the guest list.`
@@ -1366,16 +1376,35 @@ function MeetingTab({ item, showToast }) {
   const generate = async () => {
     if (!start) return showToast?.('Pick a meeting date and time.', 'error');
     setBusy(true);
-    const res = await generateWebinarMeeting({
-      event_pk: item.id,
-      start, duration_min: Number(duration) || 60,
-      hosts: hosts.split(',').map((s) => s.trim()).filter(Boolean),
-      join_access: joinAccess, guests_see_each_other: guestsSee,
-      moderation, auto_record: autoRecord,
-    });
-    setBusy(false);
-    if (res?.meeting_link) { setLink(res.meeting_link); showToast?.('Meeting created — Google Meet link generated.', 'success'); loadGuests(); }
-    else showToast?.(res?.error || 'Could not create the meeting.', 'error');
+    let res;
+    try {
+      res = await generateWebinarMeeting({
+        event_pk: item.id,
+        start, duration_min: Number(duration) || 60,
+        hosts: hosts.split(',').map((s) => s.trim()).filter(Boolean),
+        join_access: joinAccess, guests_see_each_other: guestsSee,
+        moderation, auto_record: autoRecord,
+      });
+    } catch (err) {
+      // The request may still have landed on the server, so do not imply it
+      // definitely failed - a second press was how five calendar events got
+      // created for one webinar.
+      showToast?.('No reply from the server. Refresh before pressing this again — '
+        + 'the meeting may already have been created.', 'error');
+      return;
+    } finally {
+      setBusy(false);
+    }
+    if (res?.meeting_link) {
+      setLink(res.meeting_link);
+      showToast?.(res.updated
+        ? 'Meeting updated — the link already sent stays valid.'
+        : 'Meeting created — Google Meet link generated.', 'success');
+      loadGuests();
+    } else if (res?.updated) {
+      showToast?.(res.message || 'Meeting updated.', 'success');
+      loadGuests();
+    } else showToast?.(res?.error || 'Could not create the meeting.', 'error');
   };
 
   const F = {

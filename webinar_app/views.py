@@ -2950,6 +2950,37 @@ def generate_webinar_meeting(request):
     moderation = bool(request.data.get('moderation', obj.meeting_moderation))
     auto_record = bool(request.data.get('auto_record', obj.meeting_auto_record))
 
+    # This webinar already has a meeting: move it rather than making a second
+    # one. The docstring always said "the single Google Meet", but nothing
+    # enforced it - every press of Generate created another calendar event with
+    # its own Meet link, so a webinar could end up with five rooms and
+    # registrants holding links to different ones. Pressing it again now
+    # reschedules what exists and keeps the link already sent out valid.
+    existing_id = str(getattr(obj, 'calendar_event_id', '') or '').strip()
+    if existing_id and not str(request.data.get('force_new') or '').strip():
+        try:
+            google_calendar.reschedule_event(
+                event_id=existing_id, start_iso=start, duration_min=duration,
+                send_updates='none',
+            )
+        except Exception as exc:  # noqa: BLE001
+            return Response({'error': f'Could not update the meeting: {exc}'}, status=502)
+        obj.meeting_duration_min = duration
+        if hosts:
+            obj.meeting_hosts = hosts
+        obj.meeting_guests_see_each_other = guests_see
+        obj.meeting_join_access = join_access
+        obj.meeting_moderation = moderation
+        obj.meeting_auto_record = auto_record
+        obj.save(using='turso_db')
+        return Response({
+            'status': 'ok',
+            'updated': True,
+            'meet_link': obj.meeting_link,
+            'calendar_event_id': existing_id,
+            'message': 'The existing meeting was updated, so the link already sent stays valid.',
+        })
+
     # Phase C: try a configured Meet space (host controls). Falls back to a plain
     # Calendar Meet link if the Meet API isn't enabled / the scope isn't granted.
     meet_uri = None
