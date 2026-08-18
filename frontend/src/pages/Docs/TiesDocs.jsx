@@ -13,7 +13,15 @@ import './Docs.css';
    block/inline rules is applied, so no raw HTML from the source is ever rendered. */
 function mdToHtml(src = '') {
   const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const linkFix = (s) => s.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  // Quotes too. esc() above leaves them alone, which is fine for text between
+  // tags but not for something interpolated into href="...": a URL containing a
+  // double quote closed the attribute and everything after it became markup, so
+  // [x](https://a/" onmouseover="alert(1)//) rendered as a live event handler.
+  // Any admin who could edit a doc could then run script in the browser of any
+  // admin who read it.
+  const escAttr = (s) => esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const linkFix = (s) => s.replace(/\[([^\]]+)\]\((https?:[^)\s"']+)\)/g,
+    (_m, text, url) => `<a href="${escAttr(url)}" target="_blank" rel="noreferrer noopener">${text}</a>`);
 
   const lines = src.replace(/\r\n/g, '\n').split('\n');
   const out = [];

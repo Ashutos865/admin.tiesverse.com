@@ -32,15 +32,30 @@ SECRET_KEY = (
     or _INSECURE_SECRET
 )
 
-DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() != 'false'
+# Opt in, not opt out. This defaulted to True, so a deploy that simply forgot
+# DJANGO_DEBUG ran in production serving Django's debug pages - full
+# tracebacks, local variables and settings to anyone who could trigger a
+# 500 - and silently skipped the secure-cookie and HSTS block below.
+DEBUG = os.environ.get('DJANGO_DEBUG', 'False').lower() == 'true'
 
 # Cloudflare Turnstile — when set, the login endpoint requires a valid token.
 # Empty = disabled (login unchanged), so it's safe to deploy before configuring.
 TURNSTILE_SECRET_KEY = os.environ.get('TURNSTILE_SECRET_KEY', '')
 
-# Never run in production signing JWTs/sessions with the public fallback key.
-if not DEBUG and SECRET_KEY == _INSECURE_SECRET:
-    raise RuntimeError('SECRET_KEY (or JWT_SECRET) must be set in production.')
+# Never sign JWTs, sessions, password-reset links, SSO tickets or OTP HMACs
+# with the fallback key. This used to be skipped whenever DEBUG was on, so the
+# one misconfiguration that turned DEBUG on also disabled the check that would
+# have caught it. Anything that looks like a real deployment now fails loudly
+# instead, whatever DEBUG says.
+_LOOKS_LIVE = any(os.environ.get(name) for name in (
+    'TURSO_DATABASE_URL', 'RAZORPAY_KEY_ID', 'AWS_SES_ACCESS_KEY_ID', 'SES_FROM_EMAIL',
+))
+if SECRET_KEY == _INSECURE_SECRET and (not DEBUG or _LOOKS_LIVE):
+    raise RuntimeError(
+        'SECRET_KEY (or JWT_SECRET) must be set - refusing to start with the '
+        'public fallback key, which would let anyone forge password-reset '
+        'links, SSO tickets and OTP tokens.'
+    )
 
 CERTIFICATE_GENERATOR_API_URL = os.environ.get(
     'CERTIFICATE_GENERATOR_API_URL',
