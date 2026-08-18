@@ -9,10 +9,17 @@ async function req(path, { method = 'GET', body, file, base = WP } = {}) {
   const headers = { Authorization: `Bearer ${getApiToken()}` };
   let payload;
   if (file) {
-    // Raw binary media upload — WP reads Content-Disposition for the filename.
-    headers['Content-Type'] = file.type || 'application/octet-stream';
-    headers['Content-Disposition'] = `attachment; filename="${file.name}"`;
-    payload = file;
+    // Real multipart, not a raw body with a hand-set Content-Disposition
+    // header: the Django proxy only populates request.FILES (and only then
+    // forwards a proper multipart part to WordPress) for an actual
+    // multipart/form-data request. A raw-body POST fell through the proxy's
+    // JSON branch, which never re-attaches Content-Disposition — so
+    // WordPress received a bodied request with no disposition at all and
+    // rejected it with "No Content-Disposition supplied." Do NOT set
+    // Content-Type here; the browser must generate it (with the multipart
+    // boundary) itself.
+    payload = new FormData();
+    payload.append('file', file, file.name);
   } else if (body != null) {
     headers['Content-Type'] = 'application/json';
     payload = JSON.stringify(body);
